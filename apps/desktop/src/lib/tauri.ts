@@ -7,6 +7,34 @@ export interface LocalApiConfig {
   api_key: string;
 }
 
+/** Caller-supplied provider input. Mirrors
+ * `providers::model::ProviderInput`; backend persistence lands in
+ * T1.0.2.19's `add_provider` Tauri command. */
+export interface ProviderInput {
+  name: string;
+  kind: "openai" | "anthropic" | "gemini" | "custom";
+  base_url: string;
+  api_key: string;
+  priority: number;
+  enabled: boolean;
+}
+
+/** Persisted provider returned by `list_providers` / `add_provider`. */
+export interface Provider {
+  id: string;
+  name: string;
+  kind: ProviderInput["kind"];
+  base_url: string;
+  priority: number;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function addProvider(input: ProviderInput): Promise<Provider> {
+  return invoke<Provider>("add_provider", { input });
+}
+
 export async function getLocalApiConfig(): Promise<LocalApiConfig> {
   return invoke<LocalApiConfig>("get_local_api_config");
 }
