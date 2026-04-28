@@ -9,6 +9,7 @@
 use std::time::Duration;
 
 use async_trait::async_trait;
+use futures::stream::StreamExt;
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use reqwest::{Client, StatusCode};
 use serde_json::json;
@@ -146,14 +147,38 @@ impl Provider for OpenAIProvider {
 
     async fn send_stream_request(
         &self,
-        _request: ApiRequest,
+        request: ApiRequest,
     ) -> Result<StreamingResponse, ProviderError> {
-        // Streaming path lands in T1.0.1.21. Returning BadRequest
-        // here keeps the trait surface complete and gives the
-        // SwitchEngine an actionable error rather than a panic.
-        Err(ProviderError::BadRequest(
-            "streaming not implemented yet (lands in T1.0.1.21)".into(),
-        ))
+        // Force `stream: true` regardless of caller input — the
+        // non-streaming path is `send_request`. Splitting the wire
+        // override here mirrors `send_request` which forces `false`.
+        let body = json!({
+            "model": request.model,
+            "messages": request.messages,
+            "temperature": request.temperature,
+            "max_tokens": request.max_tokens,
+            "stream": true,
+        });
+        let response = self
+            .client
+            .post(self.endpoint("/v1/chat/completions"))
+            .headers(self.auth_headers()?)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| ProviderError::Network(e.to_string()))?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let body_text = response.text().await.unwrap_or_default();
+            return Err(map_http_error(status, body_text));
+        }
+        // Forward chunks verbatim; the proxy layer will repackage
+        // them as SSE in T1.0.1.22 (`axum::response::Sse`).
+        let upstream = response
+            .bytes_stream()
+            .map(|chunk| chunk.map_err(|e| ProviderError::Network(e.to_string())));
+        Ok(Box::pin(upstream))
     }
 }
 
