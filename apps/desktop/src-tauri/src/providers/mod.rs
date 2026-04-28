@@ -8,8 +8,13 @@
 //! T1.0.1.19 adds the runtime [`Provider`] trait (HTTP dispatch); the
 //! domain [`Provider`] here is the persistence shape, not the trait.
 
+pub mod api;
 pub mod model;
 pub mod repository;
 
+pub use api::{
+    ApiChoice, ApiRequest, ApiResponse, ApiUsage, ChatMessage, HealthStatus,
+    Provider as RuntimeProvider, ProviderError, StreamChunk, StreamingResponse,
+};
 pub use model::{Provider, ProviderInput, ProviderKind};
 pub use repository::{ProviderRepository, RepositoryError};

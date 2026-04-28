@@ -29,6 +29,9 @@ base64 = "0.22.1"
 zeroize = { version = "1.8.2", features = ["derive"] }
 aes-gcm = "0.10.3"
 uuid = { version = "1.20.0", features = ["v4"] }
+async-trait = "0.1.89"
+bytes = "1.11.1"
+futures = "0.3.32"
 
 [dev-dependencies]
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
