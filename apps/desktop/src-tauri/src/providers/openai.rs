@@ -29,6 +29,8 @@ pub struct OpenAIProvider {
     name: String,
     base_url: String,
     api_key: String,
+    priority: i32,
+    cost_per_token: Option<f64>,
     client: Client,
 }
 
@@ -52,6 +54,19 @@ impl OpenAIProvider {
         base_url: impl Into<String>,
         api_key: impl Into<String>,
     ) -> Result<Self, ProviderError> {
+        Self::with_options(id, name, base_url, api_key, 100, None)
+    }
+
+    /// Full constructor with priority and cost. Used by
+    /// `ProviderWrapper` (T1.0.2.02) when hydrating from the DB row.
+    pub fn with_options(
+        id: impl Into<String>,
+        name: impl Into<String>,
+        base_url: impl Into<String>,
+        api_key: impl Into<String>,
+        priority: i32,
+        cost_per_token: Option<f64>,
+    ) -> Result<Self, ProviderError> {
         let client = Client::builder()
             .timeout(DEFAULT_REQUEST_TIMEOUT)
             .build()
@@ -61,6 +76,8 @@ impl OpenAIProvider {
             name: name.into(),
             base_url: base_url.into(),
             api_key: api_key.into(),
+            priority,
+            cost_per_token,
             client,
         })
     }
@@ -92,6 +109,21 @@ impl Provider for OpenAIProvider {
 
     fn name(&self) -> &str {
         &self.name
+    }
+
+    fn get_priority(&self) -> i32 {
+        self.priority
+    }
+
+    fn get_cost_per_token(&self) -> Option<f64> {
+        self.cost_per_token
+    }
+
+    fn get_quota_remaining(&self) -> Option<u64> {
+        // OpenAI doesn't expose remaining quota in a cheap way;
+        // ProviderWrapper (T1.0.2.02) will cache this from runtime
+        // usage headers when available.
+        None
     }
 
     /// Cheap probe: `GET /v1/models`. 200 ⇒ Healthy, 401/403 ⇒
@@ -263,6 +295,26 @@ mod tests {
         let h = p.auth_headers().expect("ok");
         assert_eq!(h.get(CONTENT_TYPE).unwrap(), "application/json");
         assert_eq!(h.get(AUTHORIZATION).unwrap(), "Bearer sk-secret");
+    }
+
+    #[test]
+    fn default_priority_is_100() {
+        let p = OpenAIProvider::new("id", "n", "https://api", "k").expect("build");
+        assert_eq!(p.get_priority(), 100);
+    }
+
+    #[test]
+    fn with_options_sets_priority_and_cost() {
+        let p = OpenAIProvider::with_options("id", "n", "https://api", "k", 10, Some(0.000_003))
+            .expect("build");
+        assert_eq!(p.get_priority(), 10);
+        assert_eq!(p.get_cost_per_token(), Some(0.000_003));
+    }
+
+    #[test]
+    fn quota_remaining_is_none_by_default() {
+        let p = OpenAIProvider::new("id", "n", "https://api", "k").expect("build");
+        assert_eq!(p.get_quota_remaining(), None);
     }
 
     #[test]

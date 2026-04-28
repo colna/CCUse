@@ -139,8 +139,9 @@ pub type StreamChunk = Result<Bytes, ProviderError>;
 /// Boxed stream of chunks. `dyn Stream` keeps the trait object-safe.
 pub type StreamingResponse = Pin<Box<dyn Stream<Item = StreamChunk> + Send>>;
 
-/// Provider runtime contract. T1.0.1.19 freezes the shape; the
-/// implementations land in T1.0.1.20+.
+/// Provider runtime contract. T1.0.1.19 freezes the base shape;
+/// T1.0.2.01 adds the three getters `SwitchEngine` needs for
+/// strategy evaluation.
 #[async_trait]
 pub trait Provider: Send + Sync + std::fmt::Debug {
     /// Identifier persisted in the `providers` table — used by the
@@ -149,6 +150,21 @@ pub trait Provider: Send + Sync + std::fmt::Debug {
 
     /// Display name for the UI / logs.
     fn name(&self) -> &str;
+
+    /// Lower numbers = higher priority. `SwitchEngine` uses this in
+    /// the `Priority` strategy to pick the min-priority healthy
+    /// provider.
+    fn get_priority(&self) -> i32;
+
+    /// Per-token cost in USD (e.g. `0.000003` for $3/M tokens).
+    /// `None` when the provider doesn't expose pricing — the `Cost`
+    /// strategy skips these entries.
+    fn get_cost_per_token(&self) -> Option<f64>;
+
+    /// Remaining quota in tokens (or requests, depending on the
+    /// upstream). `None` when the upstream doesn't report quota —
+    /// strategies that inspect this field treat `None` as unlimited.
+    fn get_quota_remaining(&self) -> Option<u64>;
 
     /// Liveness probe. Implementations should be cheap: prefer
     /// `/v1/models` or a lightweight `GET` over an actual completion.
@@ -244,5 +260,14 @@ mod tests {
     #[test]
     fn provider_trait_is_object_safe() {
         fn _accepts_dyn(_: &dyn Provider) {}
+    }
+
+    /// T1.0.2.01: the three new getters are part of the trait and
+    /// don't break object safety.
+    #[test]
+    fn provider_trait_with_new_getters_remains_object_safe() {
+        fn _uses_getters(p: &dyn Provider) -> (i32, Option<f64>, Option<u64>) {
+            (p.get_priority(), p.get_cost_per_token(), p.get_quota_remaining())
+        }
     }
 }

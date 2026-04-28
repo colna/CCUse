@@ -159,6 +159,6 @@ mod tests {
                 [],
             )
         });
-        assert!(outcome.is_err(), "CHECK (enabled IN (0,1)) should reject 2",);
+        assert!(outcome.is_err(), "CHECK (enabled IN (0,1)) should reject 2");
     }
 }
