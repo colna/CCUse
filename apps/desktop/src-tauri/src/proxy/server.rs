@@ -7,8 +7,11 @@
 use std::future::Future;
 use std::net::SocketAddr;
 
-use axum::routing::get;
+use axum::http::StatusCode;
+use axum::response::Json;
+use axum::routing::{get, post};
 use axum::Router;
+use serde_json::{json, Value};
 use tokio::net::TcpListener;
 
 /// Errors raised while binding or running the proxy server.
@@ -131,11 +134,16 @@ impl ProxyServer {
 
 /// Build the router for the local proxy.
 ///
-/// Right now: only the liveness probe used by the tray indicator
-/// and the health-check pipeline. Real provider routes are added in
-/// T1.0.1.08 and after.
+/// `/healthz` is the liveness probe used by tray + health-check loop.
+/// The three `v1/*` routes are the unified API surface clients call
+/// into; their handlers are stubs until T1.0.2 wires the provider
+/// dispatch — they return 503 with an `OpenAI`-shaped error body.
 fn build_router() -> Router {
-    Router::new().route("/healthz", get(healthz))
+    Router::new()
+        .route("/healthz", get(healthz))
+        .route("/v1/models", get(list_models))
+        .route("/v1/chat/completions", post(chat_completions))
+        .route("/v1/messages", post(anthropic_messages))
 }
 
 /// `GET /healthz` — returns `200 ok`. Minimal payload on purpose;
@@ -143,6 +151,47 @@ fn build_router() -> Router {
 /// (a Tauri command, not an HTTP route).
 async fn healthz() -> &'static str {
     "ok"
+}
+
+/// `GET /v1/models` — returns an empty list until the provider
+/// registry (T1.0.2.03 `ProviderManager`) is wired.
+///
+/// Shape mirrors `OpenAI`'s `/v1/models` so generic clients see
+/// "no models available" instead of a hard 404.
+async fn list_models() -> Json<Value> {
+    Json(json!({
+        "object": "list",
+        "data": [],
+    }))
+}
+
+/// `POST /v1/chat/completions` — `OpenAI`-format inbound. Stub until
+/// T1.0.2.15 `SwitchEngine` `execute_request` is plumbed in.
+async fn chat_completions() -> (StatusCode, Json<Value>) {
+    not_configured_response()
+}
+
+/// `POST /v1/messages` — Anthropic-format inbound. Stub until
+/// T1.0.3.04 + T1.0.2.15 land.
+async fn anthropic_messages() -> (StatusCode, Json<Value>) {
+    not_configured_response()
+}
+
+/// Standard 503 body returned by stub handlers. Shape mirrors
+/// `OpenAI`'s error envelope so clients that already parse it work
+/// unchanged once real dispatch lands.
+fn not_configured_response() -> (StatusCode, Json<Value>) {
+    (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({
+            "error": {
+                "type": "providers_not_configured",
+                "message": "Provider dispatch is not wired yet. \
+                            Configure providers in CCUse settings \
+                            (this is a Phase 1.0.1 stub).",
+            }
+        })),
+    )
 }
 
 #[cfg(test)]

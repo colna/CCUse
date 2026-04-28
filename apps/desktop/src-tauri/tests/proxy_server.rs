@@ -8,13 +8,48 @@
 use std::net::SocketAddr;
 use std::time::Duration;
 
-use ccuse_desktop_lib::proxy::ProxyServer;
+use ccuse_desktop_lib::proxy::{ProxyServer, ServerError};
+use serde_json::Value;
 use tokio::sync::oneshot;
+use tokio::task::JoinHandle;
 
 fn loopback_zero() -> SocketAddr {
     "127.0.0.1:0"
         .parse()
         .expect("loopback string is a valid SocketAddr")
+}
+
+/// Spin up a proxy server bound to an ephemeral port and return
+/// `(base_url, shutdown_tx, serve_handle)`. Sleeps briefly so the
+/// listener has time to start accepting before the caller fires
+/// requests at it.
+async fn start_test_server() -> (
+    String,
+    oneshot::Sender<()>,
+    JoinHandle<Result<(), ServerError>>,
+) {
+    let server = ProxyServer::bind(loopback_zero())
+        .await
+        .expect("bind to ephemeral port should succeed");
+    let base = format!("http://{}", server.local_addr());
+    let (tx, rx) = oneshot::channel::<()>();
+    let handle = tokio::spawn(server.serve_with_shutdown(async move {
+        let _ = rx.await;
+    }));
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    (base, tx, handle)
+}
+
+async fn shutdown_test_server(
+    tx: oneshot::Sender<()>,
+    handle: JoinHandle<Result<(), ServerError>>,
+) {
+    let _ = tx.send(());
+    let join = tokio::time::timeout(Duration::from_secs(2), handle)
+        .await
+        .expect("server should shut down within 2s")
+        .expect("serve task should not panic");
+    assert!(join.is_ok(), "serve must return Ok after shutdown");
 }
 
 #[tokio::test]
@@ -93,6 +128,55 @@ async fn bind_with_fallback_succeeds_with_single_attempt_on_zero() {
         .expect("OS should hand out an ephemeral port for start=0");
     assert!(server.local_addr().ip().is_loopback());
     assert_ne!(server.local_addr().port(), 0);
+}
+
+#[tokio::test]
+async fn list_models_returns_empty_data_array() {
+    let (base, tx, handle) = start_test_server().await;
+    let response = reqwest::get(format!("{base}/v1/models"))
+        .await
+        .expect("models request should reach the server");
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let body: Value = response.json().await.expect("body decodes as JSON");
+    assert_eq!(body["object"], "list");
+    assert!(
+        body["data"].as_array().is_some_and(Vec::is_empty),
+        "data array should be empty until ProviderManager wires real models",
+    );
+    shutdown_test_server(tx, handle).await;
+}
+
+#[tokio::test]
+async fn chat_completions_stub_returns_503_with_openai_shaped_error() {
+    let (base, tx, handle) = start_test_server().await;
+    let response = reqwest::Client::new()
+        .post(format!("{base}/v1/chat/completions"))
+        .json(&serde_json::json!({"model": "gpt-4o", "messages": []}))
+        .send()
+        .await
+        .expect("chat completions request should reach the server");
+    assert_eq!(response.status(), reqwest::StatusCode::SERVICE_UNAVAILABLE);
+    let body: Value = response.json().await.expect("body decodes as JSON");
+    assert_eq!(body["error"]["type"], "providers_not_configured");
+    assert!(body["error"]["message"]
+        .as_str()
+        .is_some_and(|s| !s.is_empty()));
+    shutdown_test_server(tx, handle).await;
+}
+
+#[tokio::test]
+async fn anthropic_messages_stub_returns_503_with_openai_shaped_error() {
+    let (base, tx, handle) = start_test_server().await;
+    let response = reqwest::Client::new()
+        .post(format!("{base}/v1/messages"))
+        .json(&serde_json::json!({"model": "claude-3-5-sonnet", "messages": []}))
+        .send()
+        .await
+        .expect("messages request should reach the server");
+    assert_eq!(response.status(), reqwest::StatusCode::SERVICE_UNAVAILABLE);
+    let body: Value = response.json().await.expect("body decodes as JSON");
+    assert_eq!(body["error"]["type"], "providers_not_configured");
+    shutdown_test_server(tx, handle).await;
 }
 
 #[tokio::test]
