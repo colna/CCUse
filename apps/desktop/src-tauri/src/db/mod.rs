@@ -1,0 +1,9 @@
+//! `SQLite` storage layer for `CCUse`.
+//!
+//! Phase 1.0.1 initialises the file (WAL mode, `foreign_keys=ON`,
+//! 0600 perms on Unix). T1.0.1.15 layers a migration runner; T1.0.1.18
+//! adds the `providers` repository on top.
+
+pub mod init;
+
+pub use init::{open_database, Database, DbError};

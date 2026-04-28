@@ -6,6 +6,7 @@
 
 pub mod auth;
 pub mod commands;
+pub mod db;
 pub mod proxy;
 
 use std::sync::Arc;
