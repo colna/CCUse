@@ -117,6 +117,14 @@ pub fn run() {
             Ok(())
         });
 
+    // T1.0.4.24: Intercept close → hide to tray instead of quitting.
+    let builder = builder.on_window_event(|window, event| {
+        if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+            api.prevent_close();
+            let _ = window.hide();
+        }
+    });
+
     if let Err(err) = builder.run(tauri::generate_context!()) {
         // Surface the cause to stderr; exit non-zero so the OS / launcher
         // can detect that startup failed instead of swallowing the error.
