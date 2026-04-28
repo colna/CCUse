@@ -7,6 +7,7 @@
 pub mod error;
 pub mod runtime;
 pub mod server;
+pub mod sse;
 
 pub use error::{ApiError, ApiErrorKind};
 pub use runtime::{

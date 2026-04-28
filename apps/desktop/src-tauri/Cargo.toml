@@ -33,6 +33,7 @@ async-trait = "0.1.89"
 bytes = "1.11.1"
 futures = "0.3.32"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
+tokio-stream = { version = "0.1.18", features = ["net", "time"] }
 
 [dev-dependencies]
 tempfile = "3.27.0"
