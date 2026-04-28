@@ -14,6 +14,10 @@ const PAGE_META: Record<string, PageMeta> = {
     title: "供应商",
     description: "管理上游 API 与优先级",
   },
+  "/strategy": {
+    title: "策略",
+    description: "选择切换策略与调整高级参数",
+  },
   "/settings": { title: "设置", description: "应用偏好与高级选项" },
 };
 

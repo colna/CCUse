@@ -32,8 +32,86 @@ export interface Provider {
   updated_at: string;
 }
 
+// ─── Provider CRUD (T1.0.2.19) ───────────────────────────────
+
+export async function listProviders(): Promise<Provider[]> {
+  return invoke<Provider[]>("list_providers");
+}
+
 export async function addProvider(input: ProviderInput): Promise<Provider> {
   return invoke<Provider>("add_provider", { input });
+}
+
+export async function updateProvider(
+  id: string,
+  input: ProviderInput,
+): Promise<Provider> {
+  return invoke<Provider>("update_provider", { id, input });
+}
+
+export async function deleteProvider(id: string): Promise<void> {
+  return invoke<void>("delete_provider", { id });
+}
+
+// ─── Strategy (T1.0.2.20) ────────────────────────────────────
+
+export type SwitchStrategy =
+  | "priority"
+  | "fastest"
+  | "cost"
+  | "load_balance"
+  | "smart";
+
+export interface SmartWeights {
+  health: number;
+  response_time: number;
+  cost: number;
+  priority: number;
+}
+
+export interface StrategyResponse {
+  strategy: SwitchStrategy;
+  max_retries: number;
+  smart_weights: SmartWeights;
+}
+
+export interface StrategyParams {
+  max_retries?: number;
+  smart_weights?: SmartWeights;
+}
+
+export async function getStrategy(): Promise<StrategyResponse> {
+  return invoke<StrategyResponse>("get_strategy");
+}
+
+export async function setStrategy(strategy: SwitchStrategy): Promise<void> {
+  return invoke<void>("set_strategy", { strategy });
+}
+
+export async function updateStrategyParams(
+  params: StrategyParams,
+): Promise<void> {
+  return invoke<void>("update_strategy_params", { params });
+}
+
+// ─── Health (T1.0.2.21) ──────────────────────────────────────
+
+export type HealthStatus = "healthy" | "degraded" | "down";
+
+export interface HealthSnapshot {
+  provider_id: string;
+  provider_name: string;
+  status: HealthStatus;
+  success_rate: number;
+  response_time_us: number | null;
+}
+
+export interface HealthSnapshotResponse {
+  providers: HealthSnapshot[];
+}
+
+export async function getHealthSnapshot(): Promise<HealthSnapshotResponse> {
+  return invoke<HealthSnapshotResponse>("get_health_snapshot");
 }
 
 /** Stable event name; mirrors `commands::EVENT_LOCAL_API_CONFIG_CHANGED`

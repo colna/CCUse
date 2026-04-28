@@ -1,6 +1,7 @@
 import {
   LayoutDashboard,
   Server,
+  Shuffle,
   Settings as SettingsIcon,
 } from "lucide-react";
 import { NavLink } from "react-router-dom";
@@ -16,6 +17,7 @@ interface NavItem {
 const NAV_ITEMS: readonly NavItem[] = [
   { to: "/dashboard", label: "总览", icon: LayoutDashboard },
   { to: "/providers", label: "供应商", icon: Server },
+  { to: "/strategy", label: "策略", icon: Shuffle },
   { to: "/settings", label: "设置", icon: SettingsIcon },
 ] as const;
 
