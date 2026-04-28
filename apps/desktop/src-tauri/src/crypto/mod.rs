@@ -5,8 +5,10 @@
 //! 32-byte secret loaded here.
 
 pub mod master_key;
+pub mod secure_storage;
 
 pub use master_key::{
     load_or_create_master_key, KeyringBackend, MasterKey, MasterKeyError, KEYRING_SERVICE,
     KEYRING_USER, MASTER_KEY_BYTES,
 };
+pub use secure_storage::{decrypt, encrypt, SecureStorageError, ENVELOPE_VERSION, NONCE_LEN};
