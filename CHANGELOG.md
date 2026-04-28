@@ -1,0 +1,115 @@
+# Changelog
+
+All notable changes to CCUse will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [1.0.0] - 2026-04-28
+
+### Added
+
+**Local Proxy (Phase 1.0.1)**
+
+- Local HTTP API proxy with automatic port selection (100-port fallback)
+- Bearer token authentication with `sk-local-*` API keys
+- CORS restriction (localhost-only)
+- `/healthz` endpoint for health checks
+- `/v1/models`, `/v1/chat/completions`, `/v1/messages` routing
+
+**Provider Management (Phase 1.0.2)**
+
+- CRUD for 5 provider types: OpenAI, Anthropic, Gemini, Relay, Custom
+- AES-256-GCM API key encryption with OS keyring master key
+- File-based keyring fallback when OS keyring unavailable
+- 5 switching strategies: Priority, Smart, Load Balance, Fastest, Cost
+- Background health checking with configurable intervals
+- Provider connection testing
+
+**Format Conversion (Phase 1.0.3)**
+
+- Unified internal format bridging OpenAI, Anthropic, and Gemini APIs
+- Request/response/streaming conversion across all 3 formats (3x3x2 matrix)
+- Tool calling cross-format translation
+- Model name mapping with user-configurable overrides
+- SSE stream chunk encoding/decoding
+
+**Desktop UI (Phase 1.0.4)**
+
+- Dashboard with real-time status cards, charts, and metrics
+- Success rate and latency trend charts (24h, 5-min buckets)
+- Cost distribution pie chart by provider
+- Switch event timeline
+- Drag-and-drop provider reordering
+- Inline provider editing with live validation
+- Strategy configuration with advanced parameter tuning
+- Model mapping management UI
+- Configuration export/import with password encryption (scrypt + AES-256-GCM)
+- 3 template presets (Claude, OpenAI, Gemini)
+- System tray with status, copy API key, restart proxy, quit
+- Close-to-tray (window hide instead of quit)
+- Desktop notifications via OS notification center
+- Chinese/English i18n with system language detection
+- Language switcher with localStorage persistence
+
+**Stability & Security (Phase 1.0.5)**
+
+- Port conflict graceful degradation (100-port retry)
+- OS keyring failure fallback to encrypted file store
+- SQLite WAL mode with busy timeout for concurrent access
+- Panic safety net with crash log persistence
+- Content Security Policy (no `unsafe-eval`)
+- Log sanitization audit (no API keys in logs)
+- Dependency security audit
+
+### Security
+
+- API keys encrypted at rest (AES-256-GCM)
+- Master key in OS keyring (macOS Keychain / Windows Credential Manager)
+- File-based fallback with 0600 permissions when keyring unavailable
+- CSP: `default-src 'self'`, no `unsafe-eval`
+- Config export files encrypted with user password (scrypt KDF)
+- No sensitive data in application logs (enforced by automated test)
+
+### Documentation
+
+- Bilingual user manual (Chinese/English)
+- FAQ covering common issues (port conflicts, WebView2, notarization, SmartScreen)
+- Updated README with feature overview and quick start guide
+
+## [0.4.0] - 2026-04-28
+
+### Added
+
+- Dashboard with status cards, charts, and metrics (T1.0.4.01-14)
+- System tray with context menu (T1.0.4.15-16)
+- Desktop notifications (T1.0.4.17)
+- Config export/import with encryption (T1.0.4.18-20)
+- i18n with Chinese/English support (T1.0.4.21-23)
+- Close-to-tray behavior (T1.0.4.24)
+
+## [0.3.0] - 2026-04-28
+
+### Added
+
+- Unified format converter for OpenAI/Anthropic/Gemini (T1.0.3.01-11)
+- Model name mapping with configurable overrides (T1.0.3.12)
+- 46 integration tests covering 3x3x2 compatibility matrix (T1.0.3.13-14)
+
+## [0.2.0] - 2026-04-28
+
+### Added
+
+- Provider CRUD with encrypted API key storage (T1.0.2.19)
+- Switch engine with 5 strategies (T1.0.2.20)
+- Health checker with periodic polling (T1.0.2.21)
+
+## [0.1.0] - 2026-04-28
+
+### Added
+
+- Local HTTP proxy server with port auto-selection
+- Bearer token authentication
+- Provider trait and repository with SQLite persistence
+- React UI shell with sidebar navigation
+- Automated release pipeline (GitHub Actions)
