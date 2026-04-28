@@ -6,5 +6,7 @@
 //! T1.0.1.16 introduces the master key for at-rest secrets.
 
 pub mod local_key;
+pub mod middleware;
 
 pub use local_key::{generate_local_api_key, LocalApiKey, LOCAL_API_KEY_PREFIX, RANDOM_PART_LEN};
+pub use middleware::{key_store, require_local_api_key, KeyStore};

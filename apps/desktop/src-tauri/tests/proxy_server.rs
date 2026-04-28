@@ -8,6 +8,7 @@
 use std::net::SocketAddr;
 use std::time::Duration;
 
+use ccuse_desktop_lib::auth::key_store;
 use ccuse_desktop_lib::proxy::{ProxyServer, ServerError};
 use serde_json::Value;
 use tokio::sync::oneshot;
@@ -233,6 +234,99 @@ async fn cors_preflight_from_foreign_origin_is_rejected() {
             .is_none(),
         "foreign origin must not receive an Access-Control-Allow-Origin header",
     );
+    shutdown_test_server(tx, handle).await;
+}
+
+/// Spin up a proxy with the auth middleware mounted; used by the
+/// T1.0.1.13 integration tests. Returns
+/// `(base_url, expected_key, shutdown_tx, serve_handle)`.
+async fn start_authenticated_test_server() -> (
+    String,
+    String,
+    oneshot::Sender<()>,
+    JoinHandle<Result<(), ServerError>>,
+) {
+    let server = ProxyServer::bind(loopback_zero())
+        .await
+        .expect("bind to ephemeral port should succeed");
+    let base = format!("http://{}", server.local_addr());
+    let key = "sk-local-integration-test-key".to_owned();
+    let store = key_store(key.clone());
+    let (tx, rx) = oneshot::channel::<()>();
+    let handle = tokio::spawn(server.serve_with_auth_and_shutdown(store, async move {
+        let _ = rx.await;
+    }));
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    (base, key, tx, handle)
+}
+
+#[tokio::test]
+async fn auth_v1_models_returns_401_when_no_key_provided() {
+    let (base, _key, tx, handle) = start_authenticated_test_server().await;
+    let response = reqwest::get(format!("{base}/v1/models"))
+        .await
+        .expect("request reaches server");
+    assert_eq!(response.status(), reqwest::StatusCode::UNAUTHORIZED);
+    let body: Value = response.json().await.expect("body decodes");
+    assert_eq!(body["error"]["type"], "unauthorized");
+    shutdown_test_server(tx, handle).await;
+}
+
+#[tokio::test]
+async fn auth_v1_chat_completions_accepts_bearer_authorization() {
+    let (base, key, tx, handle) = start_authenticated_test_server().await;
+    let response = reqwest::Client::new()
+        .post(format!("{base}/v1/chat/completions"))
+        .bearer_auth(&key)
+        .json(&serde_json::json!({"model": "gpt-4o", "messages": []}))
+        .send()
+        .await
+        .expect("request reaches server");
+    // Past the auth gate the handler is still the 503 stub.
+    assert_eq!(response.status(), reqwest::StatusCode::SERVICE_UNAVAILABLE);
+    let body: Value = response.json().await.expect("body decodes");
+    assert_eq!(body["error"]["type"], "providers_not_configured");
+    shutdown_test_server(tx, handle).await;
+}
+
+#[tokio::test]
+async fn auth_v1_messages_accepts_x_api_key_header() {
+    let (base, key, tx, handle) = start_authenticated_test_server().await;
+    let response = reqwest::Client::new()
+        .post(format!("{base}/v1/messages"))
+        .header("x-api-key", &key)
+        .json(&serde_json::json!({"model": "claude", "messages": []}))
+        .send()
+        .await
+        .expect("request reaches server");
+    assert_eq!(response.status(), reqwest::StatusCode::SERVICE_UNAVAILABLE);
+    let body: Value = response.json().await.expect("body decodes");
+    assert_eq!(body["error"]["type"], "providers_not_configured");
+    shutdown_test_server(tx, handle).await;
+}
+
+#[tokio::test]
+async fn auth_rejects_wrong_key_with_401() {
+    let (base, _key, tx, handle) = start_authenticated_test_server().await;
+    let response = reqwest::Client::new()
+        .get(format!("{base}/v1/models"))
+        .bearer_auth("sk-local-wrong-key-0000000000000000000000")
+        .send()
+        .await
+        .expect("request reaches server");
+    assert_eq!(response.status(), reqwest::StatusCode::UNAUTHORIZED);
+    shutdown_test_server(tx, handle).await;
+}
+
+#[tokio::test]
+async fn auth_does_not_apply_to_healthz() {
+    let (base, _key, tx, handle) = start_authenticated_test_server().await;
+    let response = reqwest::get(format!("{base}/healthz"))
+        .await
+        .expect("request reaches server");
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let body = response.text().await.expect("body decodes");
+    assert_eq!(body, "ok");
     shutdown_test_server(tx, handle).await;
 }
 

@@ -10,7 +10,7 @@ use serde::Serialize;
 use tokio::sync::{oneshot, Mutex};
 use tokio::task::JoinHandle;
 
-use crate::auth::{generate_local_api_key, LocalApiKey};
+use crate::auth::{generate_local_api_key, key_store, KeyStore, LocalApiKey};
 
 use super::server::{ProxyServer, ServerError};
 
@@ -51,6 +51,9 @@ pub enum RuntimeError {
 struct RunningState {
     addr: SocketAddr,
     api_key: LocalApiKey,
+    /// Shared with the auth middleware. Updating this in place is
+    /// what makes `regenerate_api_key` not require a server bounce.
+    key_store: KeyStore,
     shutdown: oneshot::Sender<()>,
     handle: JoinHandle<Result<(), ServerError>>,
 }
@@ -102,10 +105,13 @@ impl ProxyRuntime {
             ProxyServer::bind_with_fallback(self.fallback_start, self.fallback_attempts).await?;
         let addr = server.local_addr();
         let api_key = generate_local_api_key();
+        let store = key_store(api_key.as_str().to_owned());
         let (shutdown, rx) = oneshot::channel::<()>();
-        let handle = tokio::spawn(server.serve_with_shutdown(async move {
-            let _ = rx.await;
-        }));
+        let handle = tokio::spawn(
+            server.serve_with_auth_and_shutdown(store.clone(), async move {
+                let _ = rx.await;
+            }),
+        );
         let config = LocalApiConfig {
             base_url: format!("http://{addr}"),
             api_key: api_key.as_str().to_owned(),
@@ -113,6 +119,7 @@ impl ProxyRuntime {
         *guard = Some(RunningState {
             addr,
             api_key,
+            key_store: store,
             shutdown,
             handle,
         });
@@ -136,7 +143,19 @@ impl ProxyRuntime {
     pub async fn regenerate_api_key(&self) -> Result<LocalApiConfig, RuntimeError> {
         let mut guard = self.inner.lock().await;
         let state = guard.as_mut().ok_or(RuntimeError::NotRunning)?;
-        state.api_key = generate_local_api_key();
+        let fresh = generate_local_api_key();
+        // Push the new key into the auth keystore *before* swapping
+        // the in-runtime copy: a request that races with rotation
+        // either sees the old expected key (still valid) or the new
+        // one — never an empty / inconsistent state.
+        {
+            let mut guard = state
+                .key_store
+                .write()
+                .map_err(|_| RuntimeError::Serve("auth keystore lock poisoned".into()))?;
+            fresh.as_str().clone_into(&mut guard);
+        }
+        state.api_key = fresh;
         Ok(LocalApiConfig {
             base_url: format!("http://{}", state.addr),
             api_key: state.api_key.as_str().to_owned(),

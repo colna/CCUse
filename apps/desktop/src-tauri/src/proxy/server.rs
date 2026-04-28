@@ -16,6 +16,8 @@ use serde_json::{json, Value};
 use tokio::net::TcpListener;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
+use crate::auth::{require_local_api_key, KeyStore};
+
 use super::error::ApiError;
 
 /// Errors raised while binding or running the proxy server.
@@ -128,7 +130,25 @@ impl ProxyServer {
     where
         F: Future<Output = ()> + Send + 'static,
     {
-        let app = build_router();
+        let app = build_router(None);
+        axum::serve(self.listener, app)
+            .with_graceful_shutdown(shutdown)
+            .await?;
+        Ok(())
+    }
+
+    /// Run the server with the `sk-local-…` auth middleware mounted
+    /// on `/v1/*`. `/healthz` stays open so external probes (tray,
+    /// health-check loop) don't need a key.
+    pub async fn serve_with_auth_and_shutdown<F>(
+        self,
+        key_store: KeyStore,
+        shutdown: F,
+    ) -> Result<(), ServerError>
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        let app = build_router(Some(key_store));
         axum::serve(self.listener, app)
             .with_graceful_shutdown(shutdown)
             .await?;
@@ -142,12 +162,23 @@ impl ProxyServer {
 /// The three `v1/*` routes are the unified API surface clients call
 /// into; their handlers are stubs until T1.0.2 wires the provider
 /// dispatch — they return 503 with an `OpenAI`-shaped error body.
-fn build_router() -> Router {
-    Router::new()
-        .route("/healthz", get(healthz))
+///
+/// When `auth` is `Some`, the `/v1/*` routes require the
+/// `sk-local-…` API key (T1.0.1.13). `/healthz` is always open.
+fn build_router(auth: Option<KeyStore>) -> Router {
+    let mut v1 = Router::new()
         .route("/v1/models", get(list_models))
         .route("/v1/chat/completions", post(chat_completions))
-        .route("/v1/messages", post(anthropic_messages))
+        .route("/v1/messages", post(anthropic_messages));
+    if let Some(store) = auth {
+        v1 = v1.layer(axum::middleware::from_fn_with_state(
+            store,
+            require_local_api_key,
+        ));
+    }
+    Router::new()
+        .route("/healthz", get(healthz))
+        .merge(v1)
         .layer(cors_layer())
 }
 
