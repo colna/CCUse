@@ -180,6 +180,63 @@ async fn anthropic_messages_stub_returns_503_with_openai_shaped_error() {
 }
 
 #[tokio::test]
+async fn cors_preflight_from_loopback_origin_is_allowed() {
+    let (base, tx, handle) = start_test_server().await;
+    let response = reqwest::Client::new()
+        .request(
+            reqwest::Method::OPTIONS,
+            format!("{base}/v1/chat/completions"),
+        )
+        .header("Origin", "http://127.0.0.1:5173")
+        .header("Access-Control-Request-Method", "POST")
+        .header(
+            "Access-Control-Request-Headers",
+            "authorization,content-type",
+        )
+        .send()
+        .await
+        .expect("preflight request should reach the server");
+    assert!(
+        response.status().is_success(),
+        "preflight should be 2xx, got {}",
+        response.status(),
+    );
+    assert_eq!(
+        response
+            .headers()
+            .get("access-control-allow-origin")
+            .and_then(|v| v.to_str().ok()),
+        Some("http://127.0.0.1:5173"),
+    );
+    shutdown_test_server(tx, handle).await;
+}
+
+#[tokio::test]
+async fn cors_preflight_from_foreign_origin_is_rejected() {
+    let (base, tx, handle) = start_test_server().await;
+    let response = reqwest::Client::new()
+        .request(
+            reqwest::Method::OPTIONS,
+            format!("{base}/v1/chat/completions"),
+        )
+        .header("Origin", "https://evil.example.com")
+        .header("Access-Control-Request-Method", "POST")
+        .send()
+        .await
+        .expect("preflight request should reach the server");
+    // tower-http's policy returns the response without ACAO when the
+    // origin doesn't match — clients see this as "CORS forbidden".
+    assert!(
+        response
+            .headers()
+            .get("access-control-allow-origin")
+            .is_none(),
+        "foreign origin must not receive an Access-Control-Allow-Origin header",
+    );
+    shutdown_test_server(tx, handle).await;
+}
+
+#[tokio::test]
 async fn bind_with_fallback_skips_busy_port_and_finds_next() {
     // Hold one loopback port for the duration of the test, then ask
     // bind_with_fallback to start exactly there. The first probe must fail,

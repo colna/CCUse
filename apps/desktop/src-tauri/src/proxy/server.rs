@@ -7,11 +7,14 @@
 use std::future::Future;
 use std::net::SocketAddr;
 
+use axum::http::header::{AUTHORIZATION, CONTENT_TYPE};
+use axum::http::{HeaderName, Method};
 use axum::response::Json;
 use axum::routing::{get, post};
 use axum::Router;
 use serde_json::{json, Value};
 use tokio::net::TcpListener;
+use tower_http::cors::{AllowOrigin, CorsLayer};
 
 use super::error::ApiError;
 
@@ -145,6 +148,32 @@ fn build_router() -> Router {
         .route("/v1/models", get(list_models))
         .route("/v1/chat/completions", post(chat_completions))
         .route("/v1/messages", post(anthropic_messages))
+        .layer(cors_layer())
+}
+
+/// CORS policy.
+///
+/// Most `CCUse` clients (Cursor / Claude Desktop / Continue) are
+/// native apps and never send `Origin`, so they bypass CORS entirely.
+/// The policy here exists for the few legitimate browser callers —
+/// local dev tooling and the Tauri `WebView` itself — and refuses
+/// anything that's not loopback or the Tauri custom scheme.
+fn cors_layer() -> CorsLayer {
+    let origin = AllowOrigin::predicate(|origin, _request| {
+        let raw = origin.to_str().unwrap_or_default();
+        raw.starts_with("http://127.0.0.1")
+            || raw.starts_with("http://localhost")
+            || raw == "tauri://localhost"
+    });
+    CorsLayer::new()
+        .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+        .allow_headers([
+            AUTHORIZATION,
+            CONTENT_TYPE,
+            HeaderName::from_static("x-api-key"),
+        ])
+        .allow_origin(origin)
+        .max_age(std::time::Duration::from_secs(600))
 }
 
 /// `GET /healthz` — returns `200 ok`. Minimal payload on purpose;
