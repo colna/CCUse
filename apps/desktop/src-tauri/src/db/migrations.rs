@@ -26,11 +26,23 @@ struct Migration {
 /// New migrations land at the end and never modify earlier entries —
 /// a deployed binary may have applied N already and only see new
 /// entries on next launch.
-const MIGRATIONS: &[Migration] = &[Migration {
-    version: 1,
-    name: "init",
-    sql: include_str!("../../migrations/0001_init.sql"),
-}];
+const MIGRATIONS: &[Migration] = &[
+    Migration {
+        version: 1,
+        name: "init",
+        sql: include_str!("../../migrations/0001_init.sql"),
+    },
+    Migration {
+        version: 2,
+        name: "switch_history",
+        sql: include_str!("../../migrations/0002_switch_history.sql"),
+    },
+    Migration {
+        version: 3,
+        name: "request_logs",
+        sql: include_str!("../../migrations/0003_request_logs.sql"),
+    },
+];
 
 /// Apply every migration whose version is newer than the highest
 /// already recorded in `_migrations`. Idempotent — calling twice is
@@ -96,7 +108,13 @@ mod tests {
         let db = open_database(dir.path().join("schema.db")).expect("open ok");
         run_migrations(&db).expect("migrate ok");
 
-        for table in ["providers", "app_config", "_migrations"] {
+        for table in [
+            "providers",
+            "app_config",
+            "switch_history",
+            "request_logs",
+            "_migrations",
+        ] {
             let count: i64 = db
                 .with_connection(|c| {
                     c.query_row(
