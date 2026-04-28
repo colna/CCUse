@@ -5,9 +5,7 @@ import App from "../App";
 describe("App", () => {
   it("renders product title heading", () => {
     render(<App />);
-    expect(
-      screen.getByRole("heading", { name: "CCUse" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "CCUse" })).toBeInTheDocument();
   });
 
   it("renders product tagline copy", () => {

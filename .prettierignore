@@ -1,0 +1,24 @@
+node_modules
+dist
+build
+out
+coverage
+.next
+.turbo
+
+# Tauri build outputs
+**/src-tauri/target
+**/src-tauri/gen
+**/src-tauri/WixTools
+
+# Lockfiles (already auto-formatted)
+pnpm-lock.yaml
+Cargo.lock
+
+# Generated
+*.min.js
+*.min.css
+
+# Skill / agent docs (third-party content, leave as-is)
+.agents/
+.claude/skills/

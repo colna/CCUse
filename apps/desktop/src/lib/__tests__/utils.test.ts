@@ -15,11 +15,13 @@ describe("cn", () => {
   });
 
   it("dedupes conflicting Tailwind utilities, last wins", () => {
+    // prettier-plugin-tailwindcss 不会重排不同 cn() 参数之间的顺序
     expect(cn("p-2", "p-4")).toBe("p-4");
-    expect(cn("text-sm text-base")).toBe("text-base");
+    expect(cn("text-base", "text-sm")).toBe("text-sm");
   });
 
   it("preserves non-conflicting utilities while resolving conflicts", () => {
-    expect(cn("flex p-2", "p-4 items-center")).toBe("flex p-4 items-center");
+    // tailwind-merge 保留输入顺序、丢弃被覆盖的冲突项
+    expect(cn("flex p-2", "items-center p-4")).toBe("flex items-center p-4");
   });
 });

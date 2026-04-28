@@ -15,6 +15,30 @@
     "desktop:typecheck": "pnpm --filter @ccuse/desktop typecheck",
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm -r typecheck",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7",
+    "lint-staged": "^15.5.2",
+    "prettier": "^3.8.3",
+    "prettier-plugin-tailwindcss": "^0.6.14"
+  },
+  "lint-staged": {
+    "apps/desktop/**/*.{ts,tsx}": [
+      "pnpm --filter @ccuse/desktop exec eslint --fix",
+      "prettier --write"
+    ],
+    "apps/desktop/**/*.{css,json,md}": [
+      "prettier --write"
+    ],
+    "apps/desktop/src-tauri/**/*.rs": [
+      "bash -c 'cd apps/desktop/src-tauri && cargo fmt -- --check'"
+    ],
+    "*.{md,json,yaml,yml}": [
+      "prettier --write"
+    ]
   }
 }
