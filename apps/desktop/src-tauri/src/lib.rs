@@ -4,6 +4,7 @@
 //! by the future mobile target. The local proxy server, providers, and
 //! switch engine will be wired in here in later phases.
 
+pub mod auth;
 pub mod proxy;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
