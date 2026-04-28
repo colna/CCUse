@@ -34,13 +34,14 @@ function formatFullTime(timestamp: string): string {
   });
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function CustomTooltip({
   active,
   payload,
 }: {
   active?: boolean;
-  payload?: any[];
+  payload?: {
+    payload: { fullTime: string; avgLatency: number; p95Latency: number };
+  }[];
 }) {
   if (!active || !payload?.length) return null;
   const data = payload[0]?.payload;

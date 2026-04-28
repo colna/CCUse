@@ -1,4 +1,5 @@
 import { ModelMappingTable } from "@/components/model-mapping/ModelMappingTable";
+import { ConfigExportPanel } from "@/components/settings/ConfigExportPanel";
 
 export function SettingsPage() {
   return (
@@ -13,6 +14,10 @@ export function SettingsPage() {
       </div>
 
       <ModelMappingTable />
+
+      <hr className="border-border" />
+
+      <ConfigExportPanel />
     </section>
   );
 }

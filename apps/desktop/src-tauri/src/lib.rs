@@ -6,6 +6,7 @@
 
 pub mod auth;
 pub mod commands;
+pub mod config_export;
 pub mod converter;
 pub mod crypto;
 pub mod db;
@@ -13,6 +14,7 @@ pub mod health;
 pub mod providers;
 pub mod proxy;
 pub mod switch;
+pub mod tray;
 
 use std::sync::Arc;
 
@@ -41,6 +43,7 @@ pub fn run() {
         Arc::new(tokio::sync::RwLock::new(converter::ModelMapping::new()));
 
     let builder = tauri::Builder::default()
+        .plugin(tauri_plugin_notification::init())
         .manage(runtime)
         .manage(engine)
         .manage(checker)
@@ -70,6 +73,12 @@ pub fn run() {
             commands::monitor::get_metrics_timeseries,
             commands::monitor::get_switch_timeline,
             commands::monitor::get_provider_cost_summary,
+            // Notification (T1.0.4.17)
+            commands::notification::send_notification,
+            // Config export / import / presets (T1.0.4.18–20)
+            commands::config_export::export_config_json,
+            commands::config_export::import_config_json,
+            commands::config_export::get_template_presets,
         ])
         .setup(move |app| {
             // Initialise the database and provider repository.
@@ -99,6 +108,12 @@ pub fn run() {
                     eprintln!("CCUse: proxy failed to start: {err}");
                 }
             });
+
+            // System tray (T1.0.4.15–16).
+            if let Err(err) = tray::setup(app.handle()) {
+                eprintln!("CCUse: tray setup failed: {err}");
+            }
+
             Ok(())
         });
 

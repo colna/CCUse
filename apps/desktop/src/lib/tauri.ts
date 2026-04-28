@@ -223,6 +223,54 @@ export async function getSwitchTimeline(): Promise<SwitchEvent[]> {
   return invoke<SwitchEvent[]>("get_switch_timeline");
 }
 
+// ─── Notification (T1.0.4.17) ────────────────────────────────
+
+export async function sendNotification(
+  title: string,
+  body: string,
+): Promise<void> {
+  return invoke<void>("send_notification", { title, body });
+}
+
+// ─── Config Export / Import (T1.0.4.18-20) ───────────────────
+
+export interface ExportProvider {
+  name: string;
+  kind: "openai" | "anthropic" | "gemini" | "relay" | "custom";
+  base_url: string;
+  priority: number;
+  enabled: boolean;
+  monthly_quota?: number | null;
+  rate_limit_rpm?: number | null;
+  cost_per_1k_tokens?: number | null;
+}
+
+export interface TemplatePreset {
+  id: string;
+  name: string;
+  description: string;
+  providers: ExportProvider[];
+}
+
+export async function exportConfig(password: string): Promise<Uint8Array> {
+  const raw = await invoke<number[]>("export_config_json", { password });
+  return new Uint8Array(raw);
+}
+
+export async function importConfig(
+  data: Uint8Array,
+  password: string,
+): Promise<void> {
+  return invoke<void>("import_config_json", {
+    data: Array.from(data),
+    password,
+  });
+}
+
+export async function getTemplatePresets(): Promise<TemplatePreset[]> {
+  return invoke<TemplatePreset[]>("get_template_presets");
+}
+
 /** Copy text to the system clipboard.
  *
  * Browser Clipboard API is the happy path; we keep the

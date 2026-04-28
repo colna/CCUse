@@ -32,13 +32,12 @@ function formatFullTime(timestamp: string): string {
   });
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function CustomTooltip({
   active,
   payload,
 }: {
   active?: boolean;
-  payload?: any[];
+  payload?: { value: number; payload: { fullTime: string } }[];
 }) {
   if (!active || !payload?.length) return null;
   const point = payload[0];

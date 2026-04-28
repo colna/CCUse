@@ -27,13 +27,12 @@ const COLORS = [
   "hsl(170 60% 45%)",
 ];
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function CustomTooltip({
   active,
   payload,
 }: {
   active?: boolean;
-  payload?: any[];
+  payload?: { name: string; value: number; payload: { requests: number } }[];
 }) {
   if (!active || !payload?.length) return null;
   const entry = payload[0];

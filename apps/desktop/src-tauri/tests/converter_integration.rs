@@ -1,6 +1,6 @@
 //! Integration test: format compatibility matrix (T1.0.3.13-14).
 //!
-//! Verifies that a request in any of the 3 client formats (OpenAI,
+//! Verifies that a request in any of the 3 client formats (`OpenAI`,
 //! Anthropic, Gemini) can be converted to unified, then re-encoded
 //! into any of the 3 vendor formats — and the same for responses
 //! and streaming chunks.  That's a 3 × 3 × 2 (stream + non-stream)
@@ -205,7 +205,10 @@ mod openai_edge_cases {
             "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
             "usage": {"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8}
         });
-        let chunk = openai().parse_stream_chunk(&data.to_string()).unwrap().unwrap();
+        let chunk = openai()
+            .parse_stream_chunk(&data.to_string())
+            .unwrap()
+            .unwrap();
         assert_eq!(chunk.usage.as_ref().unwrap().total_tokens, 8);
     }
 
@@ -319,7 +322,10 @@ mod anthropic_edge_cases {
             "delta": {"stop_reason": "end_turn"},
             "usage": {"output_tokens": 42}
         });
-        let chunk = anthropic().parse_stream_chunk(&data.to_string()).unwrap().unwrap();
+        let chunk = anthropic()
+            .parse_stream_chunk(&data.to_string())
+            .unwrap()
+            .unwrap();
         assert_eq!(chunk.usage.as_ref().unwrap().completion_tokens, 42);
     }
 }
@@ -369,7 +375,10 @@ mod gemini_edge_cases {
         let data = json!({
             "usageMetadata": {"promptTokenCount": 10, "candidatesTokenCount": 5, "totalTokenCount": 15}
         });
-        let chunk = gemini().parse_stream_chunk(&data.to_string()).unwrap().unwrap();
+        let chunk = gemini()
+            .parse_stream_chunk(&data.to_string())
+            .unwrap()
+            .unwrap();
         assert!(chunk.choices.is_empty());
         assert_eq!(chunk.usage.as_ref().unwrap().total_tokens, 15);
     }
@@ -395,41 +404,32 @@ fn assert_text_preserved(result: &serde_json::Value, format: &str) {
             // Find "Hello!" somewhere in messages.
             let msgs = result["messages"].as_array().unwrap();
             let has_hello = msgs.iter().any(|m| {
-                m["content"].as_str().map_or(false, |s| s.contains("Hello"))
-                    || m["content"]
-                        .as_array()
-                        .map_or(false, |arr| {
-                            arr.iter().any(|p| {
-                                p["text"].as_str().map_or(false, |s| s.contains("Hello"))
-                            })
-                        })
+                m["content"].as_str().is_some_and(|s| s.contains("Hello"))
+                    || m["content"].as_array().is_some_and(|arr| {
+                        arr.iter()
+                            .any(|p| p["text"].as_str().is_some_and(|s| s.contains("Hello")))
+                    })
             });
             assert!(has_hello, "OpenAI request should contain 'Hello'");
         }
         "anthropic" => {
             let msgs = result["messages"].as_array().unwrap();
             let has_hello = msgs.iter().any(|m| {
-                m["content"].as_str().map_or(false, |s| s.contains("Hello"))
-                    || m["content"]
-                        .as_array()
-                        .map_or(false, |arr| {
-                            arr.iter().any(|p| {
-                                p["text"].as_str().map_or(false, |s| s.contains("Hello"))
-                            })
-                        })
+                m["content"].as_str().is_some_and(|s| s.contains("Hello"))
+                    || m["content"].as_array().is_some_and(|arr| {
+                        arr.iter()
+                            .any(|p| p["text"].as_str().is_some_and(|s| s.contains("Hello")))
+                    })
             });
             assert!(has_hello, "Anthropic request should contain 'Hello'");
         }
         "gemini" => {
             let contents = result["contents"].as_array().unwrap();
             let has_hello = contents.iter().any(|c| {
-                c["parts"]
-                    .as_array()
-                    .map_or(false, |arr| {
-                        arr.iter().any(|p| {
-                            p["text"].as_str().map_or(false, |s| s.contains("Hello"))
-                        })
-                    })
+                c["parts"].as_array().is_some_and(|arr| {
+                    arr.iter()
+                        .any(|p| p["text"].as_str().is_some_and(|s| s.contains("Hello")))
+                })
             });
             assert!(has_hello, "Gemini request should contain 'Hello'");
         }
@@ -663,9 +663,12 @@ fn tool_call_openai_to_anthropic() {
     let has_tool_use = msgs.iter().any(|m| {
         m["content"]
             .as_array()
-            .map_or(false, |arr| arr.iter().any(|b| b["type"] == "tool_use"))
+            .is_some_and(|arr| arr.iter().any(|b| b["type"] == "tool_use"))
     });
-    assert!(has_tool_use, "Anthropic request should contain tool_use block");
+    assert!(
+        has_tool_use,
+        "Anthropic request should contain tool_use block"
+    );
     // Tools should use input_schema.
     assert!(result["tools"][0]["input_schema"].is_object());
 }
@@ -677,7 +680,7 @@ fn tool_call_openai_to_gemini() {
     let has_fn_call = contents.iter().any(|c| {
         c["parts"]
             .as_array()
-            .map_or(false, |arr| arr.iter().any(|p| p["functionCall"].is_object()))
+            .is_some_and(|arr| arr.iter().any(|p| p["functionCall"].is_object()))
     });
     assert!(has_fn_call, "Gemini request should contain functionCall");
     assert!(result["tools"][0]["functionDeclarations"].is_array());
