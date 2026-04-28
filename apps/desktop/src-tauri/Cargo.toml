@@ -32,11 +32,12 @@ uuid = { version = "1.20.0", features = ["v4"] }
 async-trait = "0.1.89"
 bytes = "1.11.1"
 futures = "0.3.32"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
 
 [dev-dependencies]
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 tempfile = "3.27.0"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal", "sync", "time"] }
+wiremock = "0.6"
 
 [profile.release]
 opt-level = "z"
