@@ -11,6 +11,7 @@ pub mod db;
 pub mod health;
 pub mod providers;
 pub mod proxy;
+pub mod switch;
 
 use std::sync::Arc;
 
