@@ -19,6 +19,7 @@ use std::sync::Arc;
 use tauri::Manager;
 
 use commands::health::HealthCheckerHandle;
+use commands::model_mapping::ModelMappingHandle;
 use commands::providers::ProviderRepoHandle;
 use commands::switch::SwitchEngineHandle;
 use providers::ProviderManager;
@@ -35,10 +36,15 @@ pub fn run() {
     let engine: SwitchEngineHandle = Arc::new(SwitchEngine::new(Arc::clone(&manager)));
     let checker: HealthCheckerHandle = Arc::new(health::HealthChecker::new(Arc::clone(&manager)));
 
+    // Model mapping with defaults (T1.0.3.12).
+    let model_mapping: ModelMappingHandle =
+        Arc::new(tokio::sync::RwLock::new(converter::ModelMapping::new()));
+
     let builder = tauri::Builder::default()
         .manage(runtime)
         .manage(engine)
         .manage(checker)
+        .manage(model_mapping)
         .invoke_handler(tauri::generate_handler![
             // Proxy (T1.0.1)
             commands::proxy::get_local_api_config,
@@ -55,6 +61,10 @@ pub fn run() {
             commands::switch::update_strategy_params,
             // Health (T1.0.2.21)
             commands::health::get_health_snapshot,
+            // Model mapping (T1.0.3.12)
+            commands::model_mapping::get_model_mappings,
+            commands::model_mapping::set_model_mapping,
+            commands::model_mapping::remove_model_mapping,
         ])
         .setup(move |app| {
             // Initialise the database and provider repository.
