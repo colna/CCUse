@@ -5,7 +5,11 @@
 //! Wired into the `Tauri` lifecycle in later phases (T1.0.1.12).
 
 pub mod error;
+pub mod runtime;
 pub mod server;
 
 pub use error::{ApiError, ApiErrorKind};
+pub use runtime::{
+    LocalApiConfig, ProxyRuntime, RuntimeError, DEFAULT_PROXY_ATTEMPTS, DEFAULT_PROXY_PORT,
+};
 pub use server::{ProxyServer, ServerError};
