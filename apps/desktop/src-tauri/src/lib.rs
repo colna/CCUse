@@ -8,6 +8,7 @@ pub mod auth;
 pub mod commands;
 pub mod crypto;
 pub mod db;
+pub mod providers;
 pub mod proxy;
 
 use std::sync::Arc;
