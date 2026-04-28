@@ -5,33 +5,36 @@ import {
   Settings as SettingsIcon,
 } from "lucide-react";
 import { NavLink } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 
 import { cn } from "@/lib/utils";
 
 interface NavItem {
   to: string;
-  label: string;
+  labelKey: string;
   icon: typeof LayoutDashboard;
 }
 
 const NAV_ITEMS: readonly NavItem[] = [
-  { to: "/dashboard", label: "总览", icon: LayoutDashboard },
-  { to: "/providers", label: "供应商", icon: Server },
-  { to: "/strategy", label: "策略", icon: Shuffle },
-  { to: "/settings", label: "设置", icon: SettingsIcon },
+  { to: "/dashboard", labelKey: "nav_dashboard", icon: LayoutDashboard },
+  { to: "/providers", labelKey: "nav_providers", icon: Server },
+  { to: "/strategy", labelKey: "nav_strategy", icon: Shuffle },
+  { to: "/settings", labelKey: "nav_settings", icon: SettingsIcon },
 ] as const;
 
 export function Sidebar() {
+  const { t } = useTranslation("common");
+
   return (
     <nav
-      aria-label="主导航"
+      aria-label={t("nav_dashboard")}
       className="flex h-full w-56 shrink-0 flex-col border-r border-border bg-card/40 px-3 py-6"
     >
       <p className="px-3 text-xs uppercase tracking-[0.18em] text-muted-foreground">
-        CCUse
+        {t("brand")}
       </p>
       <ul className="mt-6 space-y-1">
-        {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
+        {NAV_ITEMS.map(({ to, labelKey, icon: Icon }) => (
           <li key={to}>
             <NavLink
               to={to}
@@ -45,7 +48,7 @@ export function Sidebar() {
               }
             >
               <Icon className="size-4" aria-hidden />
-              <span>{label}</span>
+              <span>{t(labelKey)}</span>
             </NavLink>
           </li>
         ))}

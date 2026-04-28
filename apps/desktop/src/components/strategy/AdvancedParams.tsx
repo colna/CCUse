@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -9,6 +10,8 @@ import {
 } from "@/lib/tauri";
 
 export function AdvancedParams() {
+  const { t } = useTranslation("strategy");
+  const { t: tc } = useTranslation("common");
   const [config, setConfig] = useState<StrategyResponse | null>(null);
   const [maxRetries, setMaxRetries] = useState("3");
   const [weights, setWeights] = useState<SmartWeights>({
@@ -60,11 +63,9 @@ export function AdvancedParams() {
     <div className="space-y-5 rounded-2xl border border-border bg-card p-6 shadow-apple-card">
       <header className="space-y-1">
         <h3 className="text-base font-semibold leading-apple-headline tracking-apple-tight">
-          高级参数
+          {t("advanced_title")}
         </h3>
-        <p className="text-xs text-muted-foreground">
-          调整重试次数和智能策略权重
-        </p>
+        <p className="text-xs text-muted-foreground">{t("advanced_desc")}</p>
       </header>
 
       <div className="space-y-1.5">
@@ -72,7 +73,7 @@ export function AdvancedParams() {
           htmlFor="max-retries"
           className="text-xs uppercase tracking-[0.18em] text-muted-foreground"
         >
-          最大重试次数
+          {t("max_retries_label")}
         </label>
         <input
           id="max-retries"
@@ -83,49 +84,50 @@ export function AdvancedParams() {
           onChange={(e) => setMaxRetries(e.target.value)}
           className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus-visible:border-primary"
         />
-        <p className="text-xs text-muted-foreground">
-          失败后自动尝试下一个供应商的次数（0 = 不重试）
-        </p>
+        <p className="text-xs text-muted-foreground">{t("max_retries_hint")}</p>
       </div>
 
       {config.strategy === "smart" && (
         <div className="space-y-4">
           <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-            智能策略权重
+            {t("smart_weights_label")}
           </p>
           <WeightSlider
-            label="健康度"
+            label={t("weight_health")}
             value={weights.health}
             onChange={(v) => handleWeightChange("health", v)}
           />
           <WeightSlider
-            label="响应速度"
+            label={t("weight_response_time")}
             value={weights.response_time}
             onChange={(v) => handleWeightChange("response_time", v)}
           />
           <WeightSlider
-            label="成本"
+            label={t("weight_cost")}
             value={weights.cost}
             onChange={(v) => handleWeightChange("cost", v)}
           />
           <WeightSlider
-            label="优先级"
+            label={t("weight_priority")}
             value={weights.priority}
             onChange={(v) => handleWeightChange("priority", v)}
           />
           <p className="text-xs text-muted-foreground">
-            总和：{weights.health + weights.response_time + weights.cost + weights.priority}
-            （建议保持 100）
+            {t("weight_total", {
+              total:
+                weights.health +
+                weights.response_time +
+                weights.cost +
+                weights.priority,
+            })}
           </p>
         </div>
       )}
 
       <footer className="flex items-center justify-end gap-3">
-        {saved && (
-          <span className="text-xs text-primary">已保存</span>
-        )}
+        {saved && <span className="text-xs text-primary">{tc("saved")}</span>}
         <Button onClick={handleSave} disabled={saving}>
-          {saving ? "保存中…" : "保存"}
+          {saving ? tc("saving") : tc("save")}
         </Button>
       </footer>
     </div>

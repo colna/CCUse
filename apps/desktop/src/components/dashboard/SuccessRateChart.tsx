@@ -8,6 +8,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import { useTranslation } from "react-i18next";
 
 import { getMetricsTimeseries, type MetricsBucket } from "@/lib/tauri";
 
@@ -52,6 +53,8 @@ function CustomTooltip({
 const REFRESH_INTERVAL = 30_000;
 
 export function SuccessRateChart() {
+  const { t } = useTranslation("monitor");
+  const { t: tc } = useTranslation("common");
   const [chartData, setChartData] = useState<ChartPoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -93,17 +96,19 @@ export function SuccessRateChart() {
   if (!loading && chartData.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-border bg-card/50 px-6 py-8 text-center text-sm text-muted-foreground">
-        No data yet
+        {tc("no_data_yet")}
       </div>
     );
   }
 
   return (
     <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
-      <h4 className="mb-4 text-sm font-medium">Success Rate (24h)</h4>
+      <h4 className="mb-4 text-sm font-medium">
+        {t("success_rate_chart_title")}
+      </h4>
       {loading ? (
         <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
-          Loading...
+          {tc("loading")}
         </div>
       ) : (
         <ResponsiveContainer width="100%" height={200}>

@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import { ChevronDown, ChevronRight, Loader2, Plug } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -87,51 +88,57 @@ const INITIAL_VALUES: FormValues = {
 const PRIORITY_MIN = 1;
 const PRIORITY_MAX = 1000;
 
-function validate(values: FormValues): FieldErrors {
+function validate(
+  values: FormValues,
+  t: (key: string, opts?: Record<string, string | number>) => string,
+): FieldErrors {
   const errors: FieldErrors = {};
-  if (!values.name.trim()) errors.name = "Name is required";
+  if (!values.name.trim()) errors.name = t("validation_name_required");
 
   const trimmedUrl = values.base_url.trim();
-  const typeOption = PROVIDER_TYPES.find((t) => t.kind === values.kind);
+  const typeOption = PROVIDER_TYPES.find((tp) => tp.kind === values.kind);
 
   if (!trimmedUrl) {
     if (typeOption?.requiresBaseUrl) {
-      errors.base_url = "Base URL is required for this provider type";
+      errors.base_url = t("validation_base_url_required");
     }
   } else {
     try {
       const url = new URL(trimmedUrl);
       if (url.protocol !== "https:" && url.protocol !== "http:") {
-        errors.base_url = "Base URL must start with http:// or https://";
+        errors.base_url = t("validation_base_url_protocol");
       }
     } catch {
-      errors.base_url = "Invalid Base URL format";
+      errors.base_url = t("validation_base_url_invalid");
     }
   }
 
-  if (!values.api_key.trim()) errors.api_key = "API Key is required";
+  if (!values.api_key.trim()) errors.api_key = t("validation_api_key_required");
 
   const priority = Number(values.priority);
   if (!Number.isInteger(priority)) {
-    errors.priority = "Priority must be an integer";
+    errors.priority = t("validation_priority_integer");
   } else if (priority < PRIORITY_MIN || priority > PRIORITY_MAX) {
-    errors.priority = `Priority must be ${PRIORITY_MIN}--${PRIORITY_MAX}`;
+    errors.priority = t("validation_priority_range", {
+      min: PRIORITY_MIN,
+      max: PRIORITY_MAX,
+    });
   }
 
   if (values.monthly_quota.trim()) {
     const v = Number(values.monthly_quota);
     if (isNaN(v) || v < 0)
-      errors.monthly_quota = "Must be a non-negative number";
+      errors.monthly_quota = t("validation_non_negative_number");
   }
   if (values.rate_limit_rpm.trim()) {
     const v = Number(values.rate_limit_rpm);
     if (!Number.isInteger(v) || v < 0)
-      errors.rate_limit_rpm = "Must be a non-negative integer";
+      errors.rate_limit_rpm = t("validation_non_negative_integer");
   }
   if (values.cost_per_1k_tokens.trim()) {
     const v = Number(values.cost_per_1k_tokens);
     if (isNaN(v) || v < 0)
-      errors.cost_per_1k_tokens = "Must be a non-negative number";
+      errors.cost_per_1k_tokens = t("validation_non_negative_number");
   }
 
   return errors;
@@ -144,6 +151,7 @@ interface AddProviderFormProps {
 }
 
 export function AddProviderForm({ onAdded }: AddProviderFormProps) {
+  const { t } = useTranslation("providers");
   const [values, setValues] = useState<FormValues>(INITIAL_VALUES);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [submitting, setSubmitting] = useState(false);
@@ -157,7 +165,7 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
   const [testing, setTesting] = useState(false);
 
   const handleKindChange = useCallback((kind: ProviderKind) => {
-    const typeOption = PROVIDER_TYPES.find((t) => t.kind === kind);
+    const typeOption = PROVIDER_TYPES.find((tp) => tp.kind === kind);
     setValues((s) => ({
       ...s,
       kind,
@@ -189,7 +197,7 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
       setServerError(null);
       setTestResult(null);
       setTestError(null);
-      const fieldErrors = validate(values);
+      const fieldErrors = validate(values, t);
       setErrors(fieldErrors);
       if (Object.keys(fieldErrors).length > 0) return;
 
@@ -222,7 +230,7 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
         setSubmitting(false);
       }
     },
-    [values, onAdded],
+    [values, onAdded, t],
   );
 
   const handleReset = useCallback(() => {
@@ -238,23 +246,22 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
     <form
       noValidate
       onSubmit={handleSubmit}
-      aria-label="Add provider"
+      aria-label={t("add_provider_aria")}
       className="space-y-5 rounded-2xl border border-border bg-card p-6 shadow-apple-card"
     >
       <header className="space-y-1">
         <h3 className="text-base font-semibold leading-apple-headline tracking-apple-tight">
-          Add Provider
+          {t("add_provider_title")}
         </h3>
         <p className="text-xs text-muted-foreground">
-          Select provider type, fill in details. Lower priority number = higher
-          preference.
+          {t("add_provider_desc")}
         </p>
       </header>
 
       {/* Provider type selector */}
       <div className="space-y-1.5">
         <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-          Provider Type
+          {t("provider_type")}
         </span>
         <div className="flex flex-wrap gap-2">
           {PROVIDER_TYPES.map((opt) => (
@@ -277,8 +284,8 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
 
       <Field
         id="provider-name"
-        label="Name"
-        placeholder="e.g. Work OpenAI"
+        label={t("field_name")}
+        placeholder={t("field_name_placeholder")}
         value={values.name}
         onChange={(v) => setValues((s) => ({ ...s, name: v }))}
         error={errors.name}
@@ -286,10 +293,10 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
 
       <Field
         id="provider-base-url"
-        label="Base URL"
+        label={t("field_base_url")}
         placeholder={
-          PROVIDER_TYPES.find((t) => t.kind === values.kind)?.defaultBaseUrl ||
-          "https://..."
+          PROVIDER_TYPES.find((tp) => tp.kind === values.kind)
+            ?.defaultBaseUrl || "https://..."
         }
         value={values.base_url}
         onChange={(v) => setValues((s) => ({ ...s, base_url: v }))}
@@ -298,9 +305,9 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
 
       <Field
         id="provider-api-key"
-        label="API Key"
+        label={t("field_api_key")}
         type="password"
-        placeholder="sk-..."
+        placeholder={t("field_api_key_placeholder")}
         value={values.api_key}
         onChange={(v) => setValues((s) => ({ ...s, api_key: v }))}
         error={errors.api_key}
@@ -308,13 +315,16 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
 
       <Field
         id="provider-priority"
-        label="Priority"
+        label={t("field_priority")}
         inputMode="numeric"
-        placeholder="100"
+        placeholder={t("field_priority_placeholder")}
         value={values.priority}
         onChange={(v) => setValues((s) => ({ ...s, priority: v }))}
         error={errors.priority}
-        hint={`Lower number = higher priority (${PRIORITY_MIN}--${PRIORITY_MAX})`}
+        hint={t("field_priority_hint", {
+          min: PRIORITY_MIN,
+          max: PRIORITY_MAX,
+        })}
       />
 
       <label className="flex items-center gap-2 text-sm">
@@ -326,7 +336,7 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
           }
           className="size-4 rounded border-border accent-primary"
         />
-        <span>Enable this provider (participates in switching)</span>
+        <span>{t("enable_provider_label")}</span>
       </label>
 
       {/* Advanced section (collapsible) */}
@@ -341,41 +351,41 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
           ) : (
             <ChevronRight className="size-4" />
           )}
-          Advanced (Quota / Rate Limit / Cost)
+          {t("advanced_section")}
         </button>
         {advancedOpen && (
           <div className="space-y-4 border-t border-border px-4 py-4">
             <Field
               id="provider-monthly-quota"
-              label="Monthly Quota ($)"
+              label={t("field_monthly_quota")}
               inputMode="decimal"
-              placeholder="e.g. 100"
+              placeholder={t("field_monthly_quota_placeholder")}
               value={values.monthly_quota}
               onChange={(v) => setValues((s) => ({ ...s, monthly_quota: v }))}
               error={errors.monthly_quota}
-              hint="Monthly spending limit in USD (optional)"
+              hint={t("field_monthly_quota_hint")}
             />
             <Field
               id="provider-rate-limit-rpm"
-              label="Rate Limit (RPM)"
+              label={t("field_rate_limit")}
               inputMode="numeric"
-              placeholder="e.g. 60"
+              placeholder={t("field_rate_limit_placeholder")}
               value={values.rate_limit_rpm}
               onChange={(v) => setValues((s) => ({ ...s, rate_limit_rpm: v }))}
               error={errors.rate_limit_rpm}
-              hint="Requests per minute limit (optional)"
+              hint={t("field_rate_limit_hint")}
             />
             <Field
               id="provider-cost-per-1k"
-              label="Cost per 1K tokens ($)"
+              label={t("field_cost_per_1k")}
               inputMode="decimal"
-              placeholder="e.g. 0.03"
+              placeholder={t("field_cost_per_1k_placeholder")}
               value={values.cost_per_1k_tokens}
               onChange={(v) =>
                 setValues((s) => ({ ...s, cost_per_1k_tokens: v }))
               }
               error={errors.cost_per_1k_tokens}
-              hint="Cost per 1,000 tokens in USD (optional)"
+              hint={t("field_cost_per_1k_hint")}
             />
           </div>
         )}
@@ -397,7 +407,7 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
             {serverError
               ? serverError
               : successId
-                ? `Added (id: ${successId.slice(0, 8)}...)`
+                ? t("added_id", { id: successId.slice(0, 8) })
                 : ""}
           </p>
           <div className="flex items-center gap-2">
@@ -408,11 +418,11 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
                 size="sm"
                 onClick={handleReset}
               >
-                Add Another
+                {t("add_another")}
               </Button>
             )}
             <Button type="submit" disabled={submitting || Boolean(successId)}>
-              {submitting ? "Adding..." : "Add"}
+              {submitting ? t("adding") : t("add")}
             </Button>
           </div>
         </div>
@@ -432,16 +442,16 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
               ) : (
                 <Plug className="mr-2 size-3.5" />
               )}
-              Test Connection
+              {t("test_connection")}
             </Button>
             {testResult && (
               <span className="text-xs text-green-600">
-                Connected ({testResult.latency}ms)
+                {t("test_connected", { latency: testResult.latency })}
               </span>
             )}
             {testError && (
               <span className="text-xs text-destructive">
-                Failed: {testError}
+                {t("test_failed", { error: testError })}
               </span>
             )}
           </div>

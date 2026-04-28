@@ -1,11 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import {
-  ArrowUpDown,
-  Gauge,
-  Coins,
-  RotateCcw,
-  Brain,
-} from "lucide-react";
+import { ArrowUpDown, Gauge, Coins, RotateCcw, Brain } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import { cn } from "@/lib/utils";
 import {
@@ -17,45 +12,46 @@ import {
 
 interface StrategyOption {
   id: SwitchStrategy;
-  label: string;
-  description: string;
+  labelKey: string;
+  descKey: string;
   icon: React.ElementType;
 }
 
 const STRATEGIES: StrategyOption[] = [
   {
     id: "priority",
-    label: "优先级",
-    description: "按优先级顺序选择供应商（数值越小越优先）",
+    labelKey: "strategy_priority",
+    descKey: "strategy_priority_desc",
     icon: ArrowUpDown,
   },
   {
     id: "fastest",
-    label: "最快响应",
-    description: "自动选择响应时间最短的供应商",
+    labelKey: "strategy_fastest",
+    descKey: "strategy_fastest_desc",
     icon: Gauge,
   },
   {
     id: "cost",
-    label: "成本优先",
-    description: "选择每 token 成本最低的供应商",
+    labelKey: "strategy_cost",
+    descKey: "strategy_cost_desc",
     icon: Coins,
   },
   {
     id: "load_balance",
-    label: "负载均衡",
-    description: "轮询所有可用供应商，平均分配请求",
+    labelKey: "strategy_load_balance",
+    descKey: "strategy_load_balance_desc",
     icon: RotateCcw,
   },
   {
     id: "smart",
-    label: "智能策略",
-    description: "综合健康度、响应速度、成本和优先级四维加权",
+    labelKey: "strategy_smart",
+    descKey: "strategy_smart_desc",
     icon: Brain,
   },
 ];
 
 export function StrategyCards() {
+  const { t } = useTranslation("strategy");
   const [config, setConfig] = useState<StrategyResponse | null>(null);
   const [updating, setUpdating] = useState(false);
 
@@ -83,11 +79,9 @@ export function StrategyCards() {
     <div className="space-y-4">
       <header className="space-y-1">
         <h3 className="text-base font-semibold leading-apple-headline tracking-apple-tight">
-          切换策略
+          {t("title")}
         </h3>
-        <p className="text-xs text-muted-foreground">
-          选择供应商自动切换的决策方式
-        </p>
+        <p className="text-xs text-muted-foreground">{t("strategy_desc")}</p>
       </header>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -114,15 +108,15 @@ export function StrategyCards() {
                     selected ? "text-primary" : "text-muted-foreground",
                   )}
                 />
-                <span className="text-sm font-medium">{s.label}</span>
+                <span className="text-sm font-medium">{t(s.labelKey)}</span>
                 {selected && (
                   <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
-                    当前
+                    {t("current_badge")}
                   </span>
                 )}
               </div>
               <p className="text-xs leading-relaxed text-muted-foreground">
-                {s.description}
+                {t(s.descKey)}
               </p>
             </button>
           );

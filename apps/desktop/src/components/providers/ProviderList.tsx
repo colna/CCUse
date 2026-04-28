@@ -17,6 +17,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { GripVertical, Pencil, Trash2, Check, X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -61,21 +62,23 @@ function DeleteDialog({
   onConfirm,
   onCancel,
 }: DeleteDialogProps) {
+  const { t } = useTranslation("providers");
+  const { t: tc } = useTranslation("common");
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div className="mx-4 w-full max-w-sm rounded-2xl border border-border bg-card p-6 shadow-lg">
-        <h3 className="text-base font-semibold">Delete Provider</h3>
+        <h3 className="text-base font-semibold">{t("delete_title")}</h3>
         <p className="mt-2 text-sm text-muted-foreground">
-          Are you sure you want to delete{" "}
-          <span className="font-medium text-foreground">{providerName}</span>?
-          This action cannot be undone.
+          {t("delete_confirm")}{" "}
+          <span className="font-medium text-foreground">{providerName}</span>?{" "}
+          {t("delete_undone")}
         </p>
         <div className="mt-5 flex justify-end gap-2">
           <Button variant="outline" size="sm" onClick={onCancel}>
-            Cancel
+            {tc("cancel")}
           </Button>
           <Button variant="destructive" size="sm" onClick={onConfirm}>
-            Delete
+            {tc("delete")}
           </Button>
         </div>
       </div>
@@ -107,6 +110,8 @@ function SortableProviderItem({
   onToggleEnabled,
   onSaveEdit,
 }: SortableProviderItemProps) {
+  const { t } = useTranslation("providers");
+  const { t: tc } = useTranslation("common");
   const [editing, setEditing] = useState(false);
   const [editValues, setEditValues] = useState<EditState>({
     name: provider.name,
@@ -166,7 +171,7 @@ function SortableProviderItem({
             htmlFor={`edit-name-${provider.id}`}
             className="w-16 shrink-0 text-xs text-muted-foreground"
           >
-            Name
+            {t("edit_name_label")}
           </label>
           <input
             id={`edit-name-${provider.id}`}
@@ -183,7 +188,7 @@ function SortableProviderItem({
             htmlFor={`edit-url-${provider.id}`}
             className="w-16 shrink-0 text-xs text-muted-foreground"
           >
-            Base URL
+            {t("edit_url_label")}
           </label>
           <input
             id={`edit-url-${provider.id}`}
@@ -200,7 +205,7 @@ function SortableProviderItem({
             htmlFor={`edit-priority-${provider.id}`}
             className="w-16 shrink-0 text-xs text-muted-foreground"
           >
-            Priority
+            {t("edit_priority_label")}
           </label>
           <input
             id={`edit-priority-${provider.id}`}
@@ -221,7 +226,7 @@ function SortableProviderItem({
               }
               className="size-3.5 rounded border-border accent-primary"
             />
-            Enabled
+            {tc("enabled")}
           </label>
           <div className="ml-auto flex items-center gap-1">
             <Button
@@ -230,7 +235,7 @@ function SortableProviderItem({
               className="size-7 text-primary hover:text-primary"
               onClick={handleSaveEdit}
               disabled={saving}
-              aria-label="Save changes"
+              aria-label={t("save_changes_aria")}
             >
               <Check className="size-3.5" />
             </Button>
@@ -240,7 +245,7 @@ function SortableProviderItem({
               className="size-7 text-muted-foreground hover:text-foreground"
               onClick={handleCancelEdit}
               disabled={saving}
-              aria-label="Cancel editing"
+              aria-label={t("cancel_editing_aria")}
             >
               <X className="size-3.5" />
             </Button>
@@ -263,7 +268,7 @@ function SortableProviderItem({
         {...attributes}
         {...listeners}
         className="cursor-grab touch-none text-muted-foreground hover:text-foreground"
-        aria-label="Drag to reorder"
+        aria-label={t("drag_to_reorder_aria")}
       >
         <GripVertical className="size-4" />
       </button>
@@ -279,7 +284,8 @@ function SortableProviderItem({
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium">{provider.name}</p>
         <p className="truncate text-xs text-muted-foreground">
-          {provider.kind} · priority {provider.priority}
+          {provider.kind} ·{" "}
+          {t("priority_display", { value: provider.priority })}
         </p>
       </div>
 
@@ -290,7 +296,7 @@ function SortableProviderItem({
             ? "text-yellow-600"
             : "text-muted-foreground",
         )}
-        title="Success rate"
+        title={t("success_rate_title")}
       >
         {formatSuccessRate(health?.success_rate)}
       </span>
@@ -307,7 +313,11 @@ function SortableProviderItem({
           checked={provider.enabled}
           onChange={(e) => onToggleEnabled(provider.id, e.target.checked)}
           className="size-3.5 rounded border-border accent-primary"
-          aria-label={`${provider.enabled ? "Disable" : "Enable"} ${provider.name}`}
+          aria-label={
+            provider.enabled
+              ? t("disable_provider_aria", { name: provider.name })
+              : t("enable_provider_aria", { name: provider.name })
+          }
         />
       </label>
 
@@ -316,7 +326,7 @@ function SortableProviderItem({
         size="icon"
         className="size-7 text-muted-foreground hover:text-foreground"
         onClick={handleStartEdit}
-        aria-label={`Edit ${provider.name}`}
+        aria-label={t("edit_provider_aria", { name: provider.name })}
       >
         <Pencil className="size-3.5" />
       </Button>
@@ -326,7 +336,7 @@ function SortableProviderItem({
         size="icon"
         className="size-7 text-muted-foreground hover:text-destructive"
         onClick={() => onDelete(provider.id, provider.name)}
-        aria-label={`Delete ${provider.name}`}
+        aria-label={t("delete_provider_aria", { name: provider.name })}
       >
         <Trash2 className="size-3.5" />
       </Button>
@@ -341,6 +351,7 @@ interface ProviderListProps {
 }
 
 export function ProviderList({ refreshKey }: ProviderListProps) {
+  const { t } = useTranslation("providers");
   const [providers, setProviders] = useState<Provider[]>([]);
   const [healthMap, setHealthMap] = useState<Record<string, HealthSnapshot>>(
     {},
@@ -501,7 +512,7 @@ export function ProviderList({ refreshKey }: ProviderListProps) {
   if (providers.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-border bg-card/50 px-6 py-8 text-center text-sm text-muted-foreground">
-        No providers yet. Add one below.
+        {t("no_providers")}
       </div>
     );
   }

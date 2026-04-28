@@ -1,29 +1,36 @@
 import { Outlet, useLocation } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
 
 interface PageMeta {
-  title: string;
-  description?: string;
+  titleKey: string;
+  descKey?: string;
 }
 
 const PAGE_META: Record<string, PageMeta> = {
-  "/dashboard": { title: "总览", description: "本地代理状态与最近活动" },
+  "/dashboard": {
+    titleKey: "page_dashboard_title",
+    descKey: "page_dashboard_desc",
+  },
   "/providers": {
-    title: "供应商",
-    description: "管理上游 API 与优先级",
+    titleKey: "page_providers_title",
+    descKey: "page_providers_desc",
   },
   "/strategy": {
-    title: "策略",
-    description: "选择切换策略与调整高级参数",
+    titleKey: "page_strategy_title",
+    descKey: "page_strategy_desc",
   },
-  "/settings": { title: "设置", description: "应用偏好与高级选项" },
+  "/settings": {
+    titleKey: "page_settings_title",
+    descKey: "page_settings_desc",
+  },
 };
 
 const FALLBACK_META: PageMeta = {
-  title: "CCUse",
-  description: "本地 API 代理 + 多供应商无感切换",
+  titleKey: "page_fallback_title",
+  descKey: "page_fallback_desc",
 };
 
 function metaForPath(pathname: string): PageMeta {
@@ -33,12 +40,16 @@ function metaForPath(pathname: string): PageMeta {
 export function AppShell() {
   const location = useLocation();
   const meta = metaForPath(location.pathname);
+  const { t } = useTranslation("common");
 
   return (
     <div className="flex h-screen min-h-screen w-full bg-background text-foreground">
       <Sidebar />
       <div className="flex flex-1 flex-col">
-        <Topbar title={meta.title} description={meta.description} />
+        <Topbar
+          title={t(meta.titleKey)}
+          description={meta.descKey ? t(meta.descKey) : undefined}
+        />
         <main className="flex-1 overflow-y-auto px-8 py-6">
           <Outlet />
         </main>

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Pencil, Plus, Trash2, Check, X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import {
   getModelMappings,
   setModelMapping,
@@ -12,6 +13,8 @@ type Vendor = (typeof VENDORS)[number];
 
 /** Editable model mapping table (T1.0.3.12). */
 export function ModelMappingTable() {
+  const { t } = useTranslation("monitor");
+  const { t: tc } = useTranslation("common");
   const [entries, setEntries] = useState<MappingEntry[]>([]);
   const [editing, setEditing] = useState<{
     model: string;
@@ -19,14 +22,19 @@ export function ModelMappingTable() {
     value: string;
   } | null>(null);
   const [adding, setAdding] = useState(false);
-  const [newRow, setNewRow] = useState({ client_model: "", openai: "", anthropic: "", gemini: "" });
+  const [newRow, setNewRow] = useState({
+    client_model: "",
+    openai: "",
+    anthropic: "",
+    gemini: "",
+  });
 
   const load = useCallback(async () => {
     try {
       const data = await getModelMappings();
       setEntries(data);
     } catch {
-      // Tauri not available in dev/test — use empty list.
+      // Tauri not available in dev/test -- use empty list.
     }
   }, []);
 
@@ -37,7 +45,11 @@ export function ModelMappingTable() {
   const handleEdit = async () => {
     if (!editing) return;
     if (editing.value.trim()) {
-      await setModelMapping(editing.model, editing.vendor, editing.value.trim());
+      await setModelMapping(
+        editing.model,
+        editing.vendor,
+        editing.value.trim(),
+      );
     } else {
       await removeModelMapping(editing.model, editing.vendor);
     }
@@ -63,14 +75,16 @@ export function ModelMappingTable() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium text-foreground">模型映射表</h3>
+        <h3 className="text-sm font-medium text-foreground">
+          {t("model_mapping_title")}
+        </h3>
         <button
           onClick={() => setAdding(true)}
           className="flex items-center gap-1.5 rounded-md bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20"
-          aria-label="添加映射"
+          aria-label={t("model_mapping_add_aria")}
         >
           <Plus className="size-3.5" />
-          添加
+          {t("model_mapping_add")}
         </button>
       </div>
 
@@ -79,7 +93,7 @@ export function ModelMappingTable() {
           <thead>
             <tr className="border-b border-border bg-muted/40">
               <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">
-                客户端模型
+                {t("model_mapping_client_model")}
               </th>
               <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">
                 OpenAI
@@ -128,14 +142,14 @@ export function ModelMappingTable() {
                           <button
                             onClick={handleEdit}
                             className="text-primary hover:text-primary/80"
-                            aria-label="确认"
+                            aria-label={t("model_mapping_confirm_aria")}
                           >
                             <Check className="size-3.5" />
                           </button>
                           <button
                             onClick={() => setEditing(null)}
                             className="text-muted-foreground hover:text-foreground"
-                            aria-label="取消"
+                            aria-label={t("model_mapping_cancel_aria")}
                           >
                             <X className="size-3.5" />
                           </button>
@@ -148,7 +162,7 @@ export function ModelMappingTable() {
                     <td key={vendor} className="group px-4 py-2">
                       <div className="flex items-center gap-2">
                         <span className="font-mono text-xs text-foreground/70">
-                          {val ?? "—"}
+                          {val ?? "--"}
                         </span>
                         <button
                           onClick={() =>
@@ -159,7 +173,10 @@ export function ModelMappingTable() {
                             })
                           }
                           className="invisible text-muted-foreground hover:text-primary group-hover:visible"
-                          aria-label={`编辑 ${entry.client_model} 的 ${vendor} 映射`}
+                          aria-label={t("model_mapping_edit_aria", {
+                            model: entry.client_model,
+                            vendor,
+                          })}
                         >
                           <Pencil className="size-3" />
                         </button>
@@ -173,7 +190,10 @@ export function ModelMappingTable() {
                               load();
                             }}
                             className="invisible text-muted-foreground hover:text-destructive group-hover:visible"
-                            aria-label={`删除 ${entry.client_model} 的 ${vendor} 映射`}
+                            aria-label={t("model_mapping_delete_aria", {
+                              model: entry.client_model,
+                              vendor,
+                            })}
                           >
                             <Trash2 className="size-3" />
                           </button>
@@ -228,13 +248,13 @@ export function ModelMappingTable() {
                       onClick={handleAddRow}
                       className="rounded-md bg-primary px-3 py-1 text-xs font-medium text-primary-foreground"
                     >
-                      保存
+                      {t("model_mapping_save")}
                     </button>
                     <button
                       onClick={() => setAdding(false)}
                       className="rounded-md bg-muted px-3 py-1 text-xs font-medium text-muted-foreground"
                     >
-                      取消
+                      {tc("cancel")}
                     </button>
                   </div>
                 </td>
@@ -244,9 +264,7 @@ export function ModelMappingTable() {
         </table>
       </div>
 
-      <p className="text-xs text-muted-foreground">
-        当客户端请求的模型名与目标供应商不匹配时，自动替换为表中对应的模型。
-      </p>
+      <p className="text-xs text-muted-foreground">{t("model_mapping_hint")}</p>
     </div>
   );
 }

@@ -7,6 +7,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
+import { useTranslation } from "react-i18next";
 
 import { getProviderCostSummary, type ProviderCostSummary } from "@/lib/tauri";
 
@@ -30,9 +31,11 @@ const COLORS = [
 function CustomTooltip({
   active,
   payload,
+  t,
 }: {
   active?: boolean;
   payload?: { name: string; value: number; payload: { requests: number } }[];
+  t: (key: string, opts?: Record<string, string | number>) => string;
 }) {
   if (!active || !payload?.length) return null;
   const entry = payload[0];
@@ -40,10 +43,10 @@ function CustomTooltip({
     <div className="rounded-lg border border-border bg-card px-3 py-2 text-xs shadow-md">
       <p className="font-medium">{entry.name}</p>
       <p className="mt-1 text-muted-foreground">
-        Cost: ${(entry.value as number).toFixed(4)}
+        {t("cost_label", { value: (entry.value as number).toFixed(4) })}
       </p>
       <p className="text-muted-foreground">
-        Requests: {entry.payload.requests}
+        {t("requests_label", { value: entry.payload.requests })}
       </p>
     </div>
   );
@@ -52,6 +55,8 @@ function CustomTooltip({
 const REFRESH_INTERVAL = 30_000;
 
 export function CostPieChart() {
+  const { t } = useTranslation("monitor");
+  const { t: tc } = useTranslation("common");
   const [chartData, setChartData] = useState<ChartSlice[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -93,17 +98,17 @@ export function CostPieChart() {
   if (!loading && chartData.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-border bg-card/50 px-6 py-8 text-center text-sm text-muted-foreground">
-        No data yet
+        {tc("no_data_yet")}
       </div>
     );
   }
 
   return (
     <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
-      <h4 className="mb-4 text-sm font-medium">Cost by Provider</h4>
+      <h4 className="mb-4 text-sm font-medium">{t("cost_chart_title")}</h4>
       {loading ? (
         <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
-          Loading...
+          {tc("loading")}
         </div>
       ) : (
         <ResponsiveContainer width="100%" height={240}>
@@ -125,7 +130,7 @@ export function CostPieChart() {
                 />
               ))}
             </Pie>
-            <Tooltip content={<CustomTooltip />} />
+            <Tooltip content={<CustomTooltip t={t} />} />
             <Legend
               wrapperStyle={{ fontSize: 12 }}
               formatter={(value: string) => (

@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+
 import { LocalApiCard } from "@/components/local-api/LocalApiCard";
 import { StatusCards } from "@/components/dashboard/StatusCards";
 import { SuccessRateChart } from "@/components/dashboard/SuccessRateChart";
@@ -6,10 +8,12 @@ import { CostPieChart } from "@/components/dashboard/CostPieChart";
 import { SwitchTimeline } from "@/components/dashboard/SwitchTimeline";
 
 export function DashboardPage() {
+  const { t } = useTranslation("common");
+
   return (
     <section className="space-y-6">
       <h2 className="text-2xl font-semibold leading-apple-headline tracking-apple-tight">
-        Dashboard
+        {t("page_dashboard_title")}
       </h2>
 
       <StatusCards />

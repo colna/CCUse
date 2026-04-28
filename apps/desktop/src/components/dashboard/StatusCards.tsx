@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Activity, Clock, Server, TrendingUp } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import { cn } from "@/lib/utils";
 import {
@@ -19,6 +20,7 @@ interface CardData {
 const REFRESH_INTERVAL = 10_000;
 
 export function StatusCards() {
+  const { t } = useTranslation("monitor");
   const [data, setData] = useState<CardData>({
     currentProvider: null,
     todayRequests: 0,
@@ -101,19 +103,19 @@ export function StatusCards() {
     <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
       <StatCard
         icon={<Server className="size-4" />}
-        label="Current Provider"
-        value={loading ? "--" : (data.currentProvider ?? "None")}
+        label={t("current_provider")}
+        value={loading ? "--" : (data.currentProvider ?? t("none"))}
         loading={loading}
       />
       <StatCard
         icon={<Activity className="size-4" />}
-        label="Today's Requests"
+        label={t("today_requests")}
         value={loading ? "--" : String(data.todayRequests)}
         loading={loading}
       />
       <StatCard
         icon={<TrendingUp className="size-4" />}
-        label="Success Rate"
+        label={t("success_rate")}
         value={
           loading
             ? "--"
@@ -130,7 +132,7 @@ export function StatusCards() {
       />
       <StatCard
         icon={<Clock className="size-4" />}
-        label="Avg Response Time"
+        label={t("avg_response_time")}
         value={
           loading
             ? "--"

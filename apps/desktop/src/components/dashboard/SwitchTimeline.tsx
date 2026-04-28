@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { ArrowRight, ChevronDown, ChevronRight } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import { cn } from "@/lib/utils";
 import { getSwitchTimeline, type SwitchEvent } from "@/lib/tauri";
@@ -38,6 +39,7 @@ interface TimelineRowProps {
 
 function TimelineRow({ event }: TimelineRowProps) {
   const [expanded, setExpanded] = useState(false);
+  const { t } = useTranslation("monitor");
 
   return (
     <div className="border-b border-border last:border-b-0">
@@ -79,17 +81,19 @@ function TimelineRow({ event }: TimelineRowProps) {
       {expanded && (
         <div className="space-y-1 bg-muted/20 px-4 py-3 pl-11 text-xs">
           <p>
-            <span className="text-muted-foreground">Reason: </span>
+            <span className="text-muted-foreground">{t("switch_reason")}</span>
             {event.reason}
           </p>
           {event.details && (
             <p>
-              <span className="text-muted-foreground">Details: </span>
+              <span className="text-muted-foreground">
+                {t("switch_details")}
+              </span>
               {event.details}
             </p>
           )}
           <p>
-            <span className="text-muted-foreground">ID: </span>
+            <span className="text-muted-foreground">{t("switch_id")}</span>
             <span className="font-mono">{event.id}</span>
           </p>
         </div>
@@ -101,6 +105,8 @@ function TimelineRow({ event }: TimelineRowProps) {
 const REFRESH_INTERVAL = 15_000;
 
 export function SwitchTimeline() {
+  const { t } = useTranslation("monitor");
+  const { t: tc } = useTranslation("common");
   const [events, setEvents] = useState<SwitchEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -137,15 +143,15 @@ export function SwitchTimeline() {
   return (
     <div className="rounded-xl border border-border bg-card shadow-sm">
       <div className="border-b border-border px-4 py-3">
-        <h4 className="text-sm font-medium">Switch Timeline</h4>
+        <h4 className="text-sm font-medium">{t("switch_timeline_title")}</h4>
       </div>
       {loading ? (
         <div className="flex h-32 items-center justify-center text-sm text-muted-foreground">
-          Loading...
+          {tc("loading")}
         </div>
       ) : events.length === 0 ? (
         <div className="px-6 py-8 text-center text-sm text-muted-foreground">
-          No switch events yet
+          {t("switch_no_events")}
         </div>
       ) : (
         <div className="max-h-80 overflow-y-auto">

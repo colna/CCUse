@@ -1,5 +1,6 @@
 import { Copy, Eye, EyeOff, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -26,17 +27,15 @@ const INITIAL_STATE: CardState = {
   error: null,
 };
 
-/** Mask everything except the `sk-local-` prefix and the last 4 chars.
- * Keeps the visible suffix so the user can tell two keys apart at a
- * glance without ever exposing enough material to copy by eye. */
 function maskKey(key: string): string {
   if (!key) return "";
   const [head] = key.split("-");
   const suffix = key.slice(-4);
-  return `${head ?? "sk"}-local-••••••••${suffix}`;
+  return `${head ?? "sk"}-local---------${suffix}`;
 }
 
 export function LocalApiCard() {
+  const { t } = useTranslation("providers");
   const [state, setState] = useState<CardState>(INITIAL_STATE);
   const [keyVisible, setKeyVisible] = useState(false);
   const [copyHint, setCopyHint] = useState<string | null>(null);
@@ -56,10 +55,6 @@ export function LocalApiCard() {
     void refresh();
   }, [refresh]);
 
-  // Subscribe once: when the backend rotates / restarts (possibly
-  // from the tray or another window), pull the new config without
-  // a manual refresh. Outside of Tauri (vitest, storybook) `listen`
-  // rejects — that's not a hard failure, just no event source.
   useEffect(() => {
     const unlistenPromise = onLocalApiConfigChanged((config) => {
       setState({ status: "running", config, error: null });
@@ -101,7 +96,7 @@ export function LocalApiCard() {
     ? keyVisible
       ? config.api_key
       : maskKey(config.api_key)
-    : "—";
+    : "--";
 
   return (
     <article
@@ -114,10 +109,10 @@ export function LocalApiCard() {
             id="local-api-card-title"
             className="text-base font-semibold leading-apple-headline tracking-apple-tight"
           >
-            本地 API 服务
+            {t("local_api_title")}
           </h3>
           <p className="mt-1 text-xs text-muted-foreground">
-            将下面的 Base URL 和 Key 配置到客户端即可使用
+            {t("local_api_desc")}
           </p>
         </div>
         <StatusBadge status={state.status} />
@@ -125,10 +120,11 @@ export function LocalApiCard() {
 
       <dl className="mt-6 space-y-5 text-sm">
         <Field
-          label="Base URL"
-          value={config?.base_url ?? "—"}
+          label={t("local_api_base_url")}
+          value={config?.base_url ?? "--"}
           copyable={Boolean(config?.base_url)}
           onCopy={() => handleCopy("base", config?.base_url ?? "")}
+          copyAriaLabel={t("local_api_copy_aria", { label: "Base URL" })}
         />
         <KeyField
           value={displayedKey}
@@ -154,9 +150,9 @@ export function LocalApiCard() {
           {state.error
             ? state.error
             : copyHint === "base"
-              ? "Base URL 已复制"
+              ? t("local_api_base_copied")
               : copyHint === "key"
-                ? "API Key 已复制"
+                ? t("local_api_key_copied")
                 : ""}
         </p>
         <div className="flex items-center gap-2">
@@ -167,7 +163,7 @@ export function LocalApiCard() {
             onClick={handleRotate}
             disabled={state.status !== "running"}
           >
-            轮换 Key
+            {t("local_api_rotate_key")}
           </Button>
           <Button
             type="button"
@@ -176,7 +172,7 @@ export function LocalApiCard() {
             disabled={state.status === "loading"}
           >
             <RefreshCw className="mr-2 size-4" aria-hidden />
-            重启服务
+            {t("local_api_restart")}
           </Button>
         </div>
       </footer>
@@ -185,12 +181,13 @@ export function LocalApiCard() {
 }
 
 function StatusBadge({ status }: { status: Status }) {
+  const { t } = useTranslation("providers");
   const text =
     status === "running"
-      ? "运行中"
+      ? t("local_api_status_running")
       : status === "loading"
-        ? "检测中"
-        : "未运行";
+        ? t("local_api_status_loading")
+        : t("local_api_status_stopped");
   const dotClass =
     status === "running"
       ? "bg-emerald-500"
@@ -213,9 +210,10 @@ interface FieldProps {
   value: string;
   copyable: boolean;
   onCopy: () => void;
+  copyAriaLabel: string;
 }
 
-function Field({ label, value, copyable, onCopy }: FieldProps) {
+function Field({ label, value, copyable, onCopy, copyAriaLabel }: FieldProps) {
   return (
     <div>
       <dt className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
@@ -229,7 +227,7 @@ function Field({ label, value, copyable, onCopy }: FieldProps) {
           type="button"
           variant="ghost"
           size="sm"
-          aria-label={`复制 ${label}`}
+          aria-label={copyAriaLabel}
           onClick={onCopy}
           disabled={!copyable}
         >
@@ -255,11 +253,12 @@ function KeyField({
   onToggleVisible,
   onCopy,
 }: KeyFieldProps) {
+  const { t } = useTranslation("providers");
   const Icon = visible ? EyeOff : Eye;
   return (
     <div>
       <dt className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-        API Key
+        {t("local_api_key")}
       </dt>
       <dd className="mt-1 flex items-center gap-2">
         <code className="flex-1 truncate rounded-md border border-border bg-muted/40 px-3 py-2 font-mono text-xs">
@@ -269,7 +268,11 @@ function KeyField({
           type="button"
           variant="ghost"
           size="sm"
-          aria-label={visible ? "隐藏 API Key" : "显示 API Key"}
+          aria-label={
+            visible
+              ? t("local_api_hide_key_aria")
+              : t("local_api_show_key_aria")
+          }
           onClick={onToggleVisible}
           disabled={!copyable}
         >
@@ -279,7 +282,7 @@ function KeyField({
           type="button"
           variant="ghost"
           size="sm"
-          aria-label="复制 API Key"
+          aria-label={t("local_api_copy_key_aria")}
           onClick={onCopy}
           disabled={!copyable}
         >

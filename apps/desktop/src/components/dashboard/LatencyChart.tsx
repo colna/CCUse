@@ -9,6 +9,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
+import { useTranslation } from "react-i18next";
 
 import { getMetricsTimeseries, type MetricsBucket } from "@/lib/tauri";
 
@@ -37,11 +38,13 @@ function formatFullTime(timestamp: string): string {
 function CustomTooltip({
   active,
   payload,
+  t,
 }: {
   active?: boolean;
   payload?: {
     payload: { fullTime: string; avgLatency: number; p95Latency: number };
   }[];
+  t: (key: string, opts?: Record<string, string | number>) => string;
 }) {
   if (!active || !payload?.length) return null;
   const data = payload[0]?.payload;
@@ -50,11 +53,11 @@ function CustomTooltip({
       <p className="text-muted-foreground">{data.fullTime}</p>
       <p className="mt-1">
         <span className="mr-1.5 inline-block h-0.5 w-3 bg-primary align-middle" />
-        Avg: {Math.round(data.avgLatency)}ms
+        {t("latency_avg_value", { value: Math.round(data.avgLatency) })}
       </p>
       <p>
         <span className="mr-1.5 inline-block h-0.5 w-3 bg-orange-500 align-middle" />
-        P95: {Math.round(data.p95Latency)}ms
+        {t("latency_p95_value", { value: Math.round(data.p95Latency) })}
       </p>
     </div>
   );
@@ -63,6 +66,8 @@ function CustomTooltip({
 const REFRESH_INTERVAL = 30_000;
 
 export function LatencyChart() {
+  const { t } = useTranslation("monitor");
+  const { t: tc } = useTranslation("common");
   const [chartData, setChartData] = useState<ChartPoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -105,17 +110,17 @@ export function LatencyChart() {
   if (!loading && chartData.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-border bg-card/50 px-6 py-8 text-center text-sm text-muted-foreground">
-        No data yet
+        {tc("no_data_yet")}
       </div>
     );
   }
 
   return (
     <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
-      <h4 className="mb-4 text-sm font-medium">Response Time (24h)</h4>
+      <h4 className="mb-4 text-sm font-medium">{t("latency_chart_title")}</h4>
       {loading ? (
         <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
-          Loading...
+          {tc("loading")}
         </div>
       ) : (
         <ResponsiveContainer width="100%" height={200}>
@@ -132,12 +137,12 @@ export function LatencyChart() {
               stroke="hsl(var(--muted-foreground))"
               width={55}
             />
-            <Tooltip content={<CustomTooltip />} />
+            <Tooltip content={<CustomTooltip t={t} />} />
             <Legend wrapperStyle={{ fontSize: 12 }} />
             <Line
               type="monotone"
               dataKey="avgLatency"
-              name="Avg"
+              name={t("latency_avg")}
               stroke="hsl(var(--primary))"
               strokeWidth={2}
               dot={false}
@@ -146,7 +151,7 @@ export function LatencyChart() {
             <Line
               type="monotone"
               dataKey="p95Latency"
-              name="P95"
+              name={t("latency_p95")}
               stroke="hsl(24 100% 50%)"
               strokeWidth={2}
               strokeDasharray="4 2"

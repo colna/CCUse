@@ -1,9 +1,13 @@
+import { useTranslation } from "react-i18next";
+
 interface TopbarProps {
   title: string;
   description?: string;
 }
 
 export function Topbar({ title, description }: TopbarProps) {
+  const { t } = useTranslation("common");
+
   return (
     <header className="flex h-14 items-center justify-between border-b border-border px-6">
       <div>
@@ -17,7 +21,7 @@ export function Topbar({ title, description }: TopbarProps) {
         ) : null}
       </div>
       <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-        v0.0.0 · Phase 1.0.1
+        {t("version_phase")}
       </p>
     </header>
   );
