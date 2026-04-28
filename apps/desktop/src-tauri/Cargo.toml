@@ -1,6 +1,6 @@
 [package]
 name = "ccuse-desktop"
-version = "0.4.0"
+version = "1.0.0"
 description = "CCUse desktop application"
 authors = ["CCUse Contributors"]
 edition = "2021"
@@ -57,6 +57,12 @@ lto = true
 codegen-units = 1
 strip = true
 panic = "abort"
+
+[profile.bench]
+inherits = "release"
+panic = "unwind"
+lto = false
+strip = false
 
 [lints.rust]
 unsafe_code = "forbid"
