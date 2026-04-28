@@ -22,3 +22,6 @@ Cargo.lock
 # Skill / agent docs (third-party content, leave as-is)
 .agents/
 .claude/skills/
+
+# Append-only task log; manually maintained, no prettier needed
+docs/任务报告.md

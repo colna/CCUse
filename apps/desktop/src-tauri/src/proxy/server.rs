@@ -7,12 +7,13 @@
 use std::future::Future;
 use std::net::SocketAddr;
 
-use axum::http::StatusCode;
 use axum::response::Json;
 use axum::routing::{get, post};
 use axum::Router;
 use serde_json::{json, Value};
 use tokio::net::TcpListener;
+
+use super::error::ApiError;
 
 /// Errors raised while binding or running the proxy server.
 #[derive(thiserror::Error, Debug)]
@@ -167,31 +168,14 @@ async fn list_models() -> Json<Value> {
 
 /// `POST /v1/chat/completions` — `OpenAI`-format inbound. Stub until
 /// T1.0.2.15 `SwitchEngine` `execute_request` is plumbed in.
-async fn chat_completions() -> (StatusCode, Json<Value>) {
-    not_configured_response()
+async fn chat_completions() -> Result<Json<Value>, ApiError> {
+    Err(ApiError::providers_not_configured())
 }
 
 /// `POST /v1/messages` — Anthropic-format inbound. Stub until
 /// T1.0.3.04 + T1.0.2.15 land.
-async fn anthropic_messages() -> (StatusCode, Json<Value>) {
-    not_configured_response()
-}
-
-/// Standard 503 body returned by stub handlers. Shape mirrors
-/// `OpenAI`'s error envelope so clients that already parse it work
-/// unchanged once real dispatch lands.
-fn not_configured_response() -> (StatusCode, Json<Value>) {
-    (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({
-            "error": {
-                "type": "providers_not_configured",
-                "message": "Provider dispatch is not wired yet. \
-                            Configure providers in CCUse settings \
-                            (this is a Phase 1.0.1 stub).",
-            }
-        })),
-    )
+async fn anthropic_messages() -> Result<Json<Value>, ApiError> {
+    Err(ApiError::providers_not_configured())
 }
 
 #[cfg(test)]
