@@ -26,8 +26,9 @@
 2. **更新任务报告** —— 见 §3
 3. **检查 context 用量** —— 见 §4
 4. **必要时压缩 context** —— 见 §4
+5. **提交代码** —— 见 §7（本步骤为用户长期授权，无需每次再问）
 
-> "完成"的定义：代码合入 + 测试通过 + 任务报告已更新。三者缺一不算完成。
+> "完成"的定义：代码合入 + 测试通过 + 任务报告已更新 + git commit & push。**五者**缺一不算完成。
 
 ---
 
@@ -39,14 +40,14 @@
 
 ### 2.2 测试层级要求
 
-| 任务类型 | 必须的测试层级 | 工具 |
-|----------|----------------|------|
-| Rust 业务逻辑（Provider / SwitchEngine / Converter / HealthChecker） | 单元测试 + 至少 1 条集成测试 | `cargo test` + `wiremock` |
-| Tauri command | 单元测试（mock state） | `cargo test` |
-| React 组件（UI 元素 / 表单 / 卡片） | 组件测试（render + interaction） | Vitest + Testing Library |
-| 关键用户流程（添加供应商、自动切换、下载安装包） | E2E 测试 | Playwright（桌面端用 `tauri-driver`） |
-| 格式转换器（OpenAI / Anthropic / Gemini） | 单元测试覆盖率 ≥ 90% | `cargo test` + `cargo-llvm-cov` |
-| 官网页面 | 至少 1 条 Playwright 冒烟 + Lighthouse CI ≥ 90 | Playwright + Lighthouse CI |
+| 任务类型                                                             | 必须的测试层级                                 | 工具                                  |
+| -------------------------------------------------------------------- | ---------------------------------------------- | ------------------------------------- |
+| Rust 业务逻辑（Provider / SwitchEngine / Converter / HealthChecker） | 单元测试 + 至少 1 条集成测试                   | `cargo test` + `wiremock`             |
+| Tauri command                                                        | 单元测试（mock state）                         | `cargo test`                          |
+| React 组件（UI 元素 / 表单 / 卡片）                                  | 组件测试（render + interaction）               | Vitest + Testing Library              |
+| 关键用户流程（添加供应商、自动切换、下载安装包）                     | E2E 测试                                       | Playwright（桌面端用 `tauri-driver`） |
+| 格式转换器（OpenAI / Anthropic / Gemini）                            | 单元测试覆盖率 ≥ 90%                           | `cargo test` + `cargo-llvm-cov`       |
+| 官网页面                                                             | 至少 1 条 Playwright 冒烟 + Lighthouse CI ≥ 90 | Playwright + Lighthouse CI            |
 
 ### 2.3 测试写在哪里
 
@@ -60,6 +61,7 @@ apps/website/e2e/**.spec.ts              # 官网 E2E
 ```
 
 ### 2.4 测试基线
+
 - `cargo test` / `pnpm test` 必须全绿才能继续下一个 task
 - 核心模块（converter、switch_engine、health_checker、auth）覆盖率 **≥ 85%**
 - E2E 不允许 flaky；连续 3 次重跑还失败必须修复
@@ -70,9 +72,11 @@ apps/website/e2e/**.spec.ts              # 官网 E2E
 ## 3. 任务报告文件（强制）
 
 ### 3.1 路径
+
 `/Users/colna/WORK/CCUse/任务报告.md`
 
 ### 3.2 何时更新
+
 **每个 task 完成时立即追加一条记录**，不得批量补登。
 
 ### 3.3 记录格式（Append-only）
@@ -101,6 +105,7 @@ apps/website/e2e/**.spec.ts              # 官网 E2E
 ```
 
 ### 3.4 报告文件结构
+
 - 第一行 `# CCUse 任务执行报告`
 - 之后按时间顺序追加；**禁止**修改历史记录（只允许追加 `## 修订` 子段说明改动）
 - 每周五在文件末尾追加 `## 周回顾 [YYYY-WW]`，统计：完成 task 数、累计工时、阻塞项
@@ -110,17 +115,19 @@ apps/website/e2e/**.spec.ts              # 官网 E2E
 ## 4. Context 管理（强制）
 
 ### 4.1 检查时机
+
 **每完成 1 个 task** 后立即检查（即使 task 很小也要检查）。检查方式：调用 `/context` 或读取系统返回的 token 用量。
 
 ### 4.2 阈值规则
 
-| context 占比 | 动作 |
-|--------------|------|
-| ≤ 40% | 继续下一个 task |
-| > 40% | **立即执行 `/compact`**，压缩完成后再开始下一个 task |
-| ≥ 80% | 强制 `/compact`；如压缩后仍 ≥ 60%，停下并告知用户 |
+| context 占比 | 动作                                                 |
+| ------------ | ---------------------------------------------------- |
+| ≤ 40%        | 继续下一个 task                                      |
+| > 40%        | **立即执行 `/compact`**，压缩完成后再开始下一个 task |
+| ≥ 80%        | 强制 `/compact`；如压缩后仍 ≥ 60%，停下并告知用户    |
 
 ### 4.3 压缩前必须做
+
 - 把当前 task 的报告写入 `任务报告.md`（避免压缩丢上下文）
 - 把进行中的 task ID、文件路径、待办点写入 `.claude/scratchpad.md`（如不存在则创建）
 - 然后再 `/compact`
@@ -139,6 +146,7 @@ apps/website/e2e/**.spec.ts              # 官网 E2E
 > 注意：上述两个 skill 当前未出现在会话默认 skill 清单中，首次调用如提示找不到，应在调用方告知用户确认 skill 路径，不得用记忆 / 猜测内容代替 skill 输出。
 
 涉及的具体场景至少包含：
+
 - shadcn/ui 组件二次封装、Tailwind class 取值
 - Recharts 图表配色与图例
 - 桌面端托盘菜单、桌面通知文案与样式
@@ -151,15 +159,16 @@ apps/website/e2e/**.spec.ts              # 官网 E2E
 
 提交任何代码前，必须根据语言/框架先调用对应 best-practices skill 获取最新规范，然后按规范写代码 / review 代码：
 
-| 语言 / 框架 | 必须调用的 skill | 触发场景 |
-|-------------|------------------|----------|
-| Rust（含 Tauri / axum / tokio） | **`/rust-best-practices`** | 任何 `.rs` 文件新增或修改 |
-| React（桌面端 + 官网） | **`/vercel-react-best-practices`** | 任何 `.tsx` `.ts`（含 hooks） |
-| Next.js（官网） | **`/next-best-practices`** | `apps/website/**` 内任何文件 |
+| 语言 / 框架                     | 必须调用的 skill                   | 触发场景                      |
+| ------------------------------- | ---------------------------------- | ----------------------------- |
+| Rust（含 Tauri / axum / tokio） | **`/rust-best-practices`**         | 任何 `.rs` 文件新增或修改     |
+| React（桌面端 + 官网）          | **`/vercel-react-best-practices`** | 任何 `.tsx` `.ts`（含 hooks） |
+| Next.js（官网）                 | **`/next-best-practices`**         | `apps/website/**` 内任何文件  |
 
 > 注：`/next-best-practices` 当前未出现在会话默认 skill 清单中，首次调用如提示找不到，应告知用户确认 skill 路径或暂以 `/vercel-react-best-practices` 中的 Next 部分代替，不得用记忆 / 猜测内容代替 skill 输出。
 
 调用顺序：
+
 1. 计划要写的代码 → 先 `Skill` 调用对应 skill
 2. 把 skill 返回的规范要点纳入实现思路
 3. 写代码 / 改代码
@@ -172,16 +181,16 @@ apps/website/e2e/**.spec.ts              # 官网 E2E
 
 继承全局 `~/.claude/CLAUDE.md` 的所有规则，并在此基础上叠加：
 
-| 维度 | 规则 |
-|------|------|
-| 语言 | 中文回复；技术术语 / 标识符保持原文 |
-| 注释 | 默认不写；只在 *为什么* 不显然时加一行 |
-| 提交 | Conventional Commits；**禁止** Claude 自动 commit / push（除非用户明确要求） |
-| 样式 | 仅 Tailwind utility；禁用 CSS Modules / styled-components / Sass / 全局 CSS（globals.css 入口除外） |
-| 产物 | 严格 3 个：`*_aarch64.dmg` / `*_x64.dmg` / `*_x64-setup.exe`；其余 bundle target 禁用 |
-| 版本号 | `0.x.y` = pre-release；`1.0.0+` = 正式 release；详见 `开发计划.md` §一 |
-| 销毁性操作 | 删除 / 强推 / 重置等需用户明确授权 |
-| 跳过 hook | 严禁 `--no-verify`、`--no-gpg-sign` 等绕过手段 |
+| 维度       | 规则                                                                                                                                                                                        |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 语言       | 中文回复；技术术语 / 标识符保持原文                                                                                                                                                         |
+| 注释       | 默认不写；只在 _为什么_ 不显然时加一行                                                                                                                                                      |
+| 提交       | Conventional Commits；**每完成一个 task 立即 `git commit + git push`**（用户长期授权，2026-04-28 起生效）。一个 task 一个或多个原子 commit，commit message 含对应 task ID（如 `T1.0.1.07`） |
+| 样式       | 仅 Tailwind utility；禁用 CSS Modules / styled-components / Sass / 全局 CSS（globals.css 入口除外）                                                                                         |
+| 产物       | 严格 3 个：`*_aarch64.dmg` / `*_x64.dmg` / `*_x64-setup.exe`；其余 bundle target 禁用                                                                                                       |
+| 版本号     | `0.x.y` = pre-release；`1.0.0+` = 正式 release；详见 `开发计划.md` §一                                                                                                                      |
+| 销毁性操作 | 删除 / 强推 / 重置等需用户明确授权                                                                                                                                                          |
+| 跳过 hook  | 严禁 `--no-verify`、`--no-gpg-sign` 等绕过手段                                                                                                                                              |
 
 ---
 
