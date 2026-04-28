@@ -18,8 +18,10 @@
         "height": 720,
         "minWidth": 800,
         "minHeight": 600,
+        "center": true,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "theme": "Dark"
       }
     ],
     "security": {
@@ -30,13 +32,25 @@
     "active": true,
     "targets": ["dmg", "nsis"],
     "category": "DeveloperTool",
+    "publisher": "CCUse Contributors",
+    "homepage": "https://github.com/colna/CCUse",
+    "copyright": "© 2026 CCUse Contributors",
     "shortDescription": "本地 API 代理 + 多供应商无感切换",
     "longDescription": "CCUse 在本地启动统一的 API 代理服务，将多个 AI 供应商抽象为单一接口；后台健康检查 + 自动故障转移，对客户端完全无感。",
+    "createUpdaterArtifacts": false,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.png"
-    ]
+    ],
+    "macOS": {
+      "minimumSystemVersion": "11.0"
+    },
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      }
+    }
   }
 }
