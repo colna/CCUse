@@ -538,7 +538,6 @@ impl FormatConverter for AnthropicConverter {
                     "event: message_start\ndata: {}\n\n",
                     serde_json::to_string(&msg_start)?
                 );
-                return Ok(frames);
             }
         }
 
