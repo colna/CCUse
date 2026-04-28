@@ -9,6 +9,7 @@
 //! domain [`Provider`] here is the persistence shape, not the trait.
 
 pub mod api;
+pub mod manager;
 pub mod model;
 pub mod openai;
 pub mod repository;
@@ -18,6 +19,7 @@ pub use api::{
     ApiChoice, ApiRequest, ApiResponse, ApiUsage, ChatMessage, HealthStatus,
     Provider as RuntimeProvider, ProviderError, StreamChunk, StreamingResponse,
 };
+pub use manager::{ManagerError, ProviderManager};
 pub use model::{Provider, ProviderInput, ProviderKind};
 pub use openai::{OpenAIProvider, DEFAULT_REQUEST_TIMEOUT};
 pub use repository::{ProviderRepository, RepositoryError};
