@@ -6,6 +6,7 @@
 
 pub mod auth;
 pub mod commands;
+pub mod converter;
 pub mod crypto;
 pub mod db;
 pub mod health;
