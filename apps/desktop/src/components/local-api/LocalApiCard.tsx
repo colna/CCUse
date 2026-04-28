@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import {
   copyToClipboard,
   getLocalApiConfig,
+  onLocalApiConfigChanged,
   regenerateApiKey,
   restartProxy,
   type LocalApiConfig,
@@ -54,6 +55,19 @@ export function LocalApiCard() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // Subscribe once: when the backend rotates / restarts (possibly
+  // from the tray or another window), pull the new config without
+  // a manual refresh. Outside of Tauri (vitest, storybook) `listen`
+  // rejects — that's not a hard failure, just no event source.
+  useEffect(() => {
+    const unlistenPromise = onLocalApiConfigChanged((config) => {
+      setState({ status: "running", config, error: null });
+    }).catch(() => null);
+    return () => {
+      void unlistenPromise.then((unlisten) => unlisten?.());
+    };
+  }, []);
 
   const handleRestart = useCallback(async () => {
     setState((prev) => ({ ...prev, status: "loading", error: null }));

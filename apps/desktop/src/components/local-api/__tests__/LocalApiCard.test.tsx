@@ -7,15 +7,20 @@ vi.mock("@/lib/tauri", () => ({
   regenerateApiKey: vi.fn(),
   restartProxy: vi.fn(),
   copyToClipboard: vi.fn(),
+  onLocalApiConfigChanged: vi.fn(),
 }));
 
 import {
   copyToClipboard,
   getLocalApiConfig,
+  onLocalApiConfigChanged,
   regenerateApiKey,
   restartProxy,
+  type LocalApiConfig,
 } from "@/lib/tauri";
 import { LocalApiCard } from "../LocalApiCard";
+
+let lastEventCallback: ((config: LocalApiConfig) => void) | null = null;
 
 const SAMPLE = {
   base_url: "http://127.0.0.1:8787",
@@ -28,6 +33,13 @@ beforeEach(() => {
   vi.mocked(restartProxy).mockReset();
   vi.mocked(copyToClipboard).mockReset();
   vi.mocked(copyToClipboard).mockResolvedValue(undefined);
+  lastEventCallback = null;
+  vi.mocked(onLocalApiConfigChanged).mockImplementation(async (cb) => {
+    lastEventCallback = cb;
+    return () => {
+      lastEventCallback = null;
+    };
+  });
 });
 
 afterEach(() => {
@@ -82,6 +94,21 @@ describe("LocalApiCard", () => {
     render(<LocalApiCard />);
     expect(await screen.findByText("未运行")).toBeInTheDocument();
     expect(screen.getByText("proxy is not running")).toBeInTheDocument();
+  });
+
+  it("subscribes to local_api_config_changed and re-renders on event", async () => {
+    render(<LocalApiCard />);
+    await screen.findByText("运行中");
+    await waitFor(() =>
+      expect(onLocalApiConfigChanged).toHaveBeenCalledTimes(1),
+    );
+    // Simulate the backend emitting a rotated key.
+    const rotated: LocalApiConfig = {
+      base_url: SAMPLE.base_url,
+      api_key: "sk-local-rrrrrrrrrrrrrrrrrrrrrrrrrrrrRRRR",
+    };
+    lastEventCallback?.(rotated);
+    expect(await screen.findByText(/••••••••RRRR/)).toBeInTheDocument();
   });
 
   it("calls restart_proxy and refreshes config", async () => {

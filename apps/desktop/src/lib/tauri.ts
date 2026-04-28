@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 /** Wire shape returned by the `get_local_api_config` Tauri command.
  * Mirrors `proxy::runtime::LocalApiConfig` in the Rust backend. */
@@ -33,6 +34,20 @@ export interface Provider {
 
 export async function addProvider(input: ProviderInput): Promise<Provider> {
   return invoke<Provider>("add_provider", { input });
+}
+
+/** Stable event name; mirrors `commands::EVENT_LOCAL_API_CONFIG_CHANGED`
+ * on the Rust side. Pinned in tests on both sides. */
+export const EVENT_LOCAL_API_CONFIG_CHANGED = "local_api_config_changed";
+
+/** Subscribe to proxy config changes (regenerate / restart).
+ * Returns the unlisten function — wire it into a useEffect cleanup. */
+export async function onLocalApiConfigChanged(
+  callback: (config: LocalApiConfig) => void,
+): Promise<UnlistenFn> {
+  return listen<LocalApiConfig>(EVENT_LOCAL_API_CONFIG_CHANGED, (event) => {
+    callback(event.payload);
+  });
 }
 
 export async function getLocalApiConfig(): Promise<LocalApiConfig> {
