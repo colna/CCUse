@@ -10,9 +10,11 @@
 - **产品定位**：本地 API 代理 + 多供应商无感切换桌面应用
 - **目标平台**：macOS（Apple Silicon / Intel）+ Windows
 - **形态**：桌面应用（Tauri 2 + Rust + React）+ 官网（Next.js 14）
-- **关键文档**（必读）：
-  - `产品技术文档.md` — 架构、技术选型、产品功能
-  - `开发计划.md` — 分阶段任务清单（含 task ID、依赖、工时）
+- **关键文档**（必读，全部位于 `docs/`）：
+  - `docs/产品技术文档.md` — 架构、技术选型、产品功能
+  - `docs/开发计划.md` — 分阶段任务清单（含 task ID、依赖、工时）
+  - `docs/任务报告.md` — append-only 任务执行记录
+  - `docs/无感切换方案-API代理模式.md` / `docs/自动切换供应商应用设计方案.md` — 整合前的设计草案，归档保留
   - `.github/workflows/release.yml` — 自动化发布流水线
 - **当前版本**：`0.0.0`（仅文档，未编码）
 
@@ -20,7 +22,7 @@
 
 ## 1. 任务执行流程（强制）
 
-每完成 1 个 task（task ID 见 `开发计划.md`），按以下顺序执行，**不得跳步**：
+每完成 1 个 task（task ID 见 `docs/开发计划.md`），按以下顺序执行，**不得跳步**：
 
 1. **写测试** —— 见 §2
 2. **更新任务报告** —— 见 §3
@@ -36,7 +38,7 @@
 
 ### 2.1 每个功能都必须有测试
 
-凡 `开发计划.md` 中编号为 `T1.0.x.xx` / `TW.x.xx` 的任务，**完成时必须包含**对应的自动化测试。无测试 = 任务未完成。
+凡 `docs/开发计划.md` 中编号为 `T1.0.x.xx` / `TW.x.xx` 的任务，**完成时必须包含**对应的自动化测试。无测试 = 任务未完成。
 
 ### 2.2 测试层级要求
 
@@ -73,7 +75,7 @@ apps/website/e2e/**.spec.ts              # 官网 E2E
 
 ### 3.1 路径
 
-`/Users/colna/WORK/CCUse/任务报告.md`
+`/Users/colna/WORK/CCUse/docs/任务报告.md`
 
 ### 3.2 何时更新
 
@@ -128,7 +130,7 @@ apps/website/e2e/**.spec.ts              # 官网 E2E
 
 ### 4.3 压缩前必须做
 
-- 把当前 task 的报告写入 `任务报告.md`（避免压缩丢上下文）
+- 把当前 task 的报告写入 `docs/任务报告.md`（避免压缩丢上下文）
 - 把进行中的 task ID、文件路径、待办点写入 `.claude/scratchpad.md`（如不存在则创建）
 - 然后再 `/compact`
 
@@ -188,7 +190,7 @@ apps/website/e2e/**.spec.ts              # 官网 E2E
 | 提交       | Conventional Commits；**每完成一个 task 立即 `git commit + git push`**（用户长期授权，2026-04-28 起生效）。一个 task 一个或多个原子 commit，commit message 含对应 task ID（如 `T1.0.1.07`） |
 | 样式       | 仅 Tailwind utility；禁用 CSS Modules / styled-components / Sass / 全局 CSS（globals.css 入口除外）                                                                                         |
 | 产物       | 严格 3 个：`*_aarch64.dmg` / `*_x64.dmg` / `*_x64-setup.exe`；其余 bundle target 禁用                                                                                                       |
-| 版本号     | `0.x.y` = pre-release；`1.0.0+` = 正式 release；详见 `开发计划.md` §一                                                                                                                      |
+| 版本号     | `0.x.y` = pre-release；`1.0.0+` = 正式 release；详见 `docs/开发计划.md` §一                                                                                                                 |
 | 销毁性操作 | 删除 / 强推 / 重置等需用户明确授权                                                                                                                                                          |
 | 跳过 hook  | 严禁 `--no-verify`、`--no-gpg-sign` 等绕过手段                                                                                                                                              |
 
@@ -199,12 +201,12 @@ apps/website/e2e/**.spec.ts              # 官网 E2E
 每次新会话首条工作消息前，必须确认（在思考中或简短告知用户）：
 
 - [ ] 已读取本文件（`CCUse/CLAUDE.md`）
-- [ ] 已读取 `产品技术文档.md` 与 `开发计划.md` 的相关章节（按当前 task 范围）
-- [ ] 已读取 `任务报告.md` 的最近若干条，了解上下文
+- [ ] 已读取 `docs/产品技术文档.md` 与 `docs/开发计划.md` 的相关章节（按当前 task 范围）
+- [ ] 已读取 `docs/任务报告.md` 的最近若干条，了解上下文
 - [ ] 知道当前要做的 task ID（若用户未指明，先 `TaskList` 或问用户）
 - [ ] 涉及 UI → 先调 `/apple-design` + `/frontend-design`
 - [ ] 涉及代码 → 先调对应语言的 best-practices skill
-- [ ] 任务做完 → 更新 `任务报告.md` → 检查 context → 必要时 `/compact`
+- [ ] 任务做完 → 更新 `docs/任务报告.md` → 检查 context → 必要时 `/compact`
 
 ---
 
