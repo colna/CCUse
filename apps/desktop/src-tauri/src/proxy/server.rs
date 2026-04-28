@@ -33,8 +33,8 @@ pub enum ServerError {
 
     /// Probed `attempts` consecutive ports from `start` and none was available.
     #[error(
-        "no available port in range [{start}, {}); last attempt: {last:?}",
-        start.saturating_add(*attempts)
+        "All ports occupied — please free one of ports {start}–{}",
+        start.saturating_add(*attempts).saturating_sub(1)
     )]
     NoAvailablePort {
         start: u16,
@@ -262,7 +262,29 @@ mod tests {
         };
         let rendered = format!("{err}");
         assert!(rendered.contains("8787"));
-        assert!(rendered.contains("8887"));
+        assert!(rendered.contains("8886"));
+        assert!(
+            rendered.contains("All ports occupied"),
+            "message must be UI-friendly, got: {rendered}",
+        );
+    }
+
+    #[tokio::test]
+    async fn bind_with_fallback_exhausts_range_returns_ui_friendly_error() {
+        // Bind a single port, then ask bind_with_fallback to try only
+        // that one port — it must return NoAvailablePort.
+        let first = ProxyServer::bind(([127, 0, 0, 1], 0).into())
+            .await
+            .expect("os-allocated bind");
+        let port = first.local_addr().port();
+        let err = ProxyServer::bind_with_fallback(port, 1)
+            .await
+            .expect_err("must fail — port is occupied");
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("All ports occupied"),
+            "expected UI-friendly message, got: {msg}",
+        );
     }
 
     #[test]

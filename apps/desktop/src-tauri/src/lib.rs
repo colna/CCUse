@@ -11,6 +11,7 @@ pub mod converter;
 pub mod crypto;
 pub mod db;
 pub mod health;
+pub mod panic_hook;
 pub mod providers;
 pub mod proxy;
 pub mod switch;
@@ -86,12 +87,17 @@ pub fn run() {
                 .path()
                 .app_data_dir()
                 .expect("app data dir must be resolvable");
+
+            // T1.0.5.07: install panic hook before spawning any tasks.
+            panic_hook::install_panic_hook(app_dir.clone());
             let db_path = app_dir.join("ccuse.db");
             let database = db::open_database(&db_path).expect("failed to open database");
             db::run_migrations(&database).expect("failed to run migrations");
 
+            let keyring_fallback_path = app_dir.join("keyring_fallback.json");
+            let backend = crypto::FallbackKeyringBackend::new(keyring_fallback_path);
             let master_key = Arc::new(
-                crypto::load_or_create_master_key(&crypto::master_key::OsKeyringBackend)
+                crypto::load_or_create_master_key(&backend)
                     .expect("failed to initialise master key"),
             );
             app.manage(database.clone());

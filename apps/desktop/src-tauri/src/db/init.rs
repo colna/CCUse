@@ -11,9 +11,15 @@
 //! the encrypted provider blobs that land here in T1.0.1.17–18.
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use rusqlite::Connection;
+
+/// WAL checkpoint is triggered after this many writes.
+pub const WAL_CHECKPOINT_INTERVAL: u64 = 1000;
+/// `SQLite` `busy_timeout` in milliseconds.
+pub const BUSY_TIMEOUT_MS: i32 = 5000;
 
 /// Errors raised while opening or preparing the database file.
 #[derive(thiserror::Error, Debug)]
@@ -61,6 +67,7 @@ pub enum DbError {
 pub struct Database {
     path: PathBuf,
     conn: Arc<Mutex<Connection>>,
+    write_count: Arc<AtomicU64>,
 }
 
 impl std::fmt::Debug for Database {
@@ -94,6 +101,38 @@ impl Database {
             source,
         })
     }
+
+    /// Like [`with_connection`](Self::with_connection), but also
+    /// increments the write counter and triggers a WAL checkpoint
+    /// every [`WAL_CHECKPOINT_INTERVAL`] writes. Use this for any
+    /// INSERT / UPDATE / DELETE to keep the WAL file bounded.
+    pub fn with_write<F, T>(&self, f: F) -> Result<T, DbError>
+    where
+        F: FnOnce(&mut Connection) -> Result<T, rusqlite::Error>,
+    {
+        let result = self.with_connection(f)?;
+        let prev = self.write_count.fetch_add(1, Ordering::Relaxed);
+        if (prev + 1) % WAL_CHECKPOINT_INTERVAL == 0 {
+            self.try_wal_checkpoint();
+        }
+        Ok(result)
+    }
+
+    /// Best-effort WAL checkpoint (TRUNCATE mode). Errors are logged
+    /// but not propagated — a missed checkpoint only means the WAL
+    /// file stays a little larger until the next opportunity.
+    pub fn try_wal_checkpoint(&self) {
+        if let Ok(guard) = self.conn.lock() {
+            if let Err(err) = guard.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);") {
+                eprintln!("CCUse: WAL checkpoint failed: {err}");
+            }
+        }
+    }
+
+    /// Current write count (for testing / monitoring).
+    pub fn write_count(&self) -> u64 {
+        self.write_count.load(Ordering::Relaxed)
+    }
 }
 
 /// Open `path`, applying `CCUse`'s standard configuration. Creates
@@ -122,6 +161,7 @@ pub fn open_database(path: impl AsRef<Path>) -> Result<Database, DbError> {
     Ok(Database {
         path,
         conn: Arc::new(Mutex::new(conn)),
+        write_count: Arc::new(AtomicU64::new(0)),
     })
 }
 
@@ -153,6 +193,8 @@ fn apply_pragmas(conn: &Connection, path: &Path) -> Result<(), DbError> {
     conn.pragma_update(None, "foreign_keys", true)
         .map_err(map_err)?;
     conn.pragma_update(None, "synchronous", "NORMAL")
+        .map_err(map_err)?;
+    conn.pragma_update(None, "busy_timeout", BUSY_TIMEOUT_MS)
         .map_err(map_err)?;
 
     Ok(())
@@ -240,5 +282,42 @@ mod tests {
         let path = db_path(&dir, "path.db");
         let db = open_database(&path).expect("open ok");
         assert_eq!(db.path(), path.as_path());
+    }
+
+    #[test]
+    fn open_database_sets_busy_timeout() {
+        let dir = TempDir::new().expect("tempdir");
+        let path = db_path(&dir, "busy.db");
+        let db = open_database(&path).expect("open ok");
+        let timeout: i64 = db
+            .with_connection(|c| c.query_row("PRAGMA busy_timeout;", [], |r| r.get(0)))
+            .expect("pragma read");
+        assert_eq!(
+            timeout,
+            i64::from(BUSY_TIMEOUT_MS),
+            "busy_timeout must be set",
+        );
+    }
+
+    #[test]
+    fn with_write_increments_counter() {
+        let dir = TempDir::new().expect("tempdir");
+        let path = db_path(&dir, "wc.db");
+        let db = open_database(&path).expect("open ok");
+        assert_eq!(db.write_count(), 0);
+        db.with_write(|c| {
+            c.execute_batch("CREATE TABLE IF NOT EXISTS _wc_test (id INTEGER)")?;
+            Ok(())
+        })
+        .expect("write ok");
+        assert_eq!(db.write_count(), 1);
+    }
+
+    #[test]
+    fn wal_checkpoint_does_not_panic() {
+        let dir = TempDir::new().expect("tempdir");
+        let path = db_path(&dir, "ckpt.db");
+        let db = open_database(&path).expect("open ok");
+        db.try_wal_checkpoint();
     }
 }

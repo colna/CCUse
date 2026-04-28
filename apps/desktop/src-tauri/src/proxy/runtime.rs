@@ -104,6 +104,13 @@ impl ProxyRuntime {
         let server =
             ProxyServer::bind_with_fallback(self.fallback_start, self.fallback_attempts).await?;
         let addr = server.local_addr();
+        if addr.port() != self.fallback_start && self.fallback_start != 0 {
+            eprintln!(
+                "CCUse: preferred port {} busy, fell back to {}",
+                self.fallback_start,
+                addr.port(),
+            );
+        }
         let api_key = generate_local_api_key();
         let store = key_store(api_key.as_str().to_owned());
         let (shutdown, rx) = oneshot::channel::<()>();

@@ -7,5 +7,5 @@
 pub mod init;
 pub mod migrations;
 
-pub use init::{open_database, Database, DbError};
+pub use init::{open_database, Database, DbError, BUSY_TIMEOUT_MS, WAL_CHECKPOINT_INTERVAL};
 pub use migrations::run_migrations;
