@@ -142,6 +142,128 @@ impl std::fmt::Debug for OsKeyringBackend {
     }
 }
 
+/// File-based backend: stores secrets as `service/user -> value` in
+/// a single JSON file with 0o600 permissions. Used as fallback when
+/// the OS keyring is unavailable (locked screen, misconfigured
+/// credential store, CI, etc.).
+pub struct FileKeyringBackend {
+    path: std::path::PathBuf,
+}
+
+impl FileKeyringBackend {
+    pub fn new(path: impl Into<std::path::PathBuf>) -> Self {
+        Self { path: path.into() }
+    }
+
+    fn read_store(&self) -> Result<std::collections::HashMap<String, String>, MasterKeyError> {
+        if !self.path.exists() {
+            return Ok(std::collections::HashMap::new());
+        }
+        let data = std::fs::read_to_string(&self.path)
+            .map_err(|e| MasterKeyError::Keyring(format!("file read: {e}")))?;
+        serde_json::from_str(&data).map_err(|e| MasterKeyError::Keyring(format!("file parse: {e}")))
+    }
+
+    fn write_store(
+        &self,
+        store: &std::collections::HashMap<String, String>,
+    ) -> Result<(), MasterKeyError> {
+        if let Some(parent) = self.path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| MasterKeyError::Keyring(format!("mkdir: {e}")))?;
+        }
+        let data = serde_json::to_string_pretty(store)
+            .map_err(|e| MasterKeyError::Keyring(format!("json: {e}")))?;
+        std::fs::write(&self.path, data)
+            .map_err(|e| MasterKeyError::Keyring(format!("file write: {e}")))?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let perms = std::fs::Permissions::from_mode(0o600);
+            std::fs::set_permissions(&self.path, perms)
+                .map_err(|e| MasterKeyError::Keyring(format!("chmod: {e}")))?;
+        }
+        Ok(())
+    }
+}
+
+impl std::fmt::Debug for FileKeyringBackend {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FileKeyringBackend")
+            .field("path", &self.path)
+            .finish()
+    }
+}
+
+impl KeyringBackend for FileKeyringBackend {
+    fn get(&self, service: &str, user: &str) -> Result<Option<String>, MasterKeyError> {
+        let store = self.read_store()?;
+        let key = format!("{service}/{user}");
+        Ok(store.get(&key).cloned())
+    }
+
+    fn set(&self, service: &str, user: &str, value: &str) -> Result<(), MasterKeyError> {
+        let mut store = self.read_store()?;
+        let key = format!("{service}/{user}");
+        store.insert(key, value.to_owned());
+        self.write_store(&store)
+    }
+}
+
+/// Backend that tries the OS keyring first and falls back to a
+/// file-based store when any keyring operation fails. Logs a warning
+/// on the first fallback so operators can spot the degradation.
+pub struct FallbackKeyringBackend {
+    primary: OsKeyringBackend,
+    fallback: FileKeyringBackend,
+}
+
+impl FallbackKeyringBackend {
+    pub fn new(fallback_path: impl Into<std::path::PathBuf>) -> Self {
+        Self {
+            primary: OsKeyringBackend,
+            fallback: FileKeyringBackend::new(fallback_path),
+        }
+    }
+}
+
+impl std::fmt::Debug for FallbackKeyringBackend {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FallbackKeyringBackend")
+            .field("primary", &"OsKeyringBackend")
+            .field("fallback_path", &self.fallback.path)
+            .finish_non_exhaustive()
+    }
+}
+
+impl KeyringBackend for FallbackKeyringBackend {
+    fn get(&self, service: &str, user: &str) -> Result<Option<String>, MasterKeyError> {
+        match self.primary.get(service, user) {
+            Ok(v) => Ok(v),
+            Err(err) => {
+                eprintln!(
+                    "CCUse: OS keyring read failed ({err}), falling back to file-based key store at {}",
+                    self.fallback.path.display(),
+                );
+                self.fallback.get(service, user)
+            }
+        }
+    }
+
+    fn set(&self, service: &str, user: &str, value: &str) -> Result<(), MasterKeyError> {
+        match self.primary.set(service, user, value) {
+            Ok(()) => Ok(()),
+            Err(err) => {
+                eprintln!(
+                    "CCUse: OS keyring write failed ({err}), falling back to file-based key store at {}",
+                    self.fallback.path.display(),
+                );
+                self.fallback.set(service, user, value)
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -239,5 +361,57 @@ mod tests {
         // key. Pin them at the test layer so the bump is loud.
         assert_eq!(KEYRING_SERVICE, "io.ccuse.desktop");
         assert_eq!(KEYRING_USER, "master_key_v1");
+    }
+
+    // ----- FileKeyringBackend tests -----
+
+    #[test]
+    fn file_backend_round_trips_value() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let path = dir.path().join("keys.json");
+        let backend = FileKeyringBackend::new(&path);
+        backend.set("svc", "usr", "secret123").expect("set ok");
+        let got = backend.get("svc", "usr").expect("get ok");
+        assert_eq!(got.as_deref(), Some("secret123"));
+    }
+
+    #[test]
+    fn file_backend_returns_none_when_missing() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let path = dir.path().join("nonexistent.json");
+        let backend = FileKeyringBackend::new(&path);
+        let got = backend.get("svc", "usr").expect("get ok");
+        assert!(got.is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn file_backend_sets_0600_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let path = dir.path().join("keys.json");
+        let backend = FileKeyringBackend::new(&path);
+        backend.set("svc", "usr", "val").expect("set ok");
+        let mode = std::fs::metadata(&path).expect("stat").permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "file must be owner-only");
+    }
+
+    #[test]
+    fn file_backend_creates_parent_directories() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let path = dir.path().join("nested/deep/keys.json");
+        let backend = FileKeyringBackend::new(&path);
+        backend.set("svc", "usr", "val").expect("set ok");
+        assert!(path.exists());
+    }
+
+    #[test]
+    fn file_backend_master_key_round_trip() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let path = dir.path().join("keys.json");
+        let backend = FileKeyringBackend::new(&path);
+        let key = load_or_create_master_key(&backend).expect("first load");
+        let key2 = load_or_create_master_key(&backend).expect("second load");
+        assert_eq!(key.as_bytes(), key2.as_bytes());
     }
 }

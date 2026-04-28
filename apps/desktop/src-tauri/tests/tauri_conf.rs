@@ -71,6 +71,49 @@ fn dev_url_points_at_local_vite_port() {
 }
 
 #[test]
+fn csp_is_set_and_does_not_allow_unsafe_eval() {
+    let conf = load_conf();
+    let csp = conf["app"]["security"]["csp"]
+        .as_str()
+        .expect("app.security.csp must be a non-null string");
+
+    // Must not contain unsafe-eval — XSS vector.
+    assert!(
+        !csp.contains("unsafe-eval"),
+        "CSP must not contain 'unsafe-eval', found: {csp}"
+    );
+
+    // Must restrict default-src to 'self'.
+    assert!(
+        csp.contains("default-src 'self'"),
+        "CSP must set default-src 'self', found: {csp}"
+    );
+
+    // Must allow connections to the local proxy and known API endpoints.
+    assert!(
+        csp.contains("connect-src"),
+        "CSP must define connect-src, found: {csp}"
+    );
+    for endpoint in [
+        "http://127.0.0.1:*",
+        "https://api.openai.com",
+        "https://api.anthropic.com",
+        "https://generativelanguage.googleapis.com",
+    ] {
+        assert!(
+            csp.contains(endpoint),
+            "CSP connect-src must include {endpoint}, found: {csp}"
+        );
+    }
+
+    // Inline styles needed for Tailwind.
+    assert!(
+        csp.contains("style-src 'self' 'unsafe-inline'"),
+        "CSP must allow inline styles for Tailwind, found: {csp}"
+    );
+}
+
+#[test]
 fn version_field_is_present_and_semver_shaped() {
     let conf = load_conf();
     let version = conf["version"].as_str().expect("version must be a string");
