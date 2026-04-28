@@ -5,5 +5,7 @@
 //! adds the `providers` repository on top.
 
 pub mod init;
+pub mod migrations;
 
 pub use init::{open_database, Database, DbError};
+pub use migrations::run_migrations;
