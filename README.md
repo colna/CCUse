@@ -84,6 +84,30 @@ pnpm desktop:typecheck
 
 ---
 
+## Phase 1.0.1 demo 验证
+
+Phase 1.0.1 落地的是「本地代理骨架 + auth 中间件 + Provider trait + UI Shell」。真正的"客户端 → 本地代理 → 上游模型"端到端转发要等 T1.0.2.15（`SwitchEngine`）。在那之前，可以用脚本核对当前 wire 契约：
+
+```bash
+bash scripts/verify-phase-1-0-1.sh
+```
+
+脚本会：
+
+1. cargo build & 启动一个 ephemeral-port proxy（`apps/desktop/src-tauri/examples/run_proxy.rs`）
+2. 用 `curl` 跑 6 条契约：
+   - `GET /healthz` 返回 `200 ok`（无需鉴权）
+   - `GET /v1/models` 无 key → 401 unauthorized
+   - `GET /v1/models` + `Authorization: Bearer sk-local-…` → 200
+   - `POST /v1/chat/completions` 带 key → 503 + `OpenAI`-shaped `providers_not_configured` 错误体（stub）
+   - `POST /v1/messages` 带 `x-api-key` → 同样 503 stub（Anthropic 风格头部接受）
+   - 来自 `https://evil.example.com` 的 CORS 预检 → 无 `Access-Control-Allow-Origin` 头
+3. 任一失败即非零退出
+
+> **关于 GIF**：开发计划中 T1.0.1.27 原计划录制 "Cursor 配置本地接口" 的 GIF。由于 chat 路由仍是 503 stub，端到端 Cursor demo 必须等 T1.0.2.15 接入 SwitchEngine 后再录，已登记到 `docs/任务报告.md` 的 follow-up。
+
+---
+
 ## 开发流程
 
 > 任何在本仓库内的工作，都必须先读 [`CLAUDE.md`](./CLAUDE.md) —— 包含强制的测试要求、任务报告格式、context 管理阈值、设计 / 代码 best-practices skill 调用顺序。
