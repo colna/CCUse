@@ -95,7 +95,7 @@ pnpm desktop:typecheck
 - **UI/UX**：先 `/apple-design` 再 `/frontend-design`
 - **代码规范**：Rust → `/rust-best-practices`；React → `/vercel-react-best-practices`；Next.js → `/next-best-practices`
 - **样式仅 Tailwind**（`globals.css` 入口外禁止 `*.css`）
-- **不自动 commit / push**，等明确指令
+- **每完成一个 task 立即 commit + push**（用户长期授权，2026-04-28 起生效；commit message 含 task ID）
 
 ---
 
