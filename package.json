@@ -1,0 +1,20 @@
+{
+  "name": "ccuse",
+  "version": "0.0.0",
+  "private": true,
+  "description": "CCUse - 本地 API 代理 + 多供应商无感切换",
+  "packageManager": "pnpm@10.30.3",
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=9"
+  },
+  "scripts": {
+    "desktop:dev": "pnpm --filter @ccuse/desktop tauri dev",
+    "desktop:build": "pnpm --filter @ccuse/desktop tauri build",
+    "desktop:test": "pnpm --filter @ccuse/desktop test",
+    "desktop:typecheck": "pnpm --filter @ccuse/desktop typecheck",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck"
+  }
+}

@@ -1,0 +1,52 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Rust
+target/
+Cargo.lock.bak
+
+# Build output
+dist/
+build/
+out/
+.next/
+.turbo/
+
+# Tauri (匹配任意层级下的 src-tauri/...)
+**/src-tauri/target/
+**/src-tauri/gen/
+**/src-tauri/WixTools/
+**/src-tauri/.build/
+
+# Editors / OS
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+*.pem
+*.p12
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Test
+coverage/
+.nyc_output/
+
+# Misc
+*.tsbuildinfo
+.cache/
+
+# Claude Code local-only
+.claude/settings.local.json
+.claude/worktrees/
