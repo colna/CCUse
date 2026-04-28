@@ -12,9 +12,6 @@ use axum::Router;
 use tokio::net::TcpListener;
 
 /// Errors raised while binding or running the proxy server.
-///
-/// Kept narrow on purpose — the server has only two failure modes:
-/// it could not bind, or `axum::serve` exited with an io error.
 #[derive(thiserror::Error, Debug)]
 pub enum ServerError {
     /// Failed to bind a `TcpListener` to the requested address.
@@ -24,6 +21,22 @@ pub enum ServerError {
         #[source]
         source: std::io::Error,
     },
+
+    /// Probed `attempts` consecutive ports from `start` and none was available.
+    #[error(
+        "no available port in range [{start}, {}); last attempt: {last:?}",
+        start.saturating_add(*attempts)
+    )]
+    NoAvailablePort {
+        start: u16,
+        attempts: u16,
+        #[source]
+        last: Option<Box<ServerError>>,
+    },
+
+    /// `start + offset` would overflow `u16` while probing.
+    #[error("port probe overflowed u16 starting at {start} after {offset} steps")]
+    PortOverflow { start: u16, offset: u16 },
 
     /// `axum::serve` returned an io error while running.
     #[error("axum serve loop exited with error: {0}")]
@@ -64,6 +77,31 @@ impl ProxyServer {
         Ok(Self {
             listener,
             local_addr,
+        })
+    }
+
+    /// Probe ports `[start, start + attempts)` on `127.0.0.1` and bind
+    /// to the first available one.
+    ///
+    /// Drives the desktop default flow: try `8787`, walk up to `8886`
+    /// if `8787` is already taken. The bound port is reported via
+    /// [`ProxyServer::local_addr`] so the tray / UI can surface it.
+    pub async fn bind_with_fallback(start: u16, attempts: u16) -> Result<Self, ServerError> {
+        let mut last: Option<ServerError> = None;
+        for offset in 0..attempts {
+            let port = start
+                .checked_add(offset)
+                .ok_or(ServerError::PortOverflow { start, offset })?;
+            let addr: SocketAddr = ([127, 0, 0, 1], port).into();
+            match Self::bind(addr).await {
+                Ok(server) => return Ok(server),
+                Err(err) => last = Some(err),
+            }
+        }
+        Err(ServerError::NoAvailablePort {
+            start,
+            attempts,
+            last: last.map(Box::new),
         })
     }
 
@@ -120,5 +158,28 @@ mod tests {
         let rendered = format!("{err}");
         assert!(rendered.contains("127.0.0.1:65535"));
         assert!(rendered.contains("boom"));
+    }
+
+    #[test]
+    fn server_error_no_available_port_renders_range() {
+        let err = ServerError::NoAvailablePort {
+            start: 8787,
+            attempts: 100,
+            last: None,
+        };
+        let rendered = format!("{err}");
+        assert!(rendered.contains("8787"));
+        assert!(rendered.contains("8887"));
+    }
+
+    #[test]
+    fn server_error_port_overflow_renders_start_and_offset() {
+        let err = ServerError::PortOverflow {
+            start: u16::MAX - 2,
+            offset: 5,
+        };
+        let rendered = format!("{err}");
+        assert!(rendered.contains(&(u16::MAX - 2).to_string()));
+        assert!(rendered.contains('5'));
     }
 }

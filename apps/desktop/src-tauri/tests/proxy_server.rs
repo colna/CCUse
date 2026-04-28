@@ -84,3 +84,37 @@ async fn serve_returns_after_shutdown_signal() {
         "serve should exit Ok after shutdown",
     );
 }
+
+#[tokio::test]
+async fn bind_with_fallback_succeeds_with_single_attempt_on_zero() {
+    // start=0 lets the OS allocate; one attempt always succeeds on a healthy host.
+    let server = ProxyServer::bind_with_fallback(0, 1)
+        .await
+        .expect("OS should hand out an ephemeral port for start=0");
+    assert!(server.local_addr().ip().is_loopback());
+    assert_ne!(server.local_addr().port(), 0);
+}
+
+#[tokio::test]
+async fn bind_with_fallback_skips_busy_port_and_finds_next() {
+    // Hold one loopback port for the duration of the test, then ask
+    // bind_with_fallback to start exactly there. The first probe must fail,
+    // and the prober must walk up to a higher port.
+    let occupier = ProxyServer::bind(loopback_zero())
+        .await
+        .expect("occupier bind should succeed");
+    let busy_port = occupier.local_addr().port();
+
+    let server = ProxyServer::bind_with_fallback(busy_port, 100)
+        .await
+        .expect("prober should find an available port within 100 attempts");
+
+    assert_ne!(
+        server.local_addr().port(),
+        busy_port,
+        "prober must not re-use the occupied port",
+    );
+    // Keep `occupier` alive until the assertion: dropping it earlier
+    // would release the port and break the test's invariant.
+    drop(occupier);
+}
