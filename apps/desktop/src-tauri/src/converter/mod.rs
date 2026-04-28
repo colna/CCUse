@@ -58,10 +58,7 @@ pub trait FormatConverter {
 
     /// Parse a single vendor-specific SSE data payload into a unified
     /// stream chunk.  Returns `None` for terminal events (e.g. `[DONE]`).
-    fn parse_stream_chunk(
-        &self,
-        data: &str,
-    ) -> Result<Option<UnifiedStreamChunk>, ConvertError>;
+    fn parse_stream_chunk(&self, data: &str) -> Result<Option<UnifiedStreamChunk>, ConvertError>;
 
     /// Encode a unified stream chunk into vendor-specific SSE frame(s).
     fn encode_stream_chunk(&self, chunk: &UnifiedStreamChunk) -> Result<String, ConvertError>;

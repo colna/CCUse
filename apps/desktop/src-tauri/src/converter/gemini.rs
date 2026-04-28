@@ -71,9 +71,7 @@ impl GeminiConverter {
                 let mime = part["inlineData"]["mimeType"]
                     .as_str()
                     .unwrap_or("image/png");
-                let data = part["inlineData"]["data"]
-                    .as_str()
-                    .unwrap_or_default();
+                let data = part["inlineData"]["data"].as_str().unwrap_or_default();
                 let url = format!("data:{mime};base64,{data}");
                 result.push(ContentPart::ImageUrl { url, detail: None });
             } else if part["functionCall"].is_object() {
@@ -94,10 +92,8 @@ impl GeminiConverter {
                     .as_str()
                     .unwrap_or_default()
                     .to_string();
-                let response = serde_json::to_string(
-                    &part["functionResponse"]["response"],
-                )
-                .unwrap_or_else(|_| "{}".into());
+                let response = serde_json::to_string(&part["functionResponse"]["response"])
+                    .unwrap_or_else(|_| "{}".into());
                 let tool_call_id = format!("gemini_call_{name}");
                 result.push(ContentPart::ToolResult(ToolResult {
                     tool_call_id,
@@ -124,8 +120,7 @@ impl GeminiConverter {
                     json!({"text": format!("[image: {url}]")})
                 }
                 ContentPart::ToolCall(tc) => {
-                    let args: Value =
-                        serde_json::from_str(&tc.arguments).unwrap_or(json!({}));
+                    let args: Value = serde_json::from_str(&tc.arguments).unwrap_or(json!({}));
                     json!({ "functionCall": { "name": tc.name, "args": args } })
                 }
                 ContentPart::ToolResult(tr) => {
@@ -179,10 +174,7 @@ impl FormatConverter for GeminiConverter {
                 .as_str()
                 .ok_or_else(|| ConvertError::MissingField("role".into()))?;
             let role = Self::parse_role(role_str)?;
-            let parts_arr = content["parts"]
-                .as_array()
-                .cloned()
-                .unwrap_or_default();
+            let parts_arr = content["parts"].as_array().cloned().unwrap_or_default();
             let parts = Self::parse_parts(&parts_arr);
             messages.push(UnifiedMessage {
                 role,
@@ -300,10 +292,7 @@ impl FormatConverter for GeminiConverter {
     }
 
     fn response_to_unified(&self, body: &Value) -> Result<UnifiedResponse, ConvertError> {
-        let candidates = body["candidates"]
-            .as_array()
-            .cloned()
-            .unwrap_or_default();
+        let candidates = body["candidates"].as_array().cloned().unwrap_or_default();
 
         let choices = candidates
             .iter()
@@ -388,10 +377,7 @@ impl FormatConverter for GeminiConverter {
 
         let val: Value = serde_json::from_str(trimmed)?;
 
-        let candidates = val["candidates"]
-            .as_array()
-            .cloned()
-            .unwrap_or_default();
+        let candidates = val["candidates"].as_array().cloned().unwrap_or_default();
 
         if candidates.is_empty() {
             return if val["usageMetadata"].is_object() {
@@ -456,10 +442,7 @@ impl FormatConverter for GeminiConverter {
 
         Ok(Some(UnifiedStreamChunk {
             id: String::new(),
-            model: val["modelVersion"]
-                .as_str()
-                .unwrap_or("")
-                .to_string(),
+            model: val["modelVersion"].as_str().unwrap_or("").to_string(),
             choices,
             usage: Self::parse_usage_metadata(&val),
         }))
@@ -477,8 +460,7 @@ impl FormatConverter for GeminiConverter {
                     }
                     for tc in &delta.tool_calls {
                         if let (Some(name), Some(args)) = (&tc.name, &tc.arguments) {
-                            let args_val: Value =
-                                serde_json::from_str(args).unwrap_or(json!({}));
+                            let args_val: Value = serde_json::from_str(args).unwrap_or(json!({}));
                             parts.push(json!({
                                 "functionCall": { "name": name, "args": args_val }
                             }));

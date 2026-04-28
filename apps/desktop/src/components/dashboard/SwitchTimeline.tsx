@@ -1,0 +1,159 @@
+import { useCallback, useEffect, useState } from "react";
+import { ArrowRight, ChevronDown, ChevronRight } from "lucide-react";
+
+import { cn } from "@/lib/utils";
+import { getSwitchTimeline, type SwitchEvent } from "@/lib/tauri";
+
+function formatTimestamp(timestamp: string): string {
+  const d = new Date(timestamp);
+  return d.toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
+function strategyBadgeColor(strategy: string): string {
+  switch (strategy) {
+    case "priority":
+      return "bg-blue-100 text-blue-700";
+    case "fastest":
+      return "bg-green-100 text-green-700";
+    case "cost":
+      return "bg-amber-100 text-amber-700";
+    case "load_balance":
+      return "bg-purple-100 text-purple-700";
+    case "smart":
+      return "bg-pink-100 text-pink-700";
+    default:
+      return "bg-muted text-muted-foreground";
+  }
+}
+
+interface TimelineRowProps {
+  event: SwitchEvent;
+}
+
+function TimelineRow({ event }: TimelineRowProps) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className="border-b border-border last:border-b-0">
+      <button
+        type="button"
+        onClick={() => setExpanded((e) => !e)}
+        className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm transition-colors hover:bg-muted/30"
+      >
+        {expanded ? (
+          <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
+        ) : (
+          <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />
+        )}
+
+        <span className="w-36 shrink-0 text-xs tabular-nums text-muted-foreground">
+          {formatTimestamp(event.timestamp)}
+        </span>
+
+        <span className="flex items-center gap-1 text-xs font-medium">
+          <span className="max-w-[80px] truncate" title={event.from_provider}>
+            {event.from_provider}
+          </span>
+          <ArrowRight className="size-3 shrink-0 text-muted-foreground" />
+          <span className="max-w-[80px] truncate" title={event.to_provider}>
+            {event.to_provider}
+          </span>
+        </span>
+
+        <span
+          className={cn(
+            "ml-auto shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium",
+            strategyBadgeColor(event.strategy),
+          )}
+        >
+          {event.strategy}
+        </span>
+      </button>
+
+      {expanded && (
+        <div className="space-y-1 bg-muted/20 px-4 py-3 pl-11 text-xs">
+          <p>
+            <span className="text-muted-foreground">Reason: </span>
+            {event.reason}
+          </p>
+          {event.details && (
+            <p>
+              <span className="text-muted-foreground">Details: </span>
+              {event.details}
+            </p>
+          )}
+          <p>
+            <span className="text-muted-foreground">ID: </span>
+            <span className="font-mono">{event.id}</span>
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const REFRESH_INTERVAL = 15_000;
+
+export function SwitchTimeline() {
+  const [events, setEvents] = useState<SwitchEvent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchData = useCallback(async () => {
+    try {
+      const timeline: SwitchEvent[] = await getSwitchTimeline();
+      setEvents(timeline);
+      setError(null);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  useEffect(() => {
+    const id = setInterval(fetchData, REFRESH_INTERVAL);
+    return () => clearInterval(id);
+  }, [fetchData]);
+
+  if (error) {
+    return (
+      <div className="rounded-xl border border-destructive/30 bg-card p-4 text-sm text-destructive">
+        {error}
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border border-border bg-card shadow-sm">
+      <div className="border-b border-border px-4 py-3">
+        <h4 className="text-sm font-medium">Switch Timeline</h4>
+      </div>
+      {loading ? (
+        <div className="flex h-32 items-center justify-center text-sm text-muted-foreground">
+          Loading...
+        </div>
+      ) : events.length === 0 ? (
+        <div className="px-6 py-8 text-center text-sm text-muted-foreground">
+          No switch events yet
+        </div>
+      ) : (
+        <div className="max-h-80 overflow-y-auto">
+          {events.map((event) => (
+            <TimelineRow key={event.id} event={event} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

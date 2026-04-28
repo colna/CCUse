@@ -80,10 +80,7 @@ impl OpenAIConverter {
                 for item in arr {
                     match item["type"].as_str() {
                         Some("text") => {
-                            let text = item["text"]
-                                .as_str()
-                                .unwrap_or_default()
-                                .to_string();
+                            let text = item["text"].as_str().unwrap_or_default().to_string();
                             parts.push(ContentPart::Text { text });
                         }
                         Some("image_url") => {
@@ -91,9 +88,7 @@ impl OpenAIConverter {
                                 .as_str()
                                 .unwrap_or_default()
                                 .to_string();
-                            let detail = item["image_url"]["detail"]
-                                .as_str()
-                                .map(String::from);
+                            let detail = item["image_url"]["detail"].as_str().map(String::from);
                             parts.push(ContentPart::ImageUrl { url, detail });
                         }
                         _ => {}
@@ -126,10 +121,7 @@ impl OpenAIConverter {
         // Tool result messages.
         if role == Role::Tool {
             if let Some(tool_call_id) = msg["tool_call_id"].as_str() {
-                let output = msg["content"]
-                    .as_str()
-                    .unwrap_or_default()
-                    .to_string();
+                let output = msg["content"].as_str().unwrap_or_default().to_string();
                 // Clear text parts added above for tool messages; the
                 // content IS the tool output.
                 parts.retain(|p| !matches!(p, ContentPart::Text { .. }));
@@ -419,7 +411,9 @@ impl FormatConverter for OpenAIConverter {
             .iter()
             .map(|c| {
                 let delta = if c["delta"].is_object() {
-                    let role = c["delta"]["role"].as_str().and_then(|r| Self::parse_role(r).ok());
+                    let role = c["delta"]["role"]
+                        .as_str()
+                        .and_then(|r| Self::parse_role(r).ok());
                     let content = c["delta"]["content"].as_str().map(String::from);
                     let tool_calls = c["delta"]["tool_calls"]
                         .as_array()
@@ -589,7 +583,9 @@ mod tests {
         });
         let unified = converter().request_to_unified(&input).unwrap();
         assert_eq!(unified.messages[0].content.len(), 2);
-        assert!(matches!(&unified.messages[0].content[1], ContentPart::ImageUrl { url, .. } if url == "https://img.png"));
+        assert!(
+            matches!(&unified.messages[0].content[1], ContentPart::ImageUrl { url, .. } if url == "https://img.png")
+        );
     }
 
     #[test]

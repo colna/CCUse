@@ -42,6 +42,11 @@ const MIGRATIONS: &[Migration] = &[
         name: "request_logs",
         sql: include_str!("../../migrations/0003_request_logs.sql"),
     },
+    Migration {
+        version: 4,
+        name: "provider_quota",
+        sql: include_str!("../../migrations/0004_provider_quota.sql"),
+    },
 ];
 
 /// Apply every migration whose version is newer than the highest

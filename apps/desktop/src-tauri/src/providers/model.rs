@@ -14,6 +14,8 @@ pub enum ProviderKind {
     Anthropic,
     /// Google Gemini (`/v1beta/models/.../generateContent`).
     Gemini,
+    /// Relay / proxy endpoint (e.g. `OpenRouter`, One API).
+    Relay,
     /// Generic OpenAI-compatible endpoint (e.g. self-hosted).
     Custom,
 }
@@ -26,6 +28,7 @@ impl ProviderKind {
             Self::Openai => "openai",
             Self::Anthropic => "anthropic",
             Self::Gemini => "gemini",
+            Self::Relay => "relay",
             Self::Custom => "custom",
         }
     }
@@ -38,6 +41,7 @@ impl ProviderKind {
             "openai" => Some(Self::Openai),
             "anthropic" => Some(Self::Anthropic),
             "gemini" => Some(Self::Gemini),
+            "relay" => Some(Self::Relay),
             "custom" => Some(Self::Custom),
             _ => None,
         }
@@ -59,6 +63,12 @@ pub struct ProviderInput {
     /// Lower numbers = higher priority. Default 100 mirrors the SQL.
     pub priority: i32,
     pub enabled: bool,
+    /// Monthly token quota (optional cap).
+    pub monthly_quota: Option<i64>,
+    /// Requests per minute limit.
+    pub rate_limit_rpm: Option<i32>,
+    /// Cost per 1 000 tokens (USD).
+    pub cost_per_1k_tokens: Option<f64>,
 }
 
 /// Persisted provider. The plaintext API key is intentionally absent
@@ -71,6 +81,9 @@ pub struct Provider {
     pub base_url: String,
     pub priority: i32,
     pub enabled: bool,
+    pub monthly_quota: Option<i64>,
+    pub rate_limit_rpm: Option<i32>,
+    pub cost_per_1k_tokens: Option<f64>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -85,6 +98,7 @@ mod tests {
             ProviderKind::Openai,
             ProviderKind::Anthropic,
             ProviderKind::Gemini,
+            ProviderKind::Relay,
             ProviderKind::Custom,
         ] {
             let s = kind.as_str();

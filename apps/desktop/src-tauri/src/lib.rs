@@ -50,11 +50,12 @@ pub fn run() {
             commands::proxy::get_local_api_config,
             commands::proxy::regenerate_api_key,
             commands::proxy::restart_proxy,
-            // Provider CRUD (T1.0.2.19)
+            // Provider CRUD (T1.0.2.19) + test connection (T1.0.4.05)
             commands::providers::list_providers,
             commands::providers::add_provider,
             commands::providers::update_provider,
             commands::providers::delete_provider,
+            commands::providers::test_provider_connection,
             // Strategy (T1.0.2.20)
             commands::switch::get_strategy,
             commands::switch::set_strategy,
@@ -65,6 +66,10 @@ pub fn run() {
             commands::model_mapping::get_model_mappings,
             commands::model_mapping::set_model_mapping,
             commands::model_mapping::remove_model_mapping,
+            // Monitor (T1.0.4.14)
+            commands::monitor::get_metrics_timeseries,
+            commands::monitor::get_switch_timeline,
+            commands::monitor::get_provider_cost_summary,
         ])
         .setup(move |app| {
             // Initialise the database and provider repository.
@@ -73,17 +78,16 @@ pub fn run() {
                 .app_data_dir()
                 .expect("app data dir must be resolvable");
             let db_path = app_dir.join("ccuse.db");
-            let database = db::open_database(&db_path)
-                .expect("failed to open database");
+            let database = db::open_database(&db_path).expect("failed to open database");
             db::run_migrations(&database).expect("failed to run migrations");
 
             let master_key = Arc::new(
                 crypto::load_or_create_master_key(&crypto::master_key::OsKeyringBackend)
                     .expect("failed to initialise master key"),
             );
-            let repo: ProviderRepoHandle = Arc::new(
-                providers::ProviderRepository::new(database, master_key),
-            );
+            app.manage(database.clone());
+            let repo: ProviderRepoHandle =
+                Arc::new(providers::ProviderRepository::new(database, master_key));
             app.manage(repo);
 
             // Boot the proxy on startup so the UI can read the config

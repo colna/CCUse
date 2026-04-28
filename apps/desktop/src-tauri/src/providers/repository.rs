@@ -64,8 +64,9 @@ impl ProviderRepository {
         self.db.with_connection(|conn| {
             conn.execute(
                 "INSERT INTO providers \
-                 (id, name, kind, base_url, encrypted_api_key, priority, enabled) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                 (id, name, kind, base_url, encrypted_api_key, priority, enabled, \
+                  monthly_quota, rate_limit_rpm, cost_per_1k_tokens) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
                 params![
                     &id,
                     &input.name,
@@ -74,6 +75,9 @@ impl ProviderRepository {
                     &ciphertext,
                     input.priority,
                     enabled_int,
+                    input.monthly_quota,
+                    input.rate_limit_rpm,
+                    input.cost_per_1k_tokens,
                 ],
             )?;
             Ok(())
@@ -93,8 +97,9 @@ impl ProviderRepository {
             conn.execute(
                 "UPDATE providers \
                  SET name=?1, kind=?2, base_url=?3, encrypted_api_key=?4, \
-                     priority=?5, enabled=?6, updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') \
-                 WHERE id=?7",
+                     priority=?5, enabled=?6, monthly_quota=?7, rate_limit_rpm=?8, \
+                     cost_per_1k_tokens=?9, updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') \
+                 WHERE id=?10",
                 params![
                     &input.name,
                     kind_str,
@@ -102,6 +107,9 @@ impl ProviderRepository {
                     &ciphertext,
                     input.priority,
                     enabled_int,
+                    input.monthly_quota,
+                    input.rate_limit_rpm,
+                    input.cost_per_1k_tokens,
                     id,
                 ],
             )
@@ -130,7 +138,9 @@ impl ProviderRepository {
     pub fn get(&self, id: &str) -> Result<Option<Provider>, RepositoryError> {
         let row: Option<ProviderRow> = self.db.with_connection(|conn| {
             conn.query_row(
-                "SELECT id, name, kind, base_url, priority, enabled, created_at, updated_at \
+                "SELECT id, name, kind, base_url, priority, enabled, \
+                        monthly_quota, rate_limit_rpm, cost_per_1k_tokens, \
+                        created_at, updated_at \
                  FROM providers WHERE id=?1",
                 params![id],
                 ProviderRow::from_row,
@@ -163,7 +173,9 @@ impl ProviderRepository {
     pub fn list(&self) -> Result<Vec<Provider>, RepositoryError> {
         let rows: Vec<ProviderRow> = self.db.with_connection(|conn| {
             let mut stmt = conn.prepare(
-                "SELECT id, name, kind, base_url, priority, enabled, created_at, updated_at \
+                "SELECT id, name, kind, base_url, priority, enabled, \
+                        monthly_quota, rate_limit_rpm, cost_per_1k_tokens, \
+                        created_at, updated_at \
                  FROM providers \
                  ORDER BY enabled DESC, priority ASC, created_at ASC",
             )?;
@@ -182,6 +194,9 @@ struct ProviderRow {
     base_url: String,
     priority: i32,
     enabled: i64,
+    monthly_quota: Option<i64>,
+    rate_limit_rpm: Option<i32>,
+    cost_per_1k_tokens: Option<f64>,
     created_at: String,
     updated_at: String,
 }
@@ -195,8 +210,11 @@ impl ProviderRow {
             base_url: row.get(3)?,
             priority: row.get(4)?,
             enabled: row.get(5)?,
-            created_at: row.get(6)?,
-            updated_at: row.get(7)?,
+            monthly_quota: row.get(6)?,
+            rate_limit_rpm: row.get(7)?,
+            cost_per_1k_tokens: row.get(8)?,
+            created_at: row.get(9)?,
+            updated_at: row.get(10)?,
         })
     }
 }
@@ -213,6 +231,9 @@ impl TryFrom<ProviderRow> for Provider {
             base_url: row.base_url,
             priority: row.priority,
             enabled: row.enabled != 0,
+            monthly_quota: row.monthly_quota,
+            rate_limit_rpm: row.rate_limit_rpm,
+            cost_per_1k_tokens: row.cost_per_1k_tokens,
             created_at: row.created_at,
             updated_at: row.updated_at,
         })
@@ -245,6 +266,9 @@ mod tests {
             api_key: "sk-real-secret-1234".to_owned(),
             priority: 50,
             enabled: true,
+            monthly_quota: None,
+            rate_limit_rpm: None,
+            cost_per_1k_tokens: None,
         }
     }
 

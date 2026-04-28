@@ -50,7 +50,11 @@ impl RuntimeState {
     /// has been recorded yet.
     pub fn rolling_response_us(&self) -> Option<i64> {
         let v = self.rolling_response_us.load(Ordering::Relaxed);
-        if v < 0 { None } else { Some(v) }
+        if v < 0 {
+            None
+        } else {
+            Some(v)
+        }
     }
 
     /// Exponentially weighted moving average update. `alpha` is fixed
@@ -70,7 +74,11 @@ impl RuntimeState {
 
     pub fn quota_remaining(&self) -> Option<u64> {
         let v = self.quota_remaining.load(Ordering::Relaxed);
-        if v == 0 { None } else { Some(v) }
+        if v == 0 {
+            None
+        } else {
+            Some(v)
+        }
     }
 
     pub fn set_quota_remaining(&self, remaining: u64) {
@@ -217,9 +225,7 @@ impl Provider for ProviderWrapper {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::providers::api::{
-        ApiChoice, ApiUsage, ChatMessage, StreamChunk,
-    };
+    use crate::providers::api::{ApiChoice, ApiUsage, ChatMessage, StreamChunk};
     use futures::stream;
     use std::pin::Pin;
 
@@ -299,9 +305,7 @@ mod tests {
             10,
             Some(0.000_003),
             true,
-            Box::new(MockProvider {
-                id: "p1".into(),
-            }),
+            Box::new(MockProvider { id: "p1".into() }),
         )
     }
 

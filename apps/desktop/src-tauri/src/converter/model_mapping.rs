@@ -117,10 +117,7 @@ impl ModelMapping {
         }
     }
 
-    fn add_group(
-        entries: &mut HashMap<String, HashMap<String, String>>,
-        group: &[(&str, &str)],
-    ) {
+    fn add_group(entries: &mut HashMap<String, HashMap<String, String>>, group: &[(&str, &str)]) {
         // For every model in the group, create entries mapping to every
         // other vendor's model.  First-write wins so earlier groups
         // have higher priority.
@@ -169,7 +166,10 @@ mod tests {
     fn set_and_get_custom_mapping() {
         let mut mm = ModelMapping::new();
         mm.set_mapping("my-model", "openai", "gpt-4o");
-        assert_eq!(mm.map_model("my-model", "openai").as_deref(), Some("gpt-4o"));
+        assert_eq!(
+            mm.map_model("my-model", "openai").as_deref(),
+            Some("gpt-4o")
+        );
     }
 
     #[test]

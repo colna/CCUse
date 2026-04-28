@@ -80,8 +80,8 @@ impl AnthropicConverter {
                 Some("tool_use") => {
                     let id = block["id"].as_str().unwrap_or_default().to_string();
                     let name = block["name"].as_str().unwrap_or_default().to_string();
-                    let arguments = serde_json::to_string(&block["input"])
-                        .unwrap_or_else(|_| "{}".into());
+                    let arguments =
+                        serde_json::to_string(&block["input"]).unwrap_or_else(|_| "{}".into());
                     parts.push(ContentPart::ToolCall(ToolCall {
                         id,
                         name,
@@ -137,8 +137,7 @@ impl AnthropicConverter {
                     })
                 }
                 ContentPart::ToolCall(tc) => {
-                    let input: Value =
-                        serde_json::from_str(&tc.arguments).unwrap_or(json!({}));
+                    let input: Value = serde_json::from_str(&tc.arguments).unwrap_or(json!({}));
                     json!({
                         "type": "tool_use",
                         "id": tc.id,
@@ -429,10 +428,7 @@ impl FormatConverter for AnthropicConverter {
         let id = body["id"].as_str().unwrap_or("").to_string();
         let model = body["model"].as_str().unwrap_or("").to_string();
 
-        let content_blocks = body["content"]
-            .as_array()
-            .cloned()
-            .unwrap_or_default();
+        let content_blocks = body["content"].as_array().cloned().unwrap_or_default();
         let parts = Self::parse_content_blocks(&content_blocks);
 
         let finish_reason = body["stop_reason"]
@@ -468,9 +464,10 @@ impl FormatConverter for AnthropicConverter {
     }
 
     fn unified_to_response(&self, resp: &UnifiedResponse) -> Result<Value, ConvertError> {
-        let choice = resp.choices.first().ok_or_else(|| {
-            ConvertError::MissingField("choices".into())
-        })?;
+        let choice = resp
+            .choices
+            .first()
+            .ok_or_else(|| ConvertError::MissingField("choices".into()))?;
 
         let content = Self::content_parts_to_blocks(&choice.message.content);
 
@@ -745,9 +742,7 @@ mod tests {
     #[test]
     fn stream_message_stop_returns_none() {
         let data = json!({"type": "message_stop"});
-        let result = converter()
-            .parse_stream_chunk(&data.to_string())
-            .unwrap();
+        let result = converter().parse_stream_chunk(&data.to_string()).unwrap();
         assert!(result.is_none());
     }
 

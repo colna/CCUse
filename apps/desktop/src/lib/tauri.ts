@@ -13,11 +13,14 @@ export interface LocalApiConfig {
  * T1.0.2.19's `add_provider` Tauri command. */
 export interface ProviderInput {
   name: string;
-  kind: "openai" | "anthropic" | "gemini" | "custom";
+  kind: "openai" | "anthropic" | "gemini" | "relay" | "custom";
   base_url: string;
   api_key: string;
   priority: number;
   enabled: boolean;
+  monthly_quota?: number | null;
+  rate_limit_rpm?: number | null;
+  cost_per_1k_tokens?: number | null;
 }
 
 /** Persisted provider returned by `list_providers` / `add_provider`. */
@@ -28,6 +31,9 @@ export interface Provider {
   base_url: string;
   priority: number;
   enabled: boolean;
+  monthly_quota?: number | null;
+  rate_limit_rpm?: number | null;
+  cost_per_1k_tokens?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -170,6 +176,51 @@ export async function regenerateApiKey(): Promise<LocalApiConfig> {
 
 export async function restartProxy(): Promise<LocalApiConfig> {
   return invoke<LocalApiConfig>("restart_proxy");
+}
+
+// ─── Connection Test (T1.0.4.05) ─────────────────────────────
+
+export async function testProviderConnection(id: string): Promise<number> {
+  return invoke<number>("test_provider_connection", { id });
+}
+
+// ─── Metrics & Timeline (T1.0.4.10-13) ──────────────────────
+
+export interface MetricsBucket {
+  timestamp: string;
+  success_rate: number;
+  avg_latency_ms: number;
+  p95_latency_ms: number;
+  request_count: number;
+}
+
+export interface ProviderCostSummary {
+  provider_id: string;
+  provider_name: string;
+  total_cost: number;
+  request_count: number;
+}
+
+export interface SwitchEvent {
+  id: string;
+  timestamp: string;
+  from_provider: string;
+  to_provider: string;
+  strategy: string;
+  reason: string;
+  details?: string | null;
+}
+
+export async function getMetricsTimeseries(): Promise<MetricsBucket[]> {
+  return invoke<MetricsBucket[]>("get_metrics_timeseries");
+}
+
+export async function getProviderCostSummary(): Promise<ProviderCostSummary[]> {
+  return invoke<ProviderCostSummary[]>("get_provider_cost_summary");
+}
+
+export async function getSwitchTimeline(): Promise<SwitchEvent[]> {
+  return invoke<SwitchEvent[]>("get_switch_timeline");
 }
 
 /** Copy text to the system clipboard.

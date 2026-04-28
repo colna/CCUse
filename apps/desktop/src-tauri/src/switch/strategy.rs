@@ -91,21 +91,14 @@ pub fn select(
 
 /// T1.0.2.10: pick the provider with the lowest `priority` value.
 fn select_priority(candidates: &[Arc<ProviderWrapper>]) -> Option<Arc<ProviderWrapper>> {
-    candidates
-        .iter()
-        .min_by_key(|p| p.get_priority())
-        .cloned()
+    candidates.iter().min_by_key(|p| p.get_priority()).cloned()
 }
 
 /// T1.0.2.11: pick the provider with the lowest rolling response time.
 fn select_fastest(candidates: &[Arc<ProviderWrapper>]) -> Option<Arc<ProviderWrapper>> {
     candidates
         .iter()
-        .filter_map(|p| {
-            p.state
-                .rolling_response_us()
-                .map(|us| (p.clone(), us))
-        })
+        .filter_map(|p| p.state.rolling_response_us().map(|us| (p.clone(), us)))
         .min_by_key(|(_, us)| *us)
         .map(|(p, _)| p)
         .or_else(|| candidates.first().cloned()) // fallback if no data
@@ -115,9 +108,7 @@ fn select_fastest(candidates: &[Arc<ProviderWrapper>]) -> Option<Arc<ProviderWra
 fn select_cost(candidates: &[Arc<ProviderWrapper>]) -> Option<Arc<ProviderWrapper>> {
     candidates
         .iter()
-        .filter_map(|p| {
-            p.get_cost_per_token().map(|c| (p.clone(), c))
-        })
+        .filter_map(|p| p.get_cost_per_token().map(|c| (p.clone(), c)))
         .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
         .map(|(p, _)| p)
         .or_else(|| candidates.first().cloned()) // fallback if no cost data
@@ -156,13 +147,23 @@ fn select_smart(
         })
         .collect();
 
-    let max_rt = metrics.iter().map(|(_, rt, _, _)| *rt).max().unwrap_or(1).max(1);
+    let max_rt = metrics
+        .iter()
+        .map(|(_, rt, _, _)| *rt)
+        .max()
+        .unwrap_or(1)
+        .max(1);
     let max_cost = metrics
         .iter()
         .map(|(_, _, c, _)| *c)
         .fold(f64::MIN, f64::max)
         .max(f64::MIN_POSITIVE);
-    let max_prio = metrics.iter().map(|(_, _, _, p)| *p).max().unwrap_or(1).max(1);
+    let max_prio = metrics
+        .iter()
+        .map(|(_, _, _, p)| *p)
+        .max()
+        .unwrap_or(1)
+        .max(1);
 
     metrics
         .into_iter()

@@ -58,13 +58,9 @@ impl ProviderManager {
             let api_key = repo.get_decrypted_api_key(&p.id)?;
             let inner = build_runtime_provider(&p.id, &p.name, p.kind, &p.base_url, &api_key)?;
             wrappers.push(Arc::new(ProviderWrapper::new(
-                &p.id,
-                &p.name,
-                p.kind,
-                p.priority,
+                &p.id, &p.name, p.kind, p.priority,
                 None, // cost_per_token — not persisted yet
-                p.enabled,
-                inner,
+                p.enabled, inner,
             )));
         }
         let count = wrappers.len();
@@ -148,7 +144,7 @@ fn build_runtime_provider(
         ProviderKind::Openai | ProviderKind::Custom => {
             Ok(Box::new(OpenAIProvider::new(id, name, base_url, api_key)?))
         }
-        ProviderKind::Anthropic | ProviderKind::Gemini => {
+        ProviderKind::Anthropic | ProviderKind::Gemini | ProviderKind::Relay => {
             // T1.0.3 will add AnthropicProvider / GeminiProvider.
             // Until then, fall back to the OpenAI-compatible path —
             // users who add these kinds will get a best-effort proxy

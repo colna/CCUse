@@ -61,8 +61,7 @@ pub struct SwitchEngine {
 
 impl std::fmt::Debug for SwitchEngine {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("SwitchEngine")
-            .finish_non_exhaustive()
+        f.debug_struct("SwitchEngine").finish_non_exhaustive()
     }
 }
 
@@ -155,9 +154,8 @@ impl SwitchEngine {
             }
         }
 
-        Err(last_error.unwrap_or_else(|| {
-            ProviderError::BadRequest("all providers exhausted".into())
-        }))
+        Err(last_error
+            .unwrap_or_else(|| ProviderError::BadRequest("all providers exhausted".into())))
     }
 
     /// Dispatch a streaming request with failover. Retry only
@@ -213,9 +211,8 @@ impl SwitchEngine {
             }
         }
 
-        Err(last_error.unwrap_or_else(|| {
-            ProviderError::BadRequest("all providers exhausted".into())
-        }))
+        Err(last_error
+            .unwrap_or_else(|| ProviderError::BadRequest("all providers exhausted".into())))
     }
 }
 
@@ -252,9 +249,7 @@ fn select_excluding(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::providers::api::{
-        ApiChoice, ApiRequest, ApiUsage, ChatMessage, StreamChunk,
-    };
+    use crate::providers::api::{ApiChoice, ApiRequest, ApiUsage, ChatMessage, StreamChunk};
     use crate::providers::model::ProviderKind;
     use async_trait::async_trait;
     use futures::stream;
@@ -270,11 +265,21 @@ mod tests {
 
     #[async_trait]
     impl ProviderTrait for MockDispatchProvider {
-        fn id(&self) -> &str { &self.id }
-        fn name(&self) -> &str { &self.id }
-        fn get_priority(&self) -> i32 { 100 }
-        fn get_cost_per_token(&self) -> Option<f64> { None }
-        fn get_quota_remaining(&self) -> Option<u64> { None }
+        fn id(&self) -> &str {
+            &self.id
+        }
+        fn name(&self) -> &str {
+            &self.id
+        }
+        fn get_priority(&self) -> i32 {
+            100
+        }
+        fn get_cost_per_token(&self) -> Option<f64> {
+            None
+        }
+        fn get_quota_remaining(&self) -> Option<u64> {
+            None
+        }
         async fn health_check(&self) -> Result<HealthStatus, ProviderError> {
             Ok(HealthStatus::Healthy)
         }
@@ -286,21 +291,38 @@ mod tests {
                     model: "m".into(),
                     choices: vec![ApiChoice {
                         index: 0,
-                        message: ChatMessage { role: "assistant".into(), content: "ok".into() },
+                        message: ChatMessage {
+                            role: "assistant".into(),
+                            content: "ok".into(),
+                        },
                         finish_reason: Some("stop".into()),
                     }],
-                    usage: Some(ApiUsage { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }),
+                    usage: Some(ApiUsage {
+                        prompt_tokens: 1,
+                        completion_tokens: 1,
+                        total_tokens: 2,
+                    }),
                 })
             } else {
-                Err(ProviderError::Upstream { status: 500, body: "mock 500".into() })
+                Err(ProviderError::Upstream {
+                    status: 500,
+                    body: "mock 500".into(),
+                })
             }
         }
-        async fn send_stream_request(&self, _: ApiRequest) -> Result<StreamingResponse, ProviderError> {
+        async fn send_stream_request(
+            &self,
+            _: ApiRequest,
+        ) -> Result<StreamingResponse, ProviderError> {
             self.call_count.fetch_add(1, AtomicOrdering::Relaxed);
             if self.should_succeed.load(AtomicOrdering::Relaxed) {
-                Ok(Box::pin(stream::empty()) as Pin<Box<dyn futures::Stream<Item = StreamChunk> + Send>>)
+                Ok(Box::pin(stream::empty())
+                    as Pin<Box<dyn futures::Stream<Item = StreamChunk> + Send>>)
             } else {
-                Err(ProviderError::Upstream { status: 502, body: "mock 502".into() })
+                Err(ProviderError::Upstream {
+                    status: 502,
+                    body: "mock 502".into(),
+                })
             }
         }
     }
@@ -308,7 +330,10 @@ mod tests {
     fn sample_request() -> ApiRequest {
         ApiRequest {
             model: "m".into(),
-            messages: vec![ChatMessage { role: "user".into(), content: "hi".into() }],
+            messages: vec![ChatMessage {
+                role: "user".into(),
+                content: "hi".into(),
+            }],
             temperature: None,
             max_tokens: None,
             stream: false,
@@ -326,7 +351,12 @@ mod tests {
                 call_count: Arc::clone(&count),
             };
             let wrapper = Arc::new(ProviderWrapper::new(
-                &id, &id, ProviderKind::Openai, 10, None, true,
+                &id,
+                &id,
+                ProviderKind::Openai,
+                10,
+                None,
+                true,
                 Box::new(mock),
             ));
             mgr.add(wrapper).await.unwrap();
@@ -346,10 +376,7 @@ mod tests {
 
     #[tokio::test]
     async fn dispatch_fails_over_to_next_provider() {
-        let (engine, counters) = make_engine(vec![
-            ("p1".into(), false),
-            ("p2".into(), true),
-        ]).await;
+        let (engine, counters) = make_engine(vec![("p1".into(), false), ("p2".into(), true)]).await;
         let result = engine.dispatch(sample_request()).await.unwrap();
         assert_eq!(result.provider_id, "p2");
         assert_eq!(result.attempts, 2);
@@ -359,10 +386,7 @@ mod tests {
 
     #[tokio::test]
     async fn dispatch_all_fail_returns_last_error() {
-        let (engine, _) = make_engine(vec![
-            ("p1".into(), false),
-            ("p2".into(), false),
-        ]).await;
+        let (engine, _) = make_engine(vec![("p1".into(), false), ("p2".into(), false)]).await;
         let err = engine.dispatch(sample_request()).await.unwrap_err();
         assert!(err.is_retriable());
     }
@@ -393,10 +417,7 @@ mod tests {
 
     #[tokio::test]
     async fn failover_marks_degraded() {
-        let (engine, _) = make_engine(vec![
-            ("p1".into(), false),
-            ("p2".into(), true),
-        ]).await;
+        let (engine, _) = make_engine(vec![("p1".into(), false), ("p2".into(), true)]).await;
         engine.dispatch(sample_request()).await.unwrap();
         // p1 should have been marked Degraded
         let p1 = engine.manager.get("p1").await.unwrap();

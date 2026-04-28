@@ -7,7 +7,7 @@ pub mod checker;
 pub mod sliding_window;
 
 pub use checker::{
-    HealthChangedEvent, HealthChecker, HealthSnapshot, DEFAULT_CHECK_INTERVAL,
-    DEFAULT_WINDOW_SIZE, DEGRADED_THRESHOLD, DOWN_THRESHOLD,
+    HealthChangedEvent, HealthChecker, HealthSnapshot, DEFAULT_CHECK_INTERVAL, DEFAULT_WINDOW_SIZE,
+    DEGRADED_THRESHOLD, DOWN_THRESHOLD,
 };
 pub use sliding_window::SlidingWindow;

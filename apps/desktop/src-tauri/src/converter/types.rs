@@ -20,8 +20,7 @@ pub fn json_u32(val: &serde_json::Value) -> u32 {
 /// Safely extract an `Option<u32>` from a JSON value.
 #[must_use]
 pub fn json_opt_u32(val: &serde_json::Value) -> Option<u32> {
-    val.as_u64()
-        .map(|v| u32::try_from(v).unwrap_or(u32::MAX))
+    val.as_u64().map(|v| u32::try_from(v).unwrap_or(u32::MAX))
 }
 
 /// Safely extract an `Option<f32>` from a JSON value.
@@ -115,9 +114,7 @@ impl UnifiedMessage {
     pub fn text(role: Role, text: impl Into<String>) -> Self {
         Self {
             role,
-            content: vec![ContentPart::Text {
-                text: text.into(),
-            }],
+            content: vec![ContentPart::Text { text: text.into() }],
             name: None,
         }
     }

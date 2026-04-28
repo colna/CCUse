@@ -267,7 +267,11 @@ mod tests {
     #[test]
     fn provider_trait_with_new_getters_remains_object_safe() {
         fn _uses_getters(p: &dyn Provider) -> (i32, Option<f64>, Option<u64>) {
-            (p.get_priority(), p.get_cost_per_token(), p.get_quota_remaining())
+            (
+                p.get_priority(),
+                p.get_cost_per_token(),
+                p.get_quota_remaining(),
+            )
         }
     }
 }
