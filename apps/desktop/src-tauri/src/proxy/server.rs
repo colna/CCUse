@@ -29,8 +29,10 @@ use crate::db::Database;
 use crate::providers::ProviderManager;
 use crate::switch::request_log::{RequestLogInput, RequestLogRepository};
 
-use super::bridge;
+use crate::providers::api::ApiRequest;
+
 use super::error::{ApiError, ApiErrorKind};
+use super::{bridge, sse};
 
 /// Errors raised while binding or running the proxy server.
 #[derive(thiserror::Error, Debug)]
@@ -299,14 +301,12 @@ async fn chat_completions(
 
     let unified: UnifiedRequest = state.openai_converter.request_to_unified(&body_json)?;
 
+    let api_req = bridge::unified_to_api_request(&unified);
+
     if unified.stream {
-        // T1.0.6.06 will handle streaming
-        return Err(ApiError::bad_request(
-            "Streaming not yet implemented. Set stream=false.",
-        ));
+        return handle_streaming_chat(state, api_req).await;
     }
 
-    let api_req = bridge::unified_to_api_request(&unified);
     let start = std::time::Instant::now();
 
     let result = state
@@ -348,6 +348,45 @@ async fn chat_completions(
     let unified_resp = bridge::api_response_to_unified(&result.response);
     let out = state.openai_converter.unified_to_response(&unified_resp)?;
     Ok(Json(out).into_response())
+}
+
+/// Streaming path for `chat_completions`. All providers currently
+/// speak OpenAI-format SSE, so we forward the byte stream verbatim
+/// with keep-alive injected. Usage-based logging is skipped because
+/// token counts are not available until the stream ends — the
+/// non-streaming path handles that.
+async fn handle_streaming_chat(
+    state: ProxyAppState,
+    api_req: ApiRequest,
+) -> Result<axum::response::Response, ApiError> {
+    let start = std::time::Instant::now();
+
+    let result = state
+        .engine
+        .dispatch_stream(api_req.clone())
+        .await
+        .map_err(ApiError::from)?;
+
+    let elapsed = start.elapsed();
+
+    // Log the stream initiation (tokens unknown until stream ends).
+    if let Some(ref log_repo) = state.request_log {
+        let input = RequestLogInput {
+            provider_id: result.provider_id.clone(),
+            model: api_req.model.clone(),
+            status: "ok".into(),
+            error_kind: None,
+            latency_ms: i64::try_from(elapsed.as_millis()).unwrap_or(i64::MAX),
+            prompt_tokens: None,
+            completion_tokens: None,
+            total_tokens: None,
+            stream: true,
+        };
+        let _ = log_repo.insert(&input);
+    }
+
+    let stream = sse::with_keep_alive(result.response, sse::DEFAULT_KEEP_ALIVE);
+    Ok(sse::stream_to_sse_response(stream))
 }
 
 /// `POST /v1/messages` — Anthropic-format inbound. Stub until
