@@ -11,7 +11,7 @@ use std::sync::Arc;
 use axum::extract::State;
 use axum::http::header::{AUTHORIZATION, CONTENT_TYPE};
 use axum::http::{HeaderName, Method};
-use axum::response::Json;
+use axum::response::{IntoResponse, Json};
 use axum::routing::{get, post};
 use axum::Router;
 use serde_json::{json, Value};
@@ -22,10 +22,15 @@ use tower_http::cors::{AllowOrigin, CorsLayer};
 use crate::auth::{require_local_api_key, KeyStore};
 use crate::commands::model_mapping::ModelMappingHandle;
 use crate::commands::switch::SwitchEngineHandle;
-use crate::converter::ModelMapping;
+use crate::converter::{
+    AnthropicConverter, FormatConverter, ModelMapping, OpenAIConverter, UnifiedRequest,
+};
+use crate::db::Database;
 use crate::providers::ProviderManager;
+use crate::switch::request_log::{RequestLogInput, RequestLogRepository};
 
-use super::error::ApiError;
+use super::bridge;
+use super::error::{ApiError, ApiErrorKind};
 
 /// Errors raised while binding or running the proxy server.
 #[derive(thiserror::Error, Debug)]
@@ -75,6 +80,9 @@ pub struct ProxyAppState {
     pub engine: SwitchEngineHandle,
     pub model_mapping: ModelMappingHandle,
     pub manager: Arc<ProviderManager>,
+    pub request_log: Option<RequestLogRepository>,
+    pub openai_converter: OpenAIConverter,
+    pub anthropic_converter: AnthropicConverter,
 }
 
 impl ProxyAppState {
@@ -88,7 +96,17 @@ impl ProxyAppState {
             engine,
             model_mapping,
             manager,
+            request_log: None,
+            openai_converter: OpenAIConverter,
+            anthropic_converter: AnthropicConverter,
         }
+    }
+
+    /// Set the request log repository (requires database).
+    #[must_use]
+    pub fn with_request_log(mut self, db: Database) -> Self {
+        self.request_log = Some(RequestLogRepository::new(db));
+        self
     }
 }
 
@@ -261,10 +279,75 @@ async fn list_models(State(_state): State<ProxyAppState>) -> Json<Value> {
     }))
 }
 
-/// `POST /v1/chat/completions` — `OpenAI`-format inbound. Stub until
-/// T1.0.2.15 `SwitchEngine` `execute_request` is plumbed in.
-async fn chat_completions(State(_state): State<ProxyAppState>) -> Result<Json<Value>, ApiError> {
-    Err(ApiError::providers_not_configured())
+/// `POST /v1/chat/completions` — OpenAI-format inbound.
+///
+/// Flow: parse body → `OpenAIConverter::request_to_unified` → bridge →
+/// `SwitchEngine::dispatch` → bridge back → `OpenAIConverter::unified_to_response`.
+async fn chat_completions(
+    State(state): State<ProxyAppState>,
+    body: axum::body::Bytes,
+) -> Result<axum::response::Response, ApiError> {
+    if state.manager.is_empty().await {
+        return Err(ApiError::new(
+            ApiErrorKind::NoProvider,
+            "No providers configured. Add a provider in CCUse settings.",
+        ));
+    }
+
+    let body_json: Value =
+        serde_json::from_slice(&body).map_err(|e| ApiError::bad_request(e.to_string()))?;
+
+    let unified: UnifiedRequest = state.openai_converter.request_to_unified(&body_json)?;
+
+    if unified.stream {
+        // T1.0.6.06 will handle streaming
+        return Err(ApiError::bad_request(
+            "Streaming not yet implemented. Set stream=false.",
+        ));
+    }
+
+    let api_req = bridge::unified_to_api_request(&unified);
+    let start = std::time::Instant::now();
+
+    let result = state
+        .engine
+        .dispatch(api_req.clone())
+        .await
+        .map_err(ApiError::from)?;
+
+    let elapsed = start.elapsed();
+
+    // Fire-and-forget request logging
+    if let Some(ref log_repo) = state.request_log {
+        let input = RequestLogInput {
+            provider_id: result.provider_id.clone(),
+            model: api_req.model.clone(),
+            status: "ok".into(),
+            error_kind: None,
+            latency_ms: i64::try_from(elapsed.as_millis()).unwrap_or(i64::MAX),
+            prompt_tokens: result
+                .response
+                .usage
+                .as_ref()
+                .map(|u| i64::from(u.prompt_tokens)),
+            completion_tokens: result
+                .response
+                .usage
+                .as_ref()
+                .map(|u| i64::from(u.completion_tokens)),
+            total_tokens: result
+                .response
+                .usage
+                .as_ref()
+                .map(|u| i64::from(u.total_tokens)),
+            stream: false,
+        };
+        let _ = log_repo.insert(&input);
+    }
+
+    let unified_resp = bridge::api_response_to_unified(&result.response);
+    let out = state.openai_converter.unified_to_response(&unified_resp)?;
+    Ok(Json(out).into_response())
 }
 
 /// `POST /v1/messages` — Anthropic-format inbound. Stub until

@@ -4,6 +4,7 @@
 //! (`/v1/chat/completions`, `/v1/messages`, …) clients call into.
 //! Wired into the `Tauri` lifecycle in later phases (T1.0.1.12).
 
+pub mod bridge;
 pub mod error;
 pub mod runtime;
 pub mod server;

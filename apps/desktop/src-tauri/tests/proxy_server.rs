@@ -161,17 +161,17 @@ async fn list_models_returns_empty_data_array() {
 }
 
 #[tokio::test]
-async fn chat_completions_stub_returns_503_with_openai_shaped_error() {
+async fn chat_completions_returns_503_when_no_providers() {
     let (base, tx, handle) = start_test_server().await;
     let response = reqwest::Client::new()
         .post(format!("{base}/v1/chat/completions"))
-        .json(&serde_json::json!({"model": "gpt-4o", "messages": []}))
+        .json(&serde_json::json!({"model": "gpt-4o", "messages": [{"role": "user", "content": "hi"}]}))
         .send()
         .await
         .expect("chat completions request should reach the server");
     assert_eq!(response.status(), reqwest::StatusCode::SERVICE_UNAVAILABLE);
     let body: Value = response.json().await.expect("body decodes as JSON");
-    assert_eq!(body["error"]["type"], "providers_not_configured");
+    assert_eq!(body["error"]["type"], "no_provider_available");
     assert!(body["error"]["message"]
         .as_str()
         .is_some_and(|s| !s.is_empty()));
@@ -298,10 +298,10 @@ async fn auth_v1_chat_completions_accepts_bearer_authorization() {
         .send()
         .await
         .expect("request reaches server");
-    // Past the auth gate the handler is still the 503 stub.
+    // Past the auth gate the handler returns no_provider_available (no providers configured).
     assert_eq!(response.status(), reqwest::StatusCode::SERVICE_UNAVAILABLE);
     let body: Value = response.json().await.expect("body decodes");
-    assert_eq!(body["error"]["type"], "providers_not_configured");
+    assert_eq!(body["error"]["type"], "no_provider_available");
     shutdown_test_server(tx, handle).await;
 }
 
