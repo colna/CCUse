@@ -58,7 +58,7 @@ describe("LocalApiCard", () => {
     await screen.findByText("运行中");
     // Default: full key is NOT in the DOM, masked tail is.
     expect(screen.queryByText(SAMPLE.api_key)).not.toBeInTheDocument();
-    expect(screen.getByText(/••••••••CD12/)).toBeInTheDocument();
+    expect(screen.getByText("sk-local---------CD12")).toBeInTheDocument();
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "显示 API Key" }));
     expect(await screen.findByText(SAMPLE.api_key)).toBeInTheDocument();
@@ -84,7 +84,9 @@ describe("LocalApiCard", () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "轮换 Key" }));
     await waitFor(() => expect(regenerateApiKey).toHaveBeenCalledTimes(1));
-    expect(await screen.findByText(/••••••••ZZZZ/)).toBeInTheDocument();
+    expect(
+      await screen.findByText("sk-local---------ZZZZ"),
+    ).toBeInTheDocument();
   });
 
   it("renders stopped state when get_local_api_config rejects", async () => {
@@ -108,7 +110,9 @@ describe("LocalApiCard", () => {
       api_key: "sk-local-rrrrrrrrrrrrrrrrrrrrrrrrrrrrRRRR",
     };
     lastEventCallback?.(rotated);
-    expect(await screen.findByText(/••••••••RRRR/)).toBeInTheDocument();
+    expect(
+      await screen.findByText("sk-local---------RRRR"),
+    ).toBeInTheDocument();
   });
 
   it("calls restart_proxy and refreshes config", async () => {

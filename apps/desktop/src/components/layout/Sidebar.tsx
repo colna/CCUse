@@ -27,7 +27,7 @@ export function Sidebar() {
 
   return (
     <nav
-      aria-label={t("nav_dashboard")}
+      aria-label={t("nav_main")}
       className="flex h-full w-56 shrink-0 flex-col border-r border-border bg-card/40 px-3 py-6"
     >
       <p className="px-3 text-xs uppercase tracking-[0.18em] text-muted-foreground">

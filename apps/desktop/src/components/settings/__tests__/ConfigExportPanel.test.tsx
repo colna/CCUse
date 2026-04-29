@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+
+import i18n from "@/i18n";
+
 import { ConfigExportPanel } from "../ConfigExportPanel";
 
 vi.mock("@/lib/tauri", () => ({
@@ -37,7 +40,8 @@ vi.mock("@/lib/tauri", () => ({
 }));
 
 describe("ConfigExportPanel", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await i18n.changeLanguage("en");
     vi.clearAllMocks();
   });
 

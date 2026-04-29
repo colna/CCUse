@@ -53,6 +53,9 @@ describe("AddProviderForm", () => {
       api_key: "sk-real-1234",
       priority: 50,
       enabled: true,
+      monthly_quota: null,
+      rate_limit_rpm: null,
+      cost_per_1k_tokens: null,
     });
     expect(onAdded).toHaveBeenCalledWith(
       "11111111-2222-3333-4444-555555555555",
@@ -63,11 +66,12 @@ describe("AddProviderForm", () => {
   it("shows per-field errors when required values are missing", async () => {
     render(<AddProviderForm />);
     const user = userEvent.setup();
-    // Base URL has a default; clear it to surface the error.
-    await user.clear(screen.getByLabelText("Base URL"));
+    await user.click(screen.getByRole("button", { name: "Custom" }));
     await user.click(screen.getByRole("button", { name: "添加" }));
     expect(await screen.findByText("名称不能为空")).toBeInTheDocument();
-    expect(screen.getByText("Base URL 不能为空")).toBeInTheDocument();
+    expect(
+      screen.getByText("此类型供应商需要填写 Base URL"),
+    ).toBeInTheDocument();
     expect(screen.getByText("API Key 不能为空")).toBeInTheDocument();
     expect(addProvider).not.toHaveBeenCalled();
   });
@@ -81,7 +85,7 @@ describe("AddProviderForm", () => {
     await user.type(screen.getByLabelText("名称"), "X");
     await user.type(screen.getByLabelText("API Key"), "sk-x");
     await user.click(screen.getByRole("button", { name: "添加" }));
-    expect(await screen.findByText("Base URL 格式不合法")).toBeInTheDocument();
+    expect(await screen.findByText("Base URL 格式无效")).toBeInTheDocument();
     expect(addProvider).not.toHaveBeenCalled();
   });
 
@@ -94,7 +98,7 @@ describe("AddProviderForm", () => {
     await user.clear(priority);
     await user.type(priority, "9999");
     await user.click(screen.getByRole("button", { name: "添加" }));
-    expect(await screen.findByText(/优先级范围 1–1000/)).toBeInTheDocument();
+    expect(await screen.findByText("优先级范围为 1--1000")).toBeInTheDocument();
   });
 
   it("surfaces server errors thrown by addProvider", async () => {
