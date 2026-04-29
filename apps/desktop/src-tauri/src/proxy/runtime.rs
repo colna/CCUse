@@ -15,6 +15,7 @@ use crate::auth::{generate_local_api_key, key_store, KeyStore, LocalApiKey};
 use crate::commands::model_mapping::ModelMappingHandle;
 use crate::commands::switch::SwitchEngineHandle;
 use crate::converter::ModelMapping;
+use crate::db::Database;
 use crate::providers::ProviderManager;
 use crate::switch::SwitchEngine;
 
@@ -120,6 +121,26 @@ impl ProxyRuntime {
             fallback_attempts,
             state: ProxyAppState::new(engine, model_mapping, manager),
         }
+    }
+
+    #[must_use]
+    pub fn with_dependencies_and_request_log(
+        fallback_start: u16,
+        fallback_attempts: u16,
+        engine: SwitchEngineHandle,
+        model_mapping: ModelMappingHandle,
+        manager: Arc<ProviderManager>,
+        db: Database,
+    ) -> Self {
+        let mut runtime = Self::with_dependencies(
+            fallback_start,
+            fallback_attempts,
+            engine,
+            model_mapping,
+            manager,
+        );
+        runtime.state = runtime.state.with_request_log(db);
+        runtime
     }
 
     /// Start the proxy if it's not already running. Generates a fresh

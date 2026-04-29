@@ -39,19 +39,12 @@ pub fn run() {
     // Model mapping with defaults (T1.0.3.12).
     let model_mapping: ModelMappingHandle =
         Arc::new(tokio::sync::RwLock::new(converter::ModelMapping::new()));
-
-    let runtime: commands::RuntimeHandle = Arc::new(ProxyRuntime::with_dependencies(
-        proxy::DEFAULT_PROXY_PORT,
-        proxy::DEFAULT_PROXY_ATTEMPTS,
-        Arc::clone(&engine),
-        Arc::clone(&model_mapping),
-        Arc::clone(&manager),
-    ));
-    let startup = runtime.clone();
+    let runtime_engine = Arc::clone(&engine);
+    let runtime_mapping = Arc::clone(&model_mapping);
+    let runtime_manager = Arc::clone(&manager);
 
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
-        .manage(runtime)
         .manage(engine)
         .manage(checker)
         .manage(model_mapping)
@@ -108,9 +101,22 @@ pub fn run() {
                     .expect("failed to initialise master key"),
             );
             app.manage(database.clone());
-            let repo: ProviderRepoHandle =
-                Arc::new(providers::ProviderRepository::new(database, master_key));
+            let repo: ProviderRepoHandle = Arc::new(providers::ProviderRepository::new(
+                database.clone(),
+                master_key,
+            ));
             app.manage(Arc::clone(&repo));
+
+            let runtime: commands::RuntimeHandle =
+                Arc::new(ProxyRuntime::with_dependencies_and_request_log(
+                    proxy::DEFAULT_PROXY_PORT,
+                    proxy::DEFAULT_PROXY_ATTEMPTS,
+                    Arc::clone(&runtime_engine),
+                    Arc::clone(&runtime_mapping),
+                    Arc::clone(&runtime_manager),
+                    database,
+                ));
+            app.manage(Arc::clone(&runtime));
 
             // T1.0.6.04: hydrate ProviderManager from the DB before
             // accepting any /v1/* traffic; failure is logged and the
@@ -124,7 +130,6 @@ pub fn run() {
             // Boot the proxy on startup so the UI can read the config
             // immediately. Errors here are non-fatal; the UI surfaces
             // "not running" through `get_local_api_config`.
-            let runtime = startup.clone();
             tauri::async_runtime::spawn(async move {
                 if let Err(err) = runtime.start().await {
                     eprintln!("CCUse: proxy failed to start: {err}");

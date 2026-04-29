@@ -197,6 +197,7 @@ export interface MetricsBucket {
 export interface ProviderCostSummary {
   provider_id: string;
   provider_name: string;
+  total_tokens: number;
   total_cost: number;
   request_count: number;
 }

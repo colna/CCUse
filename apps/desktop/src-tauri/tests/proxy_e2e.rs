@@ -9,13 +9,16 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use ccuse_desktop_lib::converter::ModelMapping;
+use ccuse_desktop_lib::db::{open_database, run_migrations, Database};
 use ccuse_desktop_lib::providers::{
     HealthStatus, OpenAIProvider, ProviderKind, ProviderManager, ProviderWrapper,
 };
 use ccuse_desktop_lib::proxy::{ProxyAppState, ProxyServer, ServerError};
+use ccuse_desktop_lib::switch::request_log::RequestLogRepository;
 use ccuse_desktop_lib::switch::SwitchEngine;
 use reqwest::StatusCode;
 use serde_json::{json, Value};
+use tempfile::TempDir;
 use tokio::sync::{oneshot, RwLock};
 use tokio::task::JoinHandle;
 use wiremock::matchers::{method, path};
@@ -68,6 +71,21 @@ async fn start_proxy_with_providers_mapping_and_timeout(
     model_mapping: ModelMapping,
     non_streaming_timeout: Option<Duration>,
 ) -> RunningProxy {
+    start_proxy_with_providers_mapping_timeout_and_request_log(
+        specs,
+        model_mapping,
+        non_streaming_timeout,
+        None,
+    )
+    .await
+}
+
+async fn start_proxy_with_providers_mapping_timeout_and_request_log(
+    specs: &[ProviderSpec<'_>],
+    model_mapping: ModelMapping,
+    non_streaming_timeout: Option<Duration>,
+    request_log_db: Option<Database>,
+) -> RunningProxy {
     let manager = Arc::new(ProviderManager::new());
     for spec in specs {
         let provider = OpenAIProvider::with_options(
@@ -94,6 +112,9 @@ async fn start_proxy_with_providers_mapping_and_timeout(
     let engine = Arc::new(SwitchEngine::new(Arc::clone(&manager)));
     let mapping = Arc::new(RwLock::new(model_mapping));
     let mut state = ProxyAppState::new(engine, mapping, Arc::clone(&manager));
+    if let Some(db) = request_log_db {
+        state = state.with_request_log(db);
+    }
     if let Some(timeout) = non_streaming_timeout {
         state = state.with_non_streaming_timeout(timeout);
     }
@@ -225,6 +246,21 @@ fn openai_text_response(content: &str) -> Value {
         }],
         "usage": {"prompt_tokens": 4, "completion_tokens": 2, "total_tokens": 6}
     })
+}
+
+fn request_log_database_with_provider(provider_id: &str) -> (TempDir, Database) {
+    let dir = TempDir::new().expect("tempdir");
+    let db = open_database(dir.path().join("monitoring.db")).expect("open database");
+    run_migrations(&db).expect("run migrations");
+    db.with_connection(|conn| {
+        conn.execute(
+            "INSERT INTO providers (id, name, kind, base_url, encrypted_api_key, enabled) \
+             VALUES (?1, 'Monitoring Provider', 'openai', 'https://api.example.test', x'00', 1)",
+            rusqlite::params![provider_id],
+        )
+    })
+    .expect("seed provider row");
+    (dir, db)
 }
 
 fn models_response(ids: &[&str]) -> Value {
@@ -921,6 +957,50 @@ async fn chat_completions_dispatches_text_request_to_upstream() {
     assert_eq!(upstream_body["model"], "gpt-4o");
     assert_eq!(upstream_body["messages"][0]["content"], "ping");
     assert_eq!(upstream_body["stream"], false);
+
+    proxy.shutdown().await;
+}
+
+#[tokio::test]
+async fn chat_completions_writes_request_log_for_monitoring() {
+    let upstream = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(openai_text_response("logged")))
+        .expect(1)
+        .mount(&upstream)
+        .await;
+    let (_dir, db) = request_log_database_with_provider("monitor-provider");
+    let proxy = start_proxy_with_providers_mapping_timeout_and_request_log(
+        &[ProviderSpec {
+            id: "monitor-provider",
+            name: "Monitor Provider",
+            priority: 1,
+            server: &upstream,
+        }],
+        ModelMapping::new(),
+        None,
+        Some(db.clone()),
+    )
+    .await;
+
+    let response = reqwest::Client::new()
+        .post(format!("{}/v1/chat/completions", proxy.base_url))
+        .json(&chat_request(false))
+        .send()
+        .await
+        .expect("proxy request");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let logs = RequestLogRepository::new(db)
+        .list_recent(1)
+        .expect("request logs");
+    assert_eq!(logs.len(), 1);
+    assert_eq!(logs[0].provider_id, "monitor-provider");
+    assert_eq!(logs[0].model, "gpt-4o");
+    assert_eq!(logs[0].status, "ok");
+    assert_eq!(logs[0].total_tokens, Some(6));
+    assert!(!logs[0].stream);
 
     proxy.shutdown().await;
 }

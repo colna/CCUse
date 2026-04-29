@@ -11,8 +11,8 @@ use crate::db::Database;
 /// One time-bucket row for charts (5-minute buckets).
 #[derive(Debug, Clone, Serialize)]
 pub struct MetricsBucket {
-    pub bucket: String,
-    pub total_requests: i64,
+    pub timestamp: String,
+    pub request_count: i64,
     pub success_count: i64,
     pub success_rate: f64,
     pub avg_latency_ms: f64,
@@ -23,7 +23,9 @@ pub struct MetricsBucket {
 #[derive(Debug, Clone, Serialize)]
 pub struct ProviderCostSummary {
     pub provider_id: String,
+    pub provider_name: String,
     pub total_tokens: i64,
+    pub total_cost: f64,
     pub request_count: i64,
 }
 
@@ -42,6 +44,10 @@ pub struct SwitchEvent {
 /// Return 24h of metrics in 5-minute time buckets.
 #[tauri::command]
 pub async fn get_metrics_timeseries(db: State<'_, Database>) -> Result<Vec<MetricsBucket>, String> {
+    query_metrics_timeseries(&db)
+}
+
+pub fn query_metrics_timeseries(db: &Database) -> Result<Vec<MetricsBucket>, String> {
     db.with_connection(|conn| {
         let mut stmt = conn.prepare(
             "WITH buckets AS ( \
@@ -56,9 +62,9 @@ pub async fn get_metrics_timeseries(db: State<'_, Database>) -> Result<Vec<Metri
              ) \
              SELECT \
                bucket, \
-               COUNT(*) AS total_requests, \
+               COUNT(*) AS request_count, \
                SUM(CASE WHEN status = 'ok' THEN 1 ELSE 0 END) AS success_count, \
-               ROUND(100.0 * SUM(CASE WHEN status = 'ok' THEN 1 ELSE 0 END) / COUNT(*), 2) \
+               ROUND(1.0 * SUM(CASE WHEN status = 'ok' THEN 1 ELSE 0 END) / COUNT(*), 4) \
                  AS success_rate, \
                ROUND(AVG(latency_ms), 1) AS avg_latency_ms, \
                MAX(latency_ms) AS p95_latency_ms \
@@ -68,8 +74,8 @@ pub async fn get_metrics_timeseries(db: State<'_, Database>) -> Result<Vec<Metri
         )?;
         let rows = stmt.query_map([], |row| {
             Ok(MetricsBucket {
-                bucket: row.get(0)?,
-                total_requests: row.get(1)?,
+                timestamp: row.get(0)?,
+                request_count: row.get(1)?,
                 success_count: row.get(2)?,
                 success_rate: row.get(3)?,
                 avg_latency_ms: row.get(4)?,
@@ -86,21 +92,32 @@ pub async fn get_metrics_timeseries(db: State<'_, Database>) -> Result<Vec<Metri
 pub async fn get_provider_cost_summary(
     db: State<'_, Database>,
 ) -> Result<Vec<ProviderCostSummary>, String> {
+    query_provider_cost_summary(&db)
+}
+
+pub fn query_provider_cost_summary(db: &Database) -> Result<Vec<ProviderCostSummary>, String> {
     db.with_connection(|conn| {
         let mut stmt = conn.prepare(
-            "SELECT provider_id, \
+            "SELECT p.id, \
+                    p.name, \
                     COALESCE(SUM(total_tokens), 0) AS total_tokens, \
-                    COUNT(*) AS request_count \
+                    ROUND(COALESCE(SUM( \
+                        COALESCE(total_tokens, 0) * COALESCE(p.cost_per_1k_tokens, 0.0) / 1000.0 \
+                    ), 0.0), 6) AS total_cost, \
+                    COUNT(request_logs.id) AS request_count \
              FROM request_logs \
-             WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-24 hours') \
-             GROUP BY provider_id \
-             ORDER BY total_tokens DESC",
+             JOIN providers p ON p.id = request_logs.provider_id \
+             WHERE request_logs.timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-24 hours') \
+             GROUP BY p.id, p.name \
+             ORDER BY total_cost DESC, request_count DESC",
         )?;
         let rows = stmt.query_map([], |row| {
             Ok(ProviderCostSummary {
                 provider_id: row.get(0)?,
-                total_tokens: row.get(1)?,
-                request_count: row.get(2)?,
+                provider_name: row.get(1)?,
+                total_tokens: row.get(2)?,
+                total_cost: row.get(3)?,
+                request_count: row.get(4)?,
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>()
@@ -168,8 +185,8 @@ mod tests {
             for i in 0..5 {
                 c.execute(
                     "INSERT INTO request_logs \
-                     (provider_id, model, status, latency_ms, stream) \
-                     VALUES ('p1', 'gpt-4', ?1, ?2, 0)",
+                     (timestamp, provider_id, model, status, latency_ms, stream) \
+                     VALUES ('2026-04-29T12:00:00.000Z', 'p1', 'gpt-4', ?1, ?2, 0)",
                     rusqlite::params![if i < 4 { "ok" } else { "error" }, 100 + i * 10],
                 )?;
             }
@@ -183,18 +200,18 @@ mod tests {
                     "SELECT \
                        strftime('%Y-%m-%dT%H:', timestamp) || \
                          printf('%02d', (CAST(strftime('%M', timestamp) AS INTEGER) / 5) * 5) \
-                         || ':00Z' AS bucket, \
+                         || ':00Z' AS timestamp, \
                        COUNT(*), \
                        SUM(CASE WHEN status='ok' THEN 1 ELSE 0 END), \
-                       ROUND(100.0 * SUM(CASE WHEN status='ok' THEN 1 ELSE 0 END) / COUNT(*), 2), \
+                       ROUND(1.0 * SUM(CASE WHEN status='ok' THEN 1 ELSE 0 END) / COUNT(*), 4), \
                        ROUND(AVG(latency_ms), 1), \
                        MAX(latency_ms) \
-                     FROM request_logs GROUP BY bucket",
+                     FROM request_logs GROUP BY timestamp",
                 )?;
                 let rows = stmt.query_map([], |row| {
                     Ok(super::MetricsBucket {
-                        bucket: row.get(0)?,
-                        total_requests: row.get(1)?,
+                        timestamp: row.get(0)?,
+                        request_count: row.get(1)?,
                         success_count: row.get(2)?,
                         success_rate: row.get(3)?,
                         avg_latency_ms: row.get(4)?,
@@ -205,13 +222,26 @@ mod tests {
             })
             .expect("query");
         assert!(!buckets.is_empty());
-        assert_eq!(buckets[0].total_requests, 5);
+        assert_eq!(buckets[0].request_count, 5);
         assert_eq!(buckets[0].success_count, 4);
+        assert!((buckets[0].success_rate - 0.8).abs() < f64::EPSILON);
     }
 
     #[test]
     fn cost_summary_groups_by_provider() {
         let (_dir, db) = setup_db();
+        db.with_connection(|c| {
+            c.execute(
+                "UPDATE providers SET cost_per_1k_tokens=0.02 WHERE id='p1'",
+                [],
+            )?;
+            c.execute(
+                "UPDATE providers SET cost_per_1k_tokens=0.03 WHERE id='p2'",
+                [],
+            )?;
+            Ok(())
+        })
+        .expect("set costs");
         db.with_connection(|c| {
             c.execute(
                 "INSERT INTO request_logs \
@@ -232,14 +262,22 @@ mod tests {
         let summaries: Vec<super::ProviderCostSummary> = db
             .with_connection(|conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT provider_id, COALESCE(SUM(total_tokens), 0), COUNT(*) \
-                     FROM request_logs GROUP BY provider_id ORDER BY SUM(total_tokens) DESC",
+                    "SELECT p.id, p.name, COALESCE(SUM(total_tokens), 0), \
+                            ROUND(COALESCE(SUM( \
+                              COALESCE(total_tokens, 0) * COALESCE(p.cost_per_1k_tokens, 0.0) / 1000.0 \
+                            ), 0.0), 6), COUNT(request_logs.id) \
+                     FROM request_logs \
+                     JOIN providers p ON p.id = request_logs.provider_id \
+                     GROUP BY p.id, p.name \
+                     ORDER BY 4 DESC, 5 DESC",
                 )?;
                 let rows = stmt.query_map([], |row| {
                     Ok(super::ProviderCostSummary {
                         provider_id: row.get(0)?,
-                        total_tokens: row.get(1)?,
-                        request_count: row.get(2)?,
+                        provider_name: row.get(1)?,
+                        total_tokens: row.get(2)?,
+                        total_cost: row.get(3)?,
+                        request_count: row.get(4)?,
                     })
                 })?;
                 rows.collect::<Result<Vec<_>, _>>()
@@ -247,6 +285,8 @@ mod tests {
             .expect("query");
         assert_eq!(summaries.len(), 2);
         assert_eq!(summaries[0].provider_id, "p1");
+        assert_eq!(summaries[0].provider_name, "OpenAI");
+        assert!((summaries[0].total_cost - 0.01).abs() < f64::EPSILON);
     }
 
     #[test]
