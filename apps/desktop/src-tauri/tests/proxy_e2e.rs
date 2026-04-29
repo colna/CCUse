@@ -192,6 +192,16 @@ fn openai_text_response(content: &str) -> Value {
     })
 }
 
+fn models_response(ids: &[&str]) -> Value {
+    json!({
+        "object": "list",
+        "data": ids
+            .iter()
+            .map(|id| json!({"id": id, "object": "model"}))
+            .collect::<Vec<_>>(),
+    })
+}
+
 fn openai_text_response_with_finish_reason(content: &str, finish_reason: &str) -> Value {
     json!({
         "id": "chatcmpl-proxy-e2e",
@@ -241,6 +251,136 @@ fn assert_contains_in_order(body: &str, markers: &[&str]) {
             .unwrap_or_else(|| panic!("expected marker after byte {offset}: {marker}"));
         offset += found + marker.len();
     }
+}
+
+#[tokio::test]
+async fn models_aggregates_providers_with_namespaced_deduped_ids() {
+    let primary = MockServer::start().await;
+    let backup = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/models"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(models_response(&["gpt-4o", "gpt-4o"])),
+        )
+        .expect(1)
+        .mount(&primary)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/v1/models"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(models_response(&["gpt-4o"])))
+        .expect(1)
+        .mount(&backup)
+        .await;
+    let proxy = start_proxy_with_providers(&[
+        ProviderSpec {
+            id: "models-primary",
+            name: "Models Primary",
+            priority: 1,
+            server: &primary,
+        },
+        ProviderSpec {
+            id: "models-backup",
+            name: "Models Backup",
+            priority: 2,
+            server: &backup,
+        },
+    ])
+    .await;
+
+    let response = reqwest::get(format!("{}/v1/models", proxy.base_url))
+        .await
+        .expect("models request");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = response.json().await.expect("response json");
+    let ids = body["data"]
+        .as_array()
+        .expect("data array")
+        .iter()
+        .map(|model| model["id"].as_str().expect("id"))
+        .collect::<Vec<_>>();
+    assert_eq!(ids, vec!["models-primary::gpt-4o", "models-backup::gpt-4o"],);
+    assert_eq!(body["data"][0]["owned_by"], "models-primary");
+    assert_eq!(body["data"][1]["owned_by"], "models-backup");
+
+    proxy.shutdown().await;
+}
+
+#[tokio::test]
+async fn models_returns_partial_results_when_one_provider_fails() {
+    let failed = MockServer::start().await;
+    let healthy = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/models"))
+        .respond_with(ResponseTemplate::new(500).set_body_string("models unavailable"))
+        .expect(1)
+        .mount(&failed)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/v1/models"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(models_response(&["gpt-4o-mini"])))
+        .expect(1)
+        .mount(&healthy)
+        .await;
+    let proxy = start_proxy_with_providers(&[
+        ProviderSpec {
+            id: "models-failed",
+            name: "Models Failed",
+            priority: 1,
+            server: &failed,
+        },
+        ProviderSpec {
+            id: "models-healthy",
+            name: "Models Healthy",
+            priority: 2,
+            server: &healthy,
+        },
+    ])
+    .await;
+
+    let response = reqwest::get(format!("{}/v1/models", proxy.base_url))
+        .await
+        .expect("models request");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = response.json().await.expect("response json");
+    let data = body["data"].as_array().expect("data array");
+    assert_eq!(data.len(), 1);
+    assert_eq!(data[0]["id"], "models-healthy::gpt-4o-mini");
+
+    proxy.shutdown().await;
+}
+
+#[tokio::test]
+async fn models_returns_empty_list_when_upstream_has_no_models() {
+    let upstream = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/models"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(models_response(&[])))
+        .expect(1)
+        .mount(&upstream)
+        .await;
+    let proxy = start_proxy_with_providers(&[ProviderSpec {
+        id: "models-empty",
+        name: "Models Empty",
+        priority: 1,
+        server: &upstream,
+    }])
+    .await;
+
+    let response = reqwest::get(format!("{}/v1/models", proxy.base_url))
+        .await
+        .expect("models request");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = response.json().await.expect("response json");
+    assert_eq!(body["object"], "list");
+    assert!(
+        body["data"].as_array().is_some_and(Vec::is_empty),
+        "empty upstream model list should stay an empty data array",
+    );
+
+    proxy.shutdown().await;
 }
 
 #[tokio::test]
