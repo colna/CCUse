@@ -2,7 +2,7 @@ name: Release
 
 # 触发：main 分支推送
 # 行为：
-#   1. 读取 src-tauri/tauri.conf.json 的 version
+#   1. 读取 apps/desktop/src-tauri/tauri.conf.json 的 version
 #   2. 若该版本对应的 tag (v<version>) 不存在 —— 自动打 tag、构建三平台产物、发布 GitHub Release
 #   3. 若 tag 已存在 —— 跳过（说明本次 push 没有版本变更）
 #
@@ -43,9 +43,9 @@ jobs:
       - name: Read version from tauri.conf.json
         id: read
         run: |
-          VERSION=$(jq -r '.version' src-tauri/tauri.conf.json)
+          VERSION=$(jq -r '.version' apps/desktop/src-tauri/tauri.conf.json)
           if [ -z "$VERSION" ] || [ "$VERSION" = "null" ]; then
-            echo "::error::version not found in src-tauri/tauri.conf.json"
+            echo "::error::version not found in apps/desktop/src-tauri/tauri.conf.json"
             exit 1
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
@@ -146,7 +146,7 @@ jobs:
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
+          workspaces: apps/desktop/src-tauri
 
       # Linux 才需要的 GTK / WebKit 依赖此处用不上（matrix 不含 linux）
 
@@ -185,4 +185,5 @@ jobs:
           releaseDraft: false
           # 0.x.y → pre-release；1.0.0 起转为正式 release
           prerelease: ${{ needs.check-version.outputs.is_prerelease == 'true' }}
+          projectPath: apps/desktop
           args: ${{ matrix.args }}
