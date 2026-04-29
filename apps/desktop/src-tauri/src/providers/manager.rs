@@ -4,6 +4,7 @@
 //! and iteration. The `SwitchEngine` (T1.0.2.09+) and `HealthChecker`
 //! (T1.0.2.04) both hold a reference to the manager.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use tokio::sync::RwLock;
@@ -12,7 +13,7 @@ use super::api::{Provider as ProviderTrait, ProviderError};
 use super::model::ProviderKind;
 use super::openai::OpenAIProvider;
 use super::repository::ProviderRepository;
-use super::wrapper::ProviderWrapper;
+use super::wrapper::{ProviderWrapper, RuntimeState};
 
 /// Errors specific to [`ProviderManager`] operations.
 #[derive(thiserror::Error, Debug)]
@@ -52,17 +53,29 @@ impl ProviderManager {
         &self,
         repo: &ProviderRepository,
     ) -> Result<usize, ManagerError> {
-        let db_providers = repo.list()?;
-        let mut wrappers = Vec::with_capacity(db_providers.len());
-        for p in &db_providers {
-            let api_key = repo.get_decrypted_api_key(&p.id)?;
-            let inner = build_runtime_provider(&p.id, &p.name, p.kind, &p.base_url, &api_key)?;
-            wrappers.push(Arc::new(ProviderWrapper::new(
-                &p.id, &p.name, p.kind, p.priority,
-                None, // cost_per_token — not persisted yet
-                p.enabled, inner,
-            )));
-        }
+        let wrappers = build_wrappers_from_repository(repo, &HashMap::new())?;
+        let count = wrappers.len();
+        *self.providers.write().await = wrappers;
+        Ok(count)
+    }
+
+    /// Reload providers from the repository while preserving runtime
+    /// state for entries whose id still exists. The database read and
+    /// provider construction happen before the write lock, so a failed
+    /// reload leaves the current registry untouched.
+    pub async fn reload_from_repository(
+        &self,
+        repo: &ProviderRepository,
+    ) -> Result<usize, ManagerError> {
+        let existing_states = {
+            let guard = self.providers.read().await;
+            guard
+                .iter()
+                .map(|wrapper| (wrapper.id().to_owned(), wrapper.runtime_state()))
+                .collect::<HashMap<_, _>>()
+        };
+
+        let wrappers = build_wrappers_from_repository(repo, &existing_states)?;
         let count = wrappers.len();
         *self.providers.write().await = wrappers;
         Ok(count)
@@ -154,10 +167,57 @@ fn build_runtime_provider(
     }
 }
 
+fn build_wrappers_from_repository(
+    repo: &ProviderRepository,
+    existing_states: &HashMap<String, Arc<RuntimeState>>,
+) -> Result<Vec<Arc<ProviderWrapper>>, ManagerError> {
+    let db_providers = repo.list()?;
+    let mut wrappers = Vec::with_capacity(db_providers.len());
+    for p in &db_providers {
+        let api_key = repo.get_decrypted_api_key(&p.id)?;
+        let inner = build_runtime_provider(&p.id, &p.name, p.kind, &p.base_url, &api_key)?;
+        let state = existing_states
+            .get(&p.id)
+            .cloned()
+            .unwrap_or_else(|| Arc::new(RuntimeState::new()));
+        wrappers.push(Arc::new(ProviderWrapper::new_with_state(
+            &p.id, &p.name, p.kind, p.priority, None, // cost_per_token — not persisted yet
+            p.enabled, inner, state,
+        )));
+    }
+    Ok(wrappers)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::providers::api::Provider as RuntimeProviderTrait;
+    use crate::crypto::MasterKey;
+    use crate::db::{open_database, run_migrations};
+    use crate::providers::api::{HealthStatus, Provider as RuntimeProviderTrait};
+    use crate::providers::model::ProviderInput;
+    use tempfile::TempDir;
+
+    fn fresh_repo() -> (TempDir, ProviderRepository) {
+        let dir = TempDir::new().expect("tempdir");
+        let db = open_database(dir.path().join("ccuse.db")).expect("open ok");
+        run_migrations(&db).expect("migrate ok");
+        let key = Arc::new(MasterKey::generate().expect("rng"));
+        (dir, ProviderRepository::new(db, key))
+    }
+
+    fn sample_input() -> ProviderInput {
+        ProviderInput {
+            name: "Work OpenAI".to_owned(),
+            kind: ProviderKind::Openai,
+            base_url: "https://api.openai.com".to_owned(),
+            api_key: "sk-real-secret-1234".to_owned(),
+            priority: 50,
+            enabled: true,
+            monthly_quota: None,
+            rate_limit_rpm: None,
+            cost_per_1k_tokens: None,
+        }
+    }
 
     /// Build a wrapper from mock data (no DB, no real HTTP client).
     fn mock_wrapper(id: &str, priority: i32, enabled: bool) -> Arc<ProviderWrapper> {
@@ -258,5 +318,33 @@ mod tests {
             let p = build_runtime_provider("id", "n", kind, "https://api", "sk-key");
             assert!(p.is_ok(), "kind {kind:?} must build successfully");
         }
+    }
+
+    #[tokio::test]
+    async fn reload_from_repository_preserves_runtime_state_for_existing_provider() {
+        let (_dir, repo) = fresh_repo();
+        let saved = repo.add(&sample_input()).expect("add provider");
+        let mgr = ProviderManager::new();
+        mgr.load_from_repository(&repo).await.expect("initial load");
+        let before = mgr.get(&saved.id).await.expect("loaded provider");
+        before.state.set_health(HealthStatus::Degraded).await;
+
+        let updated = ProviderInput {
+            name: "Renamed OpenAI".into(),
+            priority: 5,
+            ..sample_input()
+        };
+        repo.update(&saved.id, &updated).expect("update provider");
+
+        let count = mgr
+            .reload_from_repository(&repo)
+            .await
+            .expect("reload providers");
+
+        assert_eq!(count, 1);
+        let after = mgr.get(&saved.id).await.expect("reloaded provider");
+        assert_eq!(after.name(), "Renamed OpenAI");
+        assert_eq!(after.get_priority(), 5);
+        assert_eq!(after.state.health().await, HealthStatus::Degraded);
     }
 }

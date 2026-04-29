@@ -30,7 +30,7 @@ pub struct RuntimeState {
 }
 
 impl RuntimeState {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             health: RwLock::new(HealthStatus::Healthy),
             rolling_response_us: AtomicI64::new(-1),
@@ -132,6 +132,34 @@ impl ProviderWrapper {
         enabled: bool,
         inner: Box<dyn Provider>,
     ) -> Self {
+        Self::new_with_state(
+            id,
+            name,
+            kind,
+            priority,
+            cost_per_token,
+            enabled,
+            inner,
+            Arc::new(RuntimeState::new()),
+        )
+    }
+
+    /// Construct with an existing runtime state handle. Used by
+    /// hot-reload so health and rolling latency survive config reloads.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "mirrors ProviderWrapper::new and adds only the reused RuntimeState"
+    )]
+    pub fn new_with_state(
+        id: impl Into<String>,
+        name: impl Into<String>,
+        kind: ProviderKind,
+        priority: i32,
+        cost_per_token: Option<f64>,
+        enabled: bool,
+        inner: Box<dyn Provider>,
+        state: Arc<RuntimeState>,
+    ) -> Self {
         Self {
             id: id.into(),
             name: name.into(),
@@ -140,7 +168,7 @@ impl ProviderWrapper {
             cost_per_token,
             enabled,
             inner,
-            state: Arc::new(RuntimeState::new()),
+            state,
         }
     }
 
