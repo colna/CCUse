@@ -3,6 +3,7 @@
 const USER_MANUAL: &str = include_str!("../../../../docs/user-manual.md");
 const README: &str = include_str!("../../../../README.md");
 const TASK_REPORT: &str = include_str!("../../../../docs/任务报告.md");
+const CHANGELOG: &str = include_str!("../../../../CHANGELOG.md");
 
 fn assert_doc_contains(doc: &str, label: &str, needle: &str) {
     assert!(doc.contains(needle), "{label} must contain `{needle}`");
@@ -18,6 +19,10 @@ fn assert_readme_contains(needle: &str) {
 
 fn assert_task_report_contains(needle: &str) {
     assert_doc_contains(TASK_REPORT, "task report", needle);
+}
+
+fn assert_changelog_contains(needle: &str) {
+    assert_doc_contains(CHANGELOG, "CHANGELOG", needle);
 }
 
 #[test]
@@ -89,5 +94,20 @@ fn task_report_documents_deferred_proxy_wiring_revision() {
         "不回写、不删除、不改写既有历史记录",
     ] {
         assert_task_report_contains(needle);
+    }
+}
+
+#[test]
+fn changelog_documents_1_0_1_proxy_endpoint_fix() {
+    for needle in [
+        "## [1.0.1] - 2026-04-29",
+        "`fix(proxy): wire /v1/* HTTP routes to SwitchEngine`",
+        "`GET /v1/models`",
+        "`POST /v1/chat/completions`",
+        "`POST /v1/messages`",
+        "Anthropic SSE events",
+        "README `curl` quick check",
+    ] {
+        assert_changelog_contains(needle);
     }
 }

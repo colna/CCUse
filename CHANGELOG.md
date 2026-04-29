@@ -5,6 +5,32 @@ All notable changes to CCUse will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2026-04-29
+
+### Fixed
+
+- `fix(proxy): wire /v1/* HTTP routes to SwitchEngine` — the local API routes now dispatch through configured providers instead of returning the Phase 1.0.1 `providers_not_configured` stub whenever providers exist.
+- Provider CRUD now hot-reloads the runtime `ProviderManager`, so add/update/delete changes affect the next proxy request without restarting the app.
+- Failover after retriable upstream errors records degraded provider state and writes switch history for the dashboard timeline.
+
+### Added
+
+User-visible local API endpoint coverage:
+
+- `GET /v1/models` aggregates models from enabled providers, namespaces ids as `provider_id::model_id`, caches results for 30 seconds, and returns partial results when one provider fails.
+- `POST /v1/chat/completions` supports OpenAI-compatible non-streaming and streaming chat completions, model mapping, function tools, tool result messages, request logging, and automatic provider failover.
+- `POST /v1/messages` supports Anthropic Messages-compatible non-streaming and streaming responses, `system`, `stop_sequences`, `tool_use`, `tool_result`, Anthropic-shaped error envelopes, and Anthropic SSE events.
+
+Documentation updates:
+
+- Added a bilingual supported-endpoints matrix to the user manual.
+- Added a copyable README `curl` quick check for `/v1/chat/completions`.
+
+### Changed
+
+- Non-streaming `/v1/*` handlers now enforce a 1 MiB body limit and a 60 second default timeout; streaming responses are not cut off by that non-streaming timeout.
+- Proxy runtime monitoring now writes both request logs and switch history, enabling dashboard metrics after real local API calls.
+
 ## [1.0.0] - 2026-04-28
 
 ### Added
