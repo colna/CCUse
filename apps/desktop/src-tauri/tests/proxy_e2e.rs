@@ -53,6 +53,13 @@ fn loopback_zero() -> SocketAddr {
 }
 
 async fn start_proxy_with_providers(specs: &[ProviderSpec<'_>]) -> RunningProxy {
+    start_proxy_with_providers_and_mapping(specs, ModelMapping::new()).await
+}
+
+async fn start_proxy_with_providers_and_mapping(
+    specs: &[ProviderSpec<'_>],
+    model_mapping: ModelMapping,
+) -> RunningProxy {
     let manager = Arc::new(ProviderManager::new());
     for spec in specs {
         let provider = OpenAIProvider::with_options(
@@ -77,7 +84,7 @@ async fn start_proxy_with_providers(specs: &[ProviderSpec<'_>]) -> RunningProxy 
     }
 
     let engine = Arc::new(SwitchEngine::new(Arc::clone(&manager)));
-    let mapping = Arc::new(RwLock::new(ModelMapping::new()));
+    let mapping = Arc::new(RwLock::new(model_mapping));
     let state = ProxyAppState::new(engine, mapping, Arc::clone(&manager));
     let server = ProxyServer::bind(loopback_zero())
         .await
@@ -107,6 +114,14 @@ fn chat_request(stream: bool) -> Value {
     })
 }
 
+fn chat_request_with_model(model: &str) -> Value {
+    json!({
+        "model": model,
+        "messages": [{"role": "user", "content": "ping"}],
+        "stream": false
+    })
+}
+
 fn chat_request_with_tools() -> Value {
     json!({
         "model": "gpt-4o",
@@ -131,6 +146,15 @@ fn anthropic_messages_request() -> Value {
         "model": "claude-3-5-sonnet-20241022",
         "max_tokens": 128,
         "system": "You are terse.",
+        "messages": [{"role": "user", "content": "ping"}],
+        "stream": false
+    })
+}
+
+fn anthropic_messages_request_with_model(model: &str) -> Value {
+    json!({
+        "model": model,
+        "max_tokens": 128,
         "messages": [{"role": "user", "content": "ping"}],
         "stream": false
     })
@@ -379,6 +403,122 @@ async fn models_returns_empty_list_when_upstream_has_no_models() {
         body["data"].as_array().is_some_and(Vec::is_empty),
         "empty upstream model list should stay an empty data array",
     );
+
+    proxy.shutdown().await;
+}
+
+#[tokio::test]
+async fn chat_completions_applies_exact_provider_model_mapping() {
+    let upstream = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(openai_text_response("mapped")))
+        .expect(1)
+        .mount(&upstream)
+        .await;
+
+    let mut mapping = ModelMapping::new();
+    mapping.set_mapping(
+        "client-fast",
+        "mapping-exact-provider",
+        "provider-exact-model",
+    );
+    let proxy = start_proxy_with_providers_and_mapping(
+        &[ProviderSpec {
+            id: "mapping-exact-provider",
+            name: "Mapping Exact",
+            priority: 1,
+            server: &upstream,
+        }],
+        mapping,
+    )
+    .await;
+
+    let response = reqwest::Client::new()
+        .post(format!("{}/v1/chat/completions", proxy.base_url))
+        .json(&chat_request_with_model("client-fast"))
+        .send()
+        .await
+        .expect("proxy request");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let received = upstream.received_requests().await.expect("received");
+    let upstream_body: Value = serde_json::from_slice(&received[0].body).expect("json");
+    assert_eq!(upstream_body["model"], "provider-exact-model");
+
+    proxy.shutdown().await;
+}
+
+#[tokio::test]
+async fn anthropic_messages_applies_wildcard_model_mapping() {
+    let upstream = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(openai_text_response("anthropic mapped")),
+        )
+        .expect(1)
+        .mount(&upstream)
+        .await;
+
+    let mut mapping = ModelMapping::new();
+    mapping.set_mapping("client-slow", "*", "wildcard-upstream-model");
+    let proxy = start_proxy_with_providers_and_mapping(
+        &[ProviderSpec {
+            id: "mapping-wildcard-provider",
+            name: "Mapping Wildcard",
+            priority: 1,
+            server: &upstream,
+        }],
+        mapping,
+    )
+    .await;
+
+    let response = reqwest::Client::new()
+        .post(format!("{}/v1/messages", proxy.base_url))
+        .json(&anthropic_messages_request_with_model("client-slow"))
+        .send()
+        .await
+        .expect("proxy request");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = response.json().await.expect("response json");
+    assert_eq!(body["content"][0]["text"], "anthropic mapped");
+    let received = upstream.received_requests().await.expect("received");
+    let upstream_body: Value = serde_json::from_slice(&received[0].body).expect("json");
+    assert_eq!(upstream_body["model"], "wildcard-upstream-model");
+
+    proxy.shutdown().await;
+}
+
+#[tokio::test]
+async fn chat_completions_keeps_original_model_without_mapping() {
+    let upstream = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(openai_text_response("unmapped")))
+        .expect(1)
+        .mount(&upstream)
+        .await;
+    let proxy = start_proxy_with_providers(&[ProviderSpec {
+        id: "mapping-unmapped-provider",
+        name: "Mapping Unmapped",
+        priority: 1,
+        server: &upstream,
+    }])
+    .await;
+
+    let response = reqwest::Client::new()
+        .post(format!("{}/v1/chat/completions", proxy.base_url))
+        .json(&chat_request_with_model("client-unmapped"))
+        .send()
+        .await
+        .expect("proxy request");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let received = upstream.received_requests().await.expect("received");
+    let upstream_body: Value = serde_json::from_slice(&received[0].body).expect("json");
+    assert_eq!(upstream_body["model"], "client-unmapped");
 
     proxy.shutdown().await;
 }
