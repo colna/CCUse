@@ -2,6 +2,7 @@
 
 const USER_MANUAL: &str = include_str!("../../../../docs/user-manual.md");
 const README: &str = include_str!("../../../../README.md");
+const TASK_REPORT: &str = include_str!("../../../../docs/任务报告.md");
 
 fn assert_doc_contains(doc: &str, label: &str, needle: &str) {
     assert!(doc.contains(needle), "{label} must contain `{needle}`");
@@ -13,6 +14,10 @@ fn assert_manual_contains(needle: &str) {
 
 fn assert_readme_contains(needle: &str) {
     assert_doc_contains(README, "README", needle);
+}
+
+fn assert_task_report_contains(needle: &str) {
+    assert_doc_contains(TASK_REPORT, "task report", needle);
 }
 
 #[test]
@@ -71,5 +76,18 @@ fn readme_documents_chat_completions_curl_quick_check() {
         "providers_not_configured",
     ] {
         assert_readme_contains(needle);
+    }
+}
+
+#[test]
+fn task_report_documents_deferred_proxy_wiring_revision() {
+    for needle in [
+        "## 修订 [2026-04-29 21:45] T1.0.6.24 任务报告补登修订",
+        "`T1.0.2.15`",
+        "`T1.0.3.04`",
+        "`T1.0.6.05`–`T1.0.6.10`",
+        "不回写、不删除、不改写既有历史记录",
+    ] {
+        assert_task_report_contains(needle);
     }
 }
