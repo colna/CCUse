@@ -14,6 +14,10 @@ fn load_conf() -> Value {
     serde_json::from_str(&content).expect("tauri.conf.json should be valid JSON")
 }
 
+fn load_cargo_toml() -> String {
+    fs::read_to_string("Cargo.toml").expect("Cargo.toml should be readable from crate root")
+}
+
 #[test]
 fn product_identity_matches_brand() {
     let conf = load_conf();
@@ -117,6 +121,7 @@ fn csp_is_set_and_does_not_allow_unsafe_eval() {
 fn version_field_is_present_and_semver_shaped() {
     let conf = load_conf();
     let version = conf["version"].as_str().expect("version must be a string");
+    assert_eq!(version, "1.0.1", "release version must be 1.0.1");
     let parts: Vec<&str> = version.split('.').collect();
     assert_eq!(
         parts.len(),
@@ -129,4 +134,16 @@ fn version_field_is_present_and_semver_shaped() {
             "version segment {part} should be numeric"
         );
     }
+}
+
+#[test]
+fn cargo_package_version_matches_tauri_release_version() {
+    let conf = load_conf();
+    let version = conf["version"].as_str().expect("version must be a string");
+    let cargo_toml = load_cargo_toml();
+    let expected = format!("version = \"{version}\"");
+    assert!(
+        cargo_toml.lines().any(|line| line == expected),
+        "Cargo.toml package version must match tauri.conf.json version {version}"
+    );
 }
