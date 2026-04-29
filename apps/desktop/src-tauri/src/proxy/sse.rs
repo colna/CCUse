@@ -19,7 +19,6 @@ use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use bytes::Bytes;
 use futures::stream::{Stream, StreamExt};
-use tokio_stream::wrappers::IntervalStream;
 
 use crate::providers::api::{ProviderError, StreamingResponse};
 
@@ -41,10 +40,29 @@ pub fn with_keep_alive(
     upstream: StreamingResponse,
     interval: Duration,
 ) -> impl Stream<Item = Result<Bytes, ProviderError>> + Send {
-    let pings = IntervalStream::new(tokio::time::interval(interval))
-        .skip(1) // tokio::interval fires immediately on first poll; skip it.
-        .map(|_| Ok::<Bytes, ProviderError>(Bytes::from_static(KEEP_ALIVE_FRAME)));
-    futures::stream::select(upstream, pings)
+    let ticker = tokio::time::interval(interval);
+    futures::stream::unfold(
+        (upstream, ticker, false),
+        |(mut upstream, mut ticker, first_tick_seen)| async move {
+            let mut skip_immediate_tick = first_tick_seen;
+            loop {
+                tokio::select! {
+                    item = upstream.next() => {
+                        return item.map(|chunk| (chunk, (upstream, ticker, skip_immediate_tick)));
+                    }
+                    _ = ticker.tick() => {
+                        if skip_immediate_tick {
+                            return Some((
+                                Ok(Bytes::from_static(KEEP_ALIVE_FRAME)),
+                                (upstream, ticker, skip_immediate_tick),
+                            ));
+                        }
+                        skip_immediate_tick = true;
+                    }
+                }
+            }
+        },
+    )
 }
 
 /// Convert a byte stream into an HTTP response with the SSE
@@ -98,7 +116,8 @@ mod tests {
         // at least one frame after the first interval tick.
         let upstream: StreamingResponse =
             Box::pin(stream::pending::<Result<Bytes, ProviderError>>());
-        let mut wrapped = with_keep_alive(upstream, Duration::from_millis(20));
+        let wrapped = with_keep_alive(upstream, Duration::from_millis(20));
+        futures::pin_mut!(wrapped);
         let chunk = tokio::time::timeout(Duration::from_secs(1), wrapped.next())
             .await
             .expect("must produce keep-alive within 1s")
@@ -121,5 +140,18 @@ mod tests {
             .await;
         assert_eq!(chunks[0], Bytes::from_static(b"data: 1\n\n"));
         assert_eq!(chunks[1], Bytes::from_static(b"data: 2\n\n"));
+    }
+
+    #[tokio::test]
+    async fn keep_alive_ends_when_upstream_ends() {
+        let upstream: StreamingResponse = Box::pin(stream::iter(vec![Ok::<Bytes, ProviderError>(
+            Bytes::from_static(b"data: [DONE]\n\n"),
+        )]));
+        let wrapped = with_keep_alive(upstream, Duration::from_secs(60));
+        let chunks: Vec<Bytes> = wrapped
+            .filter_map(|item| async move { item.ok() })
+            .collect()
+            .await;
+        assert_eq!(chunks, vec![Bytes::from_static(b"data: [DONE]\n\n")]);
     }
 }

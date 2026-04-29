@@ -14,7 +14,7 @@
 //! | `SwitchStrategy`        |   1            | 5-variant enum                         |
 //! | `SwitchConfig`          | <= 48          | enum + usize + `SmartWeights`          |
 //! | `SmartWeights`          |  32            | 4 x f64                                |
-//! | `ApiRequest`            | <= 80          | String + Vec + 2 Option + bool         |
+//! | `ApiRequest`            | <= 104         | String + Vecs + 2 Option + bool        |
 //! | `ApiResponse`           | <= 104         | 2 String + Vec + Option                |
 //! | `ChatMessage`           | <= 48          | 2 Strings                              |
 //! | `HealthStatus`          |   1            | 3-variant enum                         |
@@ -94,9 +94,9 @@ fn chat_message_fits_in_48_bytes() {
 }
 
 #[test]
-fn api_request_fits_in_80_bytes() {
+fn api_request_fits_in_104_bytes() {
     let size = size_of::<ApiRequest>();
-    assert!(size <= 80, "ApiRequest grew to {size} bytes (limit 80)");
+    assert!(size <= 104, "ApiRequest grew to {size} bytes (limit 104)");
 }
 
 #[test]

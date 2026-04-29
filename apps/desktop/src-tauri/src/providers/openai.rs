@@ -149,13 +149,22 @@ impl Provider for OpenAIProvider {
         // Force non-streaming on the wire — the streaming path goes
         // through `send_stream_request`. Re-emit the body manually so
         // we don't accidentally forward `stream: true` to the upstream.
-        let body = json!({
-            "model": request.model,
-            "messages": request.messages,
-            "temperature": request.temperature,
-            "max_tokens": request.max_tokens,
+        let ApiRequest {
+            model,
+            messages,
+            temperature,
+            max_tokens,
+            stream: _,
+            tools,
+        } = request;
+        let mut body = json!({
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
             "stream": false,
         });
+        add_tools_to_body(&mut body, &tools);
         let response = self
             .client
             .post(self.endpoint("/v1/chat/completions"))
@@ -184,13 +193,22 @@ impl Provider for OpenAIProvider {
         // Force `stream: true` regardless of caller input — the
         // non-streaming path is `send_request`. Splitting the wire
         // override here mirrors `send_request` which forces `false`.
-        let body = json!({
-            "model": request.model,
-            "messages": request.messages,
-            "temperature": request.temperature,
-            "max_tokens": request.max_tokens,
+        let ApiRequest {
+            model,
+            messages,
+            temperature,
+            max_tokens,
+            stream: _,
+            tools,
+        } = request;
+        let mut body = json!({
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
             "stream": true,
         });
+        add_tools_to_body(&mut body, &tools);
         let response = self
             .client
             .post(self.endpoint("/v1/chat/completions"))
@@ -233,6 +251,29 @@ pub fn map_http_error(status: StatusCode, body: String) -> ProviderError {
             body,
         },
     }
+}
+
+fn add_tools_to_body(body: &mut serde_json::Value, tools: &[super::api::ApiToolDefinition]) {
+    if tools.is_empty() {
+        return;
+    }
+    let values: Vec<_> = tools
+        .iter()
+        .map(|tool| {
+            let mut function = json!({
+                "name": tool.name,
+                "parameters": tool.parameters,
+            });
+            if let Some(description) = &tool.description {
+                function["description"] = json!(description);
+            }
+            json!({
+                "type": "function",
+                "function": function,
+            })
+        })
+        .collect();
+    body["tools"] = json!(values);
 }
 
 #[cfg(test)]

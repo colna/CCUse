@@ -25,6 +25,7 @@ fn sample_request(stream: bool) -> ApiRequest {
         temperature: Some(0.7),
         max_tokens: Some(64),
         stream,
+        tools: vec![],
     }
 }
 

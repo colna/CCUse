@@ -9,7 +9,7 @@ use crate::converter::types::{
     FinishReason, Role, UnifiedChoice, UnifiedMessage, UnifiedResponse, UnifiedUsage,
 };
 use crate::converter::UnifiedRequest;
-use crate::providers::api::{ApiRequest, ApiResponse, ChatMessage};
+use crate::providers::api::{ApiRequest, ApiResponse, ApiToolDefinition, ChatMessage};
 
 /// Convert a [`UnifiedRequest`] into the [`ApiRequest`] that
 /// `SwitchEngine::dispatch` expects.
@@ -34,6 +34,15 @@ pub fn unified_to_api_request(req: &UnifiedRequest) -> ApiRequest {
         temperature: req.temperature,
         max_tokens: req.max_tokens,
         stream: req.stream,
+        tools: req
+            .tools
+            .iter()
+            .map(|tool| ApiToolDefinition {
+                name: tool.name.clone(),
+                description: tool.description.clone(),
+                parameters: tool.parameters.clone(),
+            })
+            .collect(),
     }
 }
 
@@ -63,7 +72,6 @@ pub fn api_response_to_unified(resp: &ApiResponse) -> UnifiedResponse {
 fn parse_role(role: &str) -> Role {
     match role {
         "system" => Role::System,
-        "user" => Role::User,
         "assistant" => Role::Assistant,
         "tool" => Role::Tool,
         _ => Role::User,
@@ -186,5 +194,33 @@ mod tests {
             usage: None,
         };
         assert!(api_response_to_unified(&resp).usage.is_none());
+    }
+
+    #[test]
+    fn unified_to_api_request_preserves_tool_definitions() {
+        let unified = UnifiedRequest {
+            model: "gpt-4o".into(),
+            messages: vec![UnifiedMessage::text(Role::User, "weather?")],
+            temperature: None,
+            max_tokens: None,
+            top_p: None,
+            stop: None,
+            stream: false,
+            tools: vec![crate::converter::ToolDefinition {
+                name: "get_weather".into(),
+                description: Some("Get weather".into()),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {"city": {"type": "string"}}
+                }),
+            }],
+        };
+
+        let api = unified_to_api_request(&unified);
+
+        assert_eq!(api.tools.len(), 1);
+        assert_eq!(api.tools[0].name, "get_weather");
+        assert_eq!(api.tools[0].description.as_deref(), Some("Get weather"));
+        assert_eq!(api.tools[0].parameters["type"], "object");
     }
 }

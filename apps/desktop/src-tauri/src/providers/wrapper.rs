@@ -294,6 +294,7 @@ mod tests {
             temperature: None,
             max_tokens: None,
             stream: false,
+            tools: vec![],
         }
     }
 

@@ -284,6 +284,7 @@ mod three_provider_mocks {
             temperature: Some(0.7),
             max_tokens: Some(64),
             stream: false,
+            tools: vec![],
         };
 
         let response = provider.send_request(request).await.expect("ok");
@@ -433,6 +434,7 @@ mod fault_injection {
             temperature: None,
             max_tokens: None,
             stream: false,
+            tools: vec![],
         };
         let err = provider.send_request(request).await.expect_err("must fail");
         assert!(matches!(err, ProviderError::RateLimited(_)));
@@ -550,6 +552,7 @@ mod fault_injection {
             temperature: None,
             max_tokens: None,
             stream: false,
+            tools: vec![],
         };
         let err = provider.send_request(request).await.expect_err("must fail");
         match err {
@@ -666,6 +669,7 @@ mod fault_injection {
             temperature: None,
             max_tokens: None,
             stream: false,
+            tools: vec![],
         };
         let err = provider.send_request(request).await.expect_err("must fail");
         assert!(
@@ -714,6 +718,7 @@ mod fault_injection {
             temperature: None,
             max_tokens: None,
             stream: false,
+            tools: vec![],
         };
 
         let err = provider.send_request(request).await.expect_err("must fail");

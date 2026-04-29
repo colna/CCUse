@@ -35,6 +35,9 @@ pub struct ApiRequest {
     /// [`Provider::send_stream_request`].
     #[serde(default)]
     pub stream: bool,
+    /// OpenAI-compatible tool definitions forwarded to upstream providers.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tools: Vec<ApiToolDefinition>,
 }
 
 /// One turn of a chat conversation.
@@ -44,6 +47,15 @@ pub struct ChatMessage {
     pub role: String,
     /// Plain text. Tool/function calls land in T1.0.2+ (richer enum).
     pub content: String,
+}
+
+/// Tool definition in the provider-layer request shape.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ApiToolDefinition {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    pub parameters: serde_json::Value,
 }
 
 /// Non-streaming response. Full body delivered in one go.
@@ -211,6 +223,7 @@ mod tests {
             temperature: None,
             max_tokens: None,
             stream: false,
+            tools: vec![],
         };
         let json = serde_json::to_value(&req).expect("serialise");
         // `temperature` / `max_tokens` should be omitted entirely
