@@ -280,6 +280,8 @@ mod three_provider_mocks {
             messages: vec![ChatMessage {
                 role: "user".into(),
                 content: "ping".into(),
+                tool_call_id: None,
+                tool_calls: vec![],
             }],
             temperature: Some(0.7),
             max_tokens: Some(64),
@@ -430,6 +432,8 @@ mod fault_injection {
             messages: vec![ChatMessage {
                 role: "user".into(),
                 content: "ping".into(),
+                tool_call_id: None,
+                tool_calls: vec![],
             }],
             temperature: None,
             max_tokens: None,
@@ -548,6 +552,8 @@ mod fault_injection {
             messages: vec![ChatMessage {
                 role: "user".into(),
                 content: "ping".into(),
+                tool_call_id: None,
+                tool_calls: vec![],
             }],
             temperature: None,
             max_tokens: None,
@@ -665,6 +671,8 @@ mod fault_injection {
             messages: vec![ChatMessage {
                 role: "user".into(),
                 content: "ping".into(),
+                tool_call_id: None,
+                tool_calls: vec![],
             }],
             temperature: None,
             max_tokens: None,
@@ -714,6 +722,8 @@ mod fault_injection {
             messages: vec![ChatMessage {
                 role: "user".into(),
                 content: "ping".into(),
+                tool_call_id: None,
+                tool_calls: vec![],
             }],
             temperature: None,
             max_tokens: None,

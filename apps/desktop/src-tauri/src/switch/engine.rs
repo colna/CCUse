@@ -294,6 +294,8 @@ mod tests {
                         message: ChatMessage {
                             role: "assistant".into(),
                             content: "ok".into(),
+                            tool_call_id: None,
+                            tool_calls: vec![],
                         },
                         finish_reason: Some("stop".into()),
                     }],
@@ -333,6 +335,8 @@ mod tests {
             messages: vec![ChatMessage {
                 role: "user".into(),
                 content: "hi".into(),
+                tool_call_id: None,
+                tool_calls: vec![],
             }],
             temperature: None,
             max_tokens: None,

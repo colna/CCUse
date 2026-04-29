@@ -500,6 +500,8 @@ struct AnthropicSseBridge {
     anthropic: AnthropicConverter,
     text_block_started: bool,
     text_block_stopped: bool,
+    active_tool_blocks: Vec<u32>,
+    stopped_tool_blocks: Vec<u32>,
 }
 
 impl AnthropicSseBridge {
@@ -509,6 +511,8 @@ impl AnthropicSseBridge {
             anthropic,
             text_block_started: false,
             text_block_stopped: false,
+            active_tool_blocks: Vec::new(),
+            stopped_tool_blocks: Vec::new(),
         }
     }
 
@@ -543,14 +547,30 @@ impl AnthropicSseBridge {
                 .choices
                 .iter()
                 .any(|choice| choice.finish_reason.is_some());
+            let tool_start_indexes = chunk
+                .choices
+                .iter()
+                .filter_map(|choice| choice.delta.as_ref())
+                .flat_map(|delta| delta.tool_calls.iter())
+                .filter(|tool_call| tool_call.id.is_some() || tool_call.name.is_some())
+                .map(|tool_call| tool_call.index)
+                .collect::<Vec<_>>();
 
             if has_text_delta && !self.text_block_started {
                 self.text_block_started = true;
                 pending.push_back(Ok(content_block_start_frame()));
             }
+            for index in tool_start_indexes {
+                if !self.active_tool_blocks.contains(&index) {
+                    self.active_tool_blocks.push(index);
+                }
+            }
             if has_finish && self.text_block_started && !self.text_block_stopped {
                 self.text_block_stopped = true;
-                pending.push_back(Ok(content_block_stop_frame()));
+                pending.push_back(Ok(content_block_stop_frame(0)));
+            }
+            if has_finish {
+                self.push_tool_block_stops(pending);
             }
 
             match self.anthropic.encode_stream_chunk(&chunk) {
@@ -564,9 +584,20 @@ impl AnthropicSseBridge {
     fn push_done(&mut self, pending: &mut VecDeque<Result<Bytes, ProviderError>>) {
         if self.text_block_started && !self.text_block_stopped {
             self.text_block_stopped = true;
-            pending.push_back(Ok(content_block_stop_frame()));
+            pending.push_back(Ok(content_block_stop_frame(0)));
         }
+        self.push_tool_block_stops(pending);
         pending.push_back(Ok(Bytes::from(self.anthropic.encode_stream_done())));
+    }
+
+    fn push_tool_block_stops(&mut self, pending: &mut VecDeque<Result<Bytes, ProviderError>>) {
+        for index in &self.active_tool_blocks {
+            if self.stopped_tool_blocks.contains(index) {
+                continue;
+            }
+            self.stopped_tool_blocks.push(*index);
+            pending.push_back(Ok(content_block_stop_frame(*index)));
+        }
     }
 }
 
@@ -649,10 +680,10 @@ fn content_block_start_frame() -> Bytes {
     )
 }
 
-fn content_block_stop_frame() -> Bytes {
-    Bytes::from_static(
-        b"event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n",
-    )
+fn content_block_stop_frame(index: u32) -> Bytes {
+    Bytes::from(format!(
+        "event: content_block_stop\ndata: {{\"type\":\"content_block_stop\",\"index\":{index}}}\n\n"
+    ))
 }
 
 #[cfg(test)]

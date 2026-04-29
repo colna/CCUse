@@ -16,7 +16,7 @@
 //! | `SmartWeights`          |  32            | 4 x f64                                |
 //! | `ApiRequest`            | <= 104         | String + Vecs + 2 Option + bool        |
 //! | `ApiResponse`           | <= 104         | 2 String + Vec + Option                |
-//! | `ChatMessage`           | <= 48          | 2 Strings                              |
+//! | `ChatMessage`           | <= 96          | 2 Strings + `tool_call_id` + `tool_calls` |
 //! | `HealthStatus`          |   1            | 3-variant enum                         |
 //! | `UnifiedRequest`        | <= 152         | Strings + Vecs + Options               |
 //! | `UnifiedResponse`       | <= 104         | 2 Strings + Vec + Option               |
@@ -88,9 +88,9 @@ fn switch_config_fits_in_48_bytes() {
 // ── API types ──────────────────────────────────────────────────────
 
 #[test]
-fn chat_message_fits_in_48_bytes() {
+fn chat_message_fits_in_96_bytes() {
     let size = size_of::<ChatMessage>();
-    assert!(size <= 48, "ChatMessage grew to {size} bytes (limit 48)");
+    assert!(size <= 96, "ChatMessage grew to {size} bytes (limit 96)");
 }
 
 #[test]
@@ -106,9 +106,9 @@ fn api_response_fits_in_104_bytes() {
 }
 
 #[test]
-fn api_choice_fits_in_80_bytes() {
+fn api_choice_fits_in_128_bytes() {
     let size = size_of::<ApiChoice>();
-    assert!(size <= 80, "ApiChoice grew to {size} bytes (limit 80)");
+    assert!(size <= 128, "ApiChoice grew to {size} bytes (limit 128)");
 }
 
 #[test]

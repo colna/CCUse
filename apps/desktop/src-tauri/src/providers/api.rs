@@ -12,7 +12,7 @@ use std::pin::Pin;
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::stream::Stream;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 /// What `SwitchEngine` hands to a provider. Wire format is
 /// `OpenAI` chat-completions today; format-conversion adapters in
@@ -46,7 +46,14 @@ pub struct ChatMessage {
     /// `system` / `user` / `assistant` / `tool`.
     pub role: String,
     /// Plain text. Tool/function calls land in T1.0.2+ (richer enum).
+    #[serde(default, deserialize_with = "deserialize_nullable_string")]
     pub content: String,
+    /// Correlates an `OpenAI` `tool` message with the assistant call it answers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
+    /// OpenAI-compatible tool calls emitted by an assistant message.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tool_calls: Vec<ApiToolCall>,
 }
 
 /// Tool definition in the provider-layer request shape.
@@ -56,6 +63,28 @@ pub struct ApiToolDefinition {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     pub parameters: serde_json::Value,
+}
+
+/// Tool call in the OpenAI-compatible provider-layer message shape.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ApiToolCall {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub function: ApiToolCallFunction,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ApiToolCallFunction {
+    pub name: String,
+    pub arguments: String,
+}
+
+fn deserialize_nullable_string<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Ok(Option::<String>::deserialize(deserializer)?.unwrap_or_default())
 }
 
 /// Non-streaming response. Full body delivered in one go.
@@ -219,6 +248,8 @@ mod tests {
             messages: vec![ChatMessage {
                 role: "user".into(),
                 content: "hi".into(),
+                tool_call_id: None,
+                tool_calls: vec![],
             }],
             temperature: None,
             max_tokens: None,
@@ -244,6 +275,8 @@ mod tests {
                 message: ChatMessage {
                     role: "assistant".into(),
                     content: "ok".into(),
+                    tool_call_id: None,
+                    tool_calls: vec![],
                 },
                 finish_reason: Some("stop".into()),
             }],
@@ -258,6 +291,26 @@ mod tests {
         assert_eq!(back.id, "chatcmpl-1");
         assert_eq!(back.choices[0].message.content, "ok");
         assert_eq!(back.usage.expect("usage").total_tokens, 6);
+    }
+
+    #[test]
+    fn chat_message_deserializes_null_content_for_tool_calls() {
+        let msg: ChatMessage = serde_json::from_value(serde_json::json!({
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [{
+                "id": "call_1",
+                "type": "function",
+                "function": {
+                    "name": "get_weather",
+                    "arguments": "{\"city\":\"Tokyo\"}"
+                }
+            }]
+        }))
+        .expect("deserialize tool call message");
+
+        assert!(msg.content.is_empty());
+        assert_eq!(msg.tool_calls[0].function.name, "get_weather");
     }
 
     #[test]

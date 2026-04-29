@@ -3,13 +3,17 @@
 //!
 //! All providers currently use `OpenAIProvider` which speaks `ApiRequest`.
 //! The converter layer produces `UnifiedRequest`. This bridge maps between
-//! the two, lossy for multimodal/tool-call content (text only for now).
+//! the two, preserving text and OpenAI-compatible tool calls while still
+//! dropping image/file parts until provider-layer multimodal support lands.
 
 use crate::converter::types::{
-    FinishReason, Role, UnifiedChoice, UnifiedMessage, UnifiedResponse, UnifiedUsage,
+    ContentPart, FinishReason, Role, ToolCall, ToolResult, UnifiedChoice, UnifiedMessage,
+    UnifiedResponse, UnifiedUsage,
 };
 use crate::converter::UnifiedRequest;
-use crate::providers::api::{ApiRequest, ApiResponse, ApiToolDefinition, ChatMessage};
+use crate::providers::api::{
+    ApiRequest, ApiResponse, ApiToolCall, ApiToolCallFunction, ApiToolDefinition, ChatMessage,
+};
 
 /// Convert a [`UnifiedRequest`] into the [`ApiRequest`] that
 /// `SwitchEngine::dispatch` expects.
@@ -17,20 +21,7 @@ use crate::providers::api::{ApiRequest, ApiResponse, ApiToolDefinition, ChatMess
 pub fn unified_to_api_request(req: &UnifiedRequest) -> ApiRequest {
     ApiRequest {
         model: req.model.clone(),
-        messages: req
-            .messages
-            .iter()
-            .map(|m| ChatMessage {
-                role: match m.role {
-                    Role::System => "system",
-                    Role::User => "user",
-                    Role::Assistant => "assistant",
-                    Role::Tool => "tool",
-                }
-                .to_owned(),
-                content: m.text_content(),
-            })
-            .collect(),
+        messages: req.messages.iter().map(unified_message_to_chat).collect(),
         temperature: req.temperature,
         max_tokens: req.max_tokens,
         stream: req.stream,
@@ -46,6 +37,44 @@ pub fn unified_to_api_request(req: &UnifiedRequest) -> ApiRequest {
     }
 }
 
+fn unified_message_to_chat(message: &UnifiedMessage) -> ChatMessage {
+    if let Some(result) = first_tool_result(message) {
+        return ChatMessage {
+            role: "tool".to_owned(),
+            content: result.output.clone(),
+            tool_call_id: Some(result.tool_call_id.clone()),
+            tool_calls: vec![],
+        };
+    }
+
+    let tool_calls = message
+        .tool_calls()
+        .into_iter()
+        .map(|call| ApiToolCall {
+            id: call.id.clone(),
+            kind: "function".to_owned(),
+            function: ApiToolCallFunction {
+                name: call.name.clone(),
+                arguments: call.arguments.clone(),
+            },
+        })
+        .collect();
+
+    ChatMessage {
+        role: role_to_provider(message.role).to_owned(),
+        content: message.text_content(),
+        tool_call_id: None,
+        tool_calls,
+    }
+}
+
+fn first_tool_result(message: &UnifiedMessage) -> Option<&ToolResult> {
+    message.content.iter().find_map(|part| match part {
+        ContentPart::ToolResult(result) => Some(result),
+        _ => None,
+    })
+}
+
 /// Convert an [`ApiResponse`] into a [`UnifiedResponse`].
 #[must_use]
 pub fn api_response_to_unified(resp: &ApiResponse) -> UnifiedResponse {
@@ -57,7 +86,7 @@ pub fn api_response_to_unified(resp: &ApiResponse) -> UnifiedResponse {
             .iter()
             .map(|c| UnifiedChoice {
                 index: c.index,
-                message: UnifiedMessage::text(parse_role(&c.message.role), &c.message.content),
+                message: chat_message_to_unified(&c.message),
                 finish_reason: c.finish_reason.as_deref().and_then(parse_finish_reason),
             })
             .collect(),
@@ -66,6 +95,48 @@ pub fn api_response_to_unified(resp: &ApiResponse) -> UnifiedResponse {
             completion_tokens: u.completion_tokens,
             total_tokens: u.total_tokens,
         }),
+    }
+}
+
+fn chat_message_to_unified(message: &ChatMessage) -> UnifiedMessage {
+    if let Some(tool_call_id) = &message.tool_call_id {
+        return UnifiedMessage {
+            role: Role::Tool,
+            content: vec![ContentPart::ToolResult(ToolResult {
+                tool_call_id: tool_call_id.clone(),
+                output: message.content.clone(),
+            })],
+            name: None,
+        };
+    }
+
+    let mut content = Vec::new();
+    if !message.content.is_empty() {
+        content.push(ContentPart::Text {
+            text: message.content.clone(),
+        });
+    }
+    content.extend(message.tool_calls.iter().map(|call| {
+        ContentPart::ToolCall(ToolCall {
+            id: call.id.clone(),
+            name: call.function.name.clone(),
+            arguments: call.function.arguments.clone(),
+        })
+    }));
+
+    UnifiedMessage {
+        role: parse_role(&message.role),
+        content,
+        name: None,
+    }
+}
+
+fn role_to_provider(role: Role) -> &'static str {
+    match role {
+        Role::System => "system",
+        Role::User => "user",
+        Role::Assistant => "assistant",
+        Role::Tool => "tool",
     }
 }
 
@@ -162,6 +233,8 @@ mod tests {
                 message: ChatMessage {
                     role: "assistant".into(),
                     content: "Hello!".into(),
+                    tool_call_id: None,
+                    tool_calls: vec![],
                 },
                 finish_reason: Some("stop".into()),
             }],
@@ -222,5 +295,85 @@ mod tests {
         assert_eq!(api.tools[0].name, "get_weather");
         assert_eq!(api.tools[0].description.as_deref(), Some("Get weather"));
         assert_eq!(api.tools[0].parameters["type"], "object");
+    }
+
+    #[test]
+    fn unified_to_api_request_preserves_tool_call_and_result_messages() {
+        let unified = UnifiedRequest {
+            model: "gpt-4o".into(),
+            messages: vec![
+                UnifiedMessage {
+                    role: Role::Assistant,
+                    content: vec![ContentPart::ToolCall(crate::converter::ToolCall {
+                        id: "call_weather".into(),
+                        name: "get_weather".into(),
+                        arguments: "{\"city\":\"Tokyo\"}".into(),
+                    })],
+                    name: None,
+                },
+                UnifiedMessage {
+                    role: Role::User,
+                    content: vec![ContentPart::ToolResult(crate::converter::ToolResult {
+                        tool_call_id: "call_weather".into(),
+                        output: "sunny".into(),
+                    })],
+                    name: None,
+                },
+            ],
+            temperature: None,
+            max_tokens: None,
+            top_p: None,
+            stop: None,
+            stream: false,
+            tools: vec![],
+        };
+
+        let api = unified_to_api_request(&unified);
+
+        assert_eq!(api.messages[0].role, "assistant");
+        assert_eq!(api.messages[0].tool_calls[0].id, "call_weather");
+        assert_eq!(api.messages[0].tool_calls[0].function.name, "get_weather");
+        assert_eq!(api.messages[1].role, "tool");
+        assert_eq!(
+            api.messages[1].tool_call_id.as_deref(),
+            Some("call_weather")
+        );
+        assert_eq!(api.messages[1].content, "sunny");
+    }
+
+    #[test]
+    fn api_response_to_unified_preserves_assistant_tool_calls() {
+        let resp = ApiResponse {
+            id: "chatcmpl-tool".into(),
+            model: "gpt-4o".into(),
+            choices: vec![ApiChoice {
+                index: 0,
+                message: ChatMessage {
+                    role: "assistant".into(),
+                    content: String::new(),
+                    tool_call_id: None,
+                    tool_calls: vec![crate::providers::ApiToolCall {
+                        id: "call_weather".into(),
+                        kind: "function".into(),
+                        function: crate::providers::ApiToolCallFunction {
+                            name: "get_weather".into(),
+                            arguments: "{\"city\":\"Tokyo\"}".into(),
+                        },
+                    }],
+                },
+                finish_reason: Some("tool_calls".into()),
+            }],
+            usage: None,
+        };
+
+        let unified = api_response_to_unified(&resp);
+
+        assert_eq!(
+            unified.choices[0].finish_reason,
+            Some(crate::converter::FinishReason::ToolCalls)
+        );
+        let calls = unified.choices[0].message.tool_calls();
+        assert_eq!(calls[0].id, "call_weather");
+        assert_eq!(calls[0].name, "get_weather");
     }
 }

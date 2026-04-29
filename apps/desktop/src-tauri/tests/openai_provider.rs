@@ -21,6 +21,8 @@ fn sample_request(stream: bool) -> ApiRequest {
         messages: vec![ChatMessage {
             role: "user".into(),
             content: "ping".into(),
+            tool_call_id: None,
+            tool_calls: vec![],
         }],
         temperature: Some(0.7),
         max_tokens: Some(64),

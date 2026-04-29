@@ -146,6 +146,37 @@ fn anthropic_messages_stream_request() -> Value {
     })
 }
 
+fn anthropic_messages_tool_request() -> Value {
+    json!({
+        "model": "claude-3-5-sonnet-20241022",
+        "max_tokens": 128,
+        "messages": [
+            {"role": "user", "content": "weather in Tokyo?"},
+            {"role": "assistant", "content": [{
+                "type": "tool_use",
+                "id": "toolu_weather",
+                "name": "get_weather",
+                "input": {"city": "Tokyo"}
+            }]},
+            {"role": "user", "content": [{
+                "type": "tool_result",
+                "tool_use_id": "toolu_weather",
+                "content": "sunny 25C"
+            }]}
+        ],
+        "tools": [{
+            "name": "get_weather",
+            "description": "Get weather",
+            "input_schema": {
+                "type": "object",
+                "properties": {"city": {"type": "string"}},
+                "required": ["city"]
+            }
+        }],
+        "stream": false
+    })
+}
+
 fn openai_text_response(content: &str) -> Value {
     json!({
         "id": "chatcmpl-proxy-e2e",
@@ -159,6 +190,57 @@ fn openai_text_response(content: &str) -> Value {
         }],
         "usage": {"prompt_tokens": 4, "completion_tokens": 2, "total_tokens": 6}
     })
+}
+
+fn openai_text_response_with_finish_reason(content: &str, finish_reason: &str) -> Value {
+    json!({
+        "id": "chatcmpl-proxy-e2e",
+        "object": "chat.completion",
+        "created": 1_700_000_000_u64,
+        "model": "gpt-4o",
+        "choices": [{
+            "index": 0,
+            "message": {"role": "assistant", "content": content},
+            "finish_reason": finish_reason
+        }],
+        "usage": {"prompt_tokens": 4, "completion_tokens": 2, "total_tokens": 6}
+    })
+}
+
+fn openai_tool_call_response() -> Value {
+    json!({
+        "id": "chatcmpl-tool",
+        "object": "chat.completion",
+        "created": 1_700_000_000_u64,
+        "model": "gpt-4o",
+        "choices": [{
+            "index": 0,
+            "message": {
+                "role": "assistant",
+                "content": null,
+                "tool_calls": [{
+                    "id": "call_weather",
+                    "type": "function",
+                    "function": {
+                        "name": "get_weather",
+                        "arguments": "{\"city\":\"Tokyo\"}"
+                    }
+                }]
+            },
+            "finish_reason": "tool_calls"
+        }],
+        "usage": {"prompt_tokens": 12, "completion_tokens": 4, "total_tokens": 16}
+    })
+}
+
+fn assert_contains_in_order(body: &str, markers: &[&str]) {
+    let mut offset = 0;
+    for marker in markers {
+        let found = body[offset..]
+            .find(marker)
+            .unwrap_or_else(|| panic!("expected marker after byte {offset}: {marker}"));
+        offset += found + marker.len();
+    }
 }
 
 #[tokio::test]
@@ -208,6 +290,104 @@ async fn anthropic_messages_dispatches_non_streaming_request_to_upstream() {
 }
 
 #[tokio::test]
+async fn anthropic_messages_preserves_tool_use_round_trip() {
+    let upstream = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(openai_tool_call_response()))
+        .expect(1)
+        .mount(&upstream)
+        .await;
+    let proxy = start_proxy_with_providers(&[ProviderSpec {
+        id: "anthropic-tools",
+        name: "Anthropic Tools",
+        priority: 1,
+        server: &upstream,
+    }])
+    .await;
+
+    let response = reqwest::Client::new()
+        .post(format!("{}/v1/messages", proxy.base_url))
+        .json(&anthropic_messages_tool_request())
+        .send()
+        .await
+        .expect("proxy request");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = response.json().await.expect("response json");
+    assert_eq!(body["content"][0]["type"], "tool_use");
+    assert_eq!(body["content"][0]["id"], "call_weather");
+    assert_eq!(body["content"][0]["name"], "get_weather");
+    assert_eq!(body["content"][0]["input"]["city"], "Tokyo");
+    assert_eq!(body["stop_reason"], "tool_use");
+    assert_eq!(body["usage"]["input_tokens"], 12);
+    assert_eq!(body["usage"]["output_tokens"], 4);
+
+    let received = upstream.received_requests().await.expect("received");
+    let upstream_body: Value = serde_json::from_slice(&received[0].body).expect("json");
+    assert_eq!(upstream_body["tools"][0]["function"]["name"], "get_weather");
+    assert_eq!(
+        upstream_body["tools"][0]["function"]["parameters"]["required"][0],
+        "city",
+    );
+    assert_eq!(upstream_body["messages"][1]["role"], "assistant");
+    assert_eq!(
+        upstream_body["messages"][1]["tool_calls"][0]["function"]["name"],
+        "get_weather",
+    );
+    let arguments: Value = serde_json::from_str(
+        upstream_body["messages"][1]["tool_calls"][0]["function"]["arguments"]
+            .as_str()
+            .expect("arguments string"),
+    )
+    .expect("arguments json");
+    assert_eq!(arguments["city"], "Tokyo");
+    assert_eq!(upstream_body["messages"][2]["role"], "tool");
+    assert_eq!(
+        upstream_body["messages"][2]["tool_call_id"],
+        "toolu_weather"
+    );
+    assert_eq!(upstream_body["messages"][2]["content"], "sunny 25C");
+
+    proxy.shutdown().await;
+}
+
+#[tokio::test]
+async fn anthropic_messages_maps_openai_length_to_max_tokens_stop_reason() {
+    let upstream = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(openai_text_response_with_finish_reason("partial", "length")),
+        )
+        .expect(1)
+        .mount(&upstream)
+        .await;
+    let proxy = start_proxy_with_providers(&[ProviderSpec {
+        id: "anthropic-stop-reason",
+        name: "Anthropic Stop Reason",
+        priority: 1,
+        server: &upstream,
+    }])
+    .await;
+
+    let response = reqwest::Client::new()
+        .post(format!("{}/v1/messages", proxy.base_url))
+        .json(&anthropic_messages_request())
+        .send()
+        .await
+        .expect("proxy request");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = response.json().await.expect("response json");
+    assert_eq!(body["content"][0]["text"], "partial");
+    assert_eq!(body["stop_reason"], "max_tokens");
+
+    proxy.shutdown().await;
+}
+
+#[tokio::test]
 async fn anthropic_messages_streams_anthropic_sse_events() {
     let upstream = MockServer::start().await;
     let sse = "data: {\"id\":\"chatcmpl-anthropic-stream\",\"model\":\"gpt-4o\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\"},\"finish_reason\":null}]}\n\n\
@@ -251,6 +431,82 @@ async fn anthropic_messages_streams_anthropic_sse_events() {
     assert!(body.contains("\"text\":\"Hel\""));
     assert!(body.contains("\"text\":\"lo\""));
     assert!(body.contains("\"stop_reason\":\"end_turn\""));
+    assert!(!body.contains("data: [DONE]"));
+    assert_contains_in_order(
+        &body,
+        &[
+            "event: message_start",
+            "event: content_block_start",
+            "\"text\":\"Hel\"",
+            "\"text\":\"lo\"",
+            "event: content_block_stop",
+            "event: message_delta",
+            "event: message_stop",
+        ],
+    );
+
+    let received = upstream.received_requests().await.expect("received");
+    let upstream_body: Value = serde_json::from_slice(&received[0].body).expect("json");
+    assert_eq!(upstream_body["stream"], true);
+
+    proxy.shutdown().await;
+}
+
+#[tokio::test]
+async fn anthropic_messages_streams_tool_use_events_in_order() {
+    let upstream = MockServer::start().await;
+    let sse = r#"data: {"id":"chatcmpl-tool-stream","model":"gpt-4o","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-tool-stream","model":"gpt-4o","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_weather","type":"function","function":{"name":"get_weather","arguments":"{\"city\":"}}]},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-tool-stream","model":"gpt-4o","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"Tokyo\"}"}}]},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-tool-stream","model":"gpt-4o","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}
+
+data: [DONE]
+
+"#;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string(sse)
+                .insert_header("content-type", "text/event-stream"),
+        )
+        .expect(1)
+        .mount(&upstream)
+        .await;
+    let proxy = start_proxy_with_providers(&[ProviderSpec {
+        id: "anthropic-tool-stream",
+        name: "Anthropic Tool Stream",
+        priority: 1,
+        server: &upstream,
+    }])
+    .await;
+
+    let response = reqwest::Client::new()
+        .post(format!("{}/v1/messages", proxy.base_url))
+        .json(&anthropic_messages_stream_request())
+        .send()
+        .await
+        .expect("proxy request");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.text().await.expect("sse text");
+    assert_contains_in_order(
+        &body,
+        &[
+            "event: message_start",
+            "event: content_block_start",
+            "\"name\":\"get_weather\"",
+            "\"type\":\"tool_use\"",
+            "\"type\":\"input_json_delta\"",
+            "event: content_block_stop",
+            "event: message_delta",
+            "\"stop_reason\":\"tool_use\"",
+            "event: message_stop",
+        ],
+    );
     assert!(!body.contains("data: [DONE]"));
 
     let received = upstream.received_requests().await.expect("received");
