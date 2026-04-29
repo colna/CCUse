@@ -109,7 +109,16 @@ pub fn run() {
             app.manage(database.clone());
             let repo: ProviderRepoHandle =
                 Arc::new(providers::ProviderRepository::new(database, master_key));
-            app.manage(repo);
+            app.manage(Arc::clone(&repo));
+
+            // T1.0.6.04: hydrate ProviderManager from the DB before
+            // accepting any /v1/* traffic; failure is logged and the
+            // manager stays empty so /v1/* returns 503 instead of crashing.
+            let load_manager = Arc::clone(&manager);
+            let load_repo = Arc::clone(&repo);
+            tauri::async_runtime::spawn(async move {
+                providers::load_initial_providers(&load_manager, &load_repo).await;
+            });
 
             // Boot the proxy on startup so the UI can read the config
             // immediately. Errors here are non-fatal; the UI surfaces

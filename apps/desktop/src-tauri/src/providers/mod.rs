@@ -13,6 +13,7 @@ pub mod manager;
 pub mod model;
 pub mod openai;
 pub mod repository;
+pub mod startup;
 pub mod wrapper;
 
 pub use api::{
@@ -23,4 +24,5 @@ pub use manager::{ManagerError, ProviderManager};
 pub use model::{Provider, ProviderInput, ProviderKind};
 pub use openai::{OpenAIProvider, DEFAULT_REQUEST_TIMEOUT};
 pub use repository::{ProviderRepository, RepositoryError};
+pub use startup::load_initial_providers;
 pub use wrapper::{ProviderWrapper, RuntimeState};
