@@ -5,7 +5,7 @@
 //! 2. `Authorization: Bearer <key>` is forwarded verbatim,
 //! 3. `stream` is forced to `false` even if the caller set `true`,
 //! 4. 401 / 429 / 500 / 400 land in the right `ProviderError` variant,
-//! 5. `health_check` reads `GET /v1/models`.
+//! 5. `health_check` and `list_models` read `GET /v1/models`.
 
 use ccuse_desktop_lib::providers::api::ProviderError;
 use ccuse_desktop_lib::providers::api::{ApiRequest, ChatMessage, HealthStatus, Provider};
@@ -199,6 +199,34 @@ async fn health_check_calls_v1_models_and_maps_status() {
         OpenAIProvider::new("p1", "Mock", server.uri(), "sk-test").expect("build provider");
     let status = provider.health_check().await.expect("ok");
     assert_eq!(status, HealthStatus::Healthy);
+}
+
+#[tokio::test]
+async fn list_models_calls_v1_models_and_decodes_data() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/models"))
+        .and(header("authorization", "Bearer sk-test"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "object": "list",
+            "data": [
+                {"id": "gpt-4o", "object": "model", "owned_by": "openai"},
+                {"id": "gpt-4o-mini"}
+            ]
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let provider =
+        OpenAIProvider::new("p1", "Mock", server.uri(), "sk-test").expect("build provider");
+
+    let models = provider.list_models().await.expect("models");
+
+    assert_eq!(models.len(), 2);
+    assert_eq!(models[0].id, "gpt-4o");
+    assert_eq!(models[0].owned_by.as_deref(), Some("openai"));
+    assert_eq!(models[1].id, "gpt-4o-mini");
+    assert_eq!(models[1].object, "model");
 }
 
 /// Concatenate every chunk into a single byte buffer. Surfaces the

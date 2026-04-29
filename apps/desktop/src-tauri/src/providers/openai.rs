@@ -12,10 +12,11 @@ use async_trait::async_trait;
 use futures::stream::StreamExt;
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use reqwest::{Client, StatusCode};
+use serde::Deserialize;
 use serde_json::json;
 
 use super::api::{
-    ApiRequest, ApiResponse, HealthStatus, Provider, ProviderError, StreamingResponse,
+    ApiModel, ApiRequest, ApiResponse, HealthStatus, Provider, ProviderError, StreamingResponse,
 };
 
 /// Default timeout for non-streaming chat-completions calls. Keep
@@ -32,6 +33,12 @@ pub struct OpenAIProvider {
     priority: i32,
     cost_per_token: Option<f64>,
     client: Client,
+}
+
+#[derive(Debug, Deserialize)]
+struct ModelsResponse {
+    #[serde(default)]
+    data: Vec<ApiModel>,
 }
 
 impl std::fmt::Debug for OpenAIProvider {
@@ -143,6 +150,28 @@ impl Provider for OpenAIProvider {
             StatusCode::TOO_MANY_REQUESTS => Ok(HealthStatus::Degraded),
             _ => Ok(HealthStatus::Down),
         }
+    }
+
+    async fn list_models(&self) -> Result<Vec<ApiModel>, ProviderError> {
+        let response = self
+            .client
+            .get(self.endpoint("/v1/models"))
+            .headers(self.auth_headers()?)
+            .send()
+            .await
+            .map_err(|e| ProviderError::Network(e.to_string()))?;
+
+        let status = response.status();
+        if status.is_success() {
+            return response
+                .json::<ModelsResponse>()
+                .await
+                .map(|body| body.data)
+                .map_err(|e| ProviderError::Decode(e.to_string()));
+        }
+
+        let body_text = response.text().await.unwrap_or_default();
+        Err(map_http_error(status, body_text))
     }
 
     async fn send_request(&self, request: ApiRequest) -> Result<ApiResponse, ProviderError> {

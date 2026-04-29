@@ -12,7 +12,7 @@ use async_trait::async_trait;
 use tokio::sync::RwLock;
 
 use super::api::{
-    ApiRequest, ApiResponse, HealthStatus, Provider, ProviderError, StreamingResponse,
+    ApiModel, ApiRequest, ApiResponse, HealthStatus, Provider, ProviderError, StreamingResponse,
 };
 use super::model::ProviderKind;
 
@@ -198,6 +198,10 @@ impl Provider for ProviderWrapper {
             self.state.set_health(*status).await;
         }
         result
+    }
+
+    async fn list_models(&self) -> Result<Vec<ApiModel>, ProviderError> {
+        self.inner.list_models().await
     }
 
     async fn send_request(&self, request: ApiRequest) -> Result<ApiResponse, ProviderError> {

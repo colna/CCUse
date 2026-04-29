@@ -65,6 +65,20 @@ pub struct ApiToolDefinition {
     pub parameters: serde_json::Value,
 }
 
+/// One model entry returned by an upstream `/v1/models` endpoint.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ApiModel {
+    pub id: String,
+    #[serde(default = "default_model_object")]
+    pub object: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owned_by: Option<String>,
+}
+
+fn default_model_object() -> String {
+    "model".to_owned()
+}
+
 /// Tool call in the OpenAI-compatible provider-layer message shape.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ApiToolCall {
@@ -210,6 +224,15 @@ pub trait Provider: Send + Sync + std::fmt::Debug {
     /// Liveness probe. Implementations should be cheap: prefer
     /// `/v1/models` or a lightweight `GET` over an actual completion.
     async fn health_check(&self) -> Result<HealthStatus, ProviderError>;
+
+    /// List models exposed by this provider. Default keeps legacy
+    /// mock providers source-compatible; concrete HTTP providers
+    /// should override it.
+    async fn list_models(&self) -> Result<Vec<ApiModel>, ProviderError> {
+        Err(ProviderError::BadRequest(
+            "provider does not implement model listing".into(),
+        ))
+    }
 
     /// Non-streaming dispatch. The full upstream body is parsed and
     /// returned as [`ApiResponse`].

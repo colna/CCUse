@@ -4,10 +4,11 @@
 //! graceful-shutdown contract. Real routes (`/v1/chat/completions`
 //! etc.) are introduced in T1.0.1.08; provider dispatch in T1.0.2.
 
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 use std::future::Future;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use axum::extract::State;
 use axum::http::header::{AUTHORIZATION, CONTENT_TYPE};
@@ -30,13 +31,15 @@ use crate::converter::{
     UnifiedRequest,
 };
 use crate::db::Database;
-use crate::providers::{ProviderError, ProviderManager, StreamingResponse};
+use crate::providers::{ProviderError, ProviderManager, RuntimeProvider, StreamingResponse};
 use crate::switch::request_log::{RequestLogInput, RequestLogRepository};
 
 use crate::providers::api::ApiRequest;
 
 use super::error::{ApiError, ApiErrorKind};
 use super::{bridge, sse};
+
+const MODELS_CACHE_TTL: Duration = Duration::from_secs(30);
 
 /// Errors raised while binding or running the proxy server.
 #[derive(thiserror::Error, Debug)]
@@ -89,6 +92,13 @@ pub struct ProxyAppState {
     pub request_log: Option<RequestLogRepository>,
     pub openai_converter: OpenAIConverter,
     pub anthropic_converter: AnthropicConverter,
+    models_cache: Arc<RwLock<Option<ModelsCache>>>,
+}
+
+#[derive(Debug, Clone)]
+struct ModelsCache {
+    fetched_at: Instant,
+    payload: Value,
 }
 
 impl ProxyAppState {
@@ -105,6 +115,7 @@ impl ProxyAppState {
             request_log: None,
             openai_converter: OpenAIConverter,
             anthropic_converter: AnthropicConverter,
+            models_cache: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -113,6 +124,23 @@ impl ProxyAppState {
     pub fn with_request_log(mut self, db: Database) -> Self {
         self.request_log = Some(RequestLogRepository::new(db));
         self
+    }
+
+    async fn cached_models(&self) -> Option<Value> {
+        let guard = self.models_cache.read().await;
+        let cache = guard.as_ref()?;
+        if cache.fetched_at.elapsed() <= MODELS_CACHE_TTL {
+            Some(cache.payload.clone())
+        } else {
+            None
+        }
+    }
+
+    async fn store_models_cache(&self, payload: Value) {
+        *self.models_cache.write().await = Some(ModelsCache {
+            fetched_at: Instant::now(),
+            payload,
+        });
     }
 }
 
@@ -273,16 +301,64 @@ async fn healthz() -> &'static str {
     "ok"
 }
 
-/// `GET /v1/models` — returns an empty list until the provider
-/// registry (T1.0.2.03 `ProviderManager`) is wired.
+/// `GET /v1/models` — aggregate enabled provider model lists.
 ///
-/// Shape mirrors `OpenAI`'s `/v1/models` so generic clients see
-/// "no models available" instead of a hard 404.
-async fn list_models(State(_state): State<ProxyAppState>) -> Json<Value> {
-    Json(json!({
+/// Shape mirrors `OpenAI`'s `/v1/models`; each id is namespaced as
+/// `provider_id::model_id` so identical upstream model names stay
+/// unambiguous in generic clients.
+async fn list_models(State(state): State<ProxyAppState>) -> Json<Value> {
+    if let Some(cached) = state.cached_models().await {
+        return Json(cached);
+    }
+
+    let providers = state.manager.enabled_by_priority().await;
+    if providers.is_empty() {
+        let payload = empty_models_payload();
+        state.store_models_cache(payload.clone()).await;
+        return Json(payload);
+    }
+
+    let results = futures::future::join_all(providers.into_iter().map(|provider| async move {
+        let provider_id = provider.id().to_owned();
+        match provider.list_models().await {
+            Ok(models) => Some((provider_id, models)),
+            Err(err) => {
+                eprintln!("failed to list models for provider {provider_id}: {err}");
+                None
+            }
+        }
+    }))
+    .await;
+
+    let mut seen = HashSet::new();
+    let mut data = Vec::new();
+    for (provider_id, models) in results.into_iter().flatten() {
+        for model in models {
+            let id = format!("{provider_id}::{}", model.id);
+            if !seen.insert(id.clone()) {
+                continue;
+            }
+            data.push(json!({
+                "id": id,
+                "object": "model",
+                "owned_by": provider_id,
+            }));
+        }
+    }
+
+    let payload = json!({
+        "object": "list",
+        "data": data,
+    });
+    state.store_models_cache(payload.clone()).await;
+    Json(payload)
+}
+
+fn empty_models_payload() -> Value {
+    json!({
         "object": "list",
         "data": [],
-    }))
+    })
 }
 
 /// `POST /v1/chat/completions` — OpenAI-format inbound.
