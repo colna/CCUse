@@ -3,6 +3,7 @@
 ## Table of Contents
 
 - [Getting Started / 快速开始](#getting-started)
+- [Supported Local API Endpoints / 已支持本地 API 端点](#supported-local-api-endpoints)
 - [Providers / 供应商配置](#providers)
 - [Switch Strategy / 切换策略](#switch-strategy)
 - [Monitoring / 监控面板](#monitoring)
@@ -32,6 +33,34 @@
 3. **添加供应商** — 进入"供应商"页面，添加至少一个 AI 供应商（OpenAI、Anthropic、Gemini、中转商或自定义端点）。
 4. **配置客户端** — 将 AI 客户端（Cursor、Claude Desktop、Continue 等）的 API 地址指向仪表盘显示的本地代理 URL，使用生成的 API Key 鉴权。
 5. **完成** — 所有请求现在经由 CCUse 路由，自动故障转移。
+
+---
+
+## Supported Local API Endpoints
+
+### EN
+
+Use the Base URL shown on the Dashboard, for example `http://127.0.0.1:8787`. All `/v1/*` routes require either `Authorization: Bearer sk-local-...` or `x-api-key: sk-local-...`.
+
+| Endpoint                    | Client compatibility | Request fields accepted                                                                                  | Response fields returned                                         | Streaming                                                                                                | Tool Calling                                                                                       | Notes                                                                                                 |
+| --------------------------- | -------------------- | -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `GET /v1/models`            | OpenAI models list   | None                                                                                                     | `object`, `data[].id`, `data[].object`, `data[].owned_by`        | N/A                                                                                                      | N/A                                                                                                | Aggregates enabled providers. Model ids are namespaced as `provider_id::model_id` and cached for 30s. |
+| `POST /v1/chat/completions` | OpenAI Chat          | `model`, `messages`, `temperature`, `max_tokens`, `top_p`, `stop`, `stream`, `tools`                     | `id`, `object`, `model`, `choices`, `message`, `usage`           | Yes. Emits OpenAI SSE frames: `data: {...}` and final `data: [DONE]`                                     | Yes. Supports function tool definitions, assistant `tool_calls`, tool result messages, and deltas. | Routes through `SwitchEngine`; model mapping is applied after a concrete provider is selected.        |
+| `POST /v1/messages`         | Anthropic Messages   | `model`, `system`, `messages`, `max_tokens`, `temperature`, `top_p`, `stop_sequences`, `stream`, `tools` | `id`, `type`, `role`, `model`, `content`, `stop_reason`, `usage` | Yes. Emits Anthropic SSE events: `message_start`, `content_block_delta`, `message_delta`, `message_stop` | Yes. Supports `tool_use`, `tool_result`, and streaming `input_json_delta` events.                  | Converts Anthropic inbound/outbound at the local boundary; errors use Anthropic-shaped envelopes.     |
+
+Currently unsupported local API surfaces: `/v1/responses`, embeddings, image generation, audio, files, batches, and fine-tuning endpoints.
+
+### ZH
+
+使用仪表盘显示的 Base URL，例如 `http://127.0.0.1:8787`。所有 `/v1/*` 路由都需要 `Authorization: Bearer sk-local-...` 或 `x-api-key: sk-local-...` 鉴权。
+
+| 端点                        | 客户端兼容         | 已接收请求字段                                                                                           | 返回字段                                                         | 流式                                                                                              | 工具调用                                                                              | 备注                                                                          |
+| --------------------------- | ------------------ | -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `GET /v1/models`            | OpenAI models 列表 | 无                                                                                                       | `object`、`data[].id`、`data[].object`、`data[].owned_by`        | 不适用                                                                                            | 不适用                                                                                | 聚合所有已启用供应商；模型 id 命名为 `provider_id::model_id`，并缓存 30 秒。  |
+| `POST /v1/chat/completions` | OpenAI Chat        | `model`、`messages`、`temperature`、`max_tokens`、`top_p`、`stop`、`stream`、`tools`                     | `id`、`object`、`model`、`choices`、`message`、`usage`           | 支持；输出 OpenAI SSE：`data: {...}`，最后输出 `data: [DONE]`                                     | 支持；包含 function tool 定义、assistant `tool_calls`、tool result 消息与流式 delta。 | 经由 `SwitchEngine` 转发；模型映射会在选定具体供应商后应用。                  |
+| `POST /v1/messages`         | Anthropic Messages | `model`、`system`、`messages`、`max_tokens`、`temperature`、`top_p`、`stop_sequences`、`stream`、`tools` | `id`、`type`、`role`、`model`、`content`、`stop_reason`、`usage` | 支持；输出 Anthropic SSE：`message_start`、`content_block_delta`、`message_delta`、`message_stop` | 支持；包含 `tool_use`、`tool_result` 与流式 `input_json_delta` 事件。                 | 在本地边界完成 Anthropic 入站/出站格式转换；错误响应使用 Anthropic envelope。 |
+
+当前未支持的本地 API 面：`/v1/responses`、embeddings、图像生成、音频、文件、batch 与 fine-tuning 端点。
 
 ---
 
