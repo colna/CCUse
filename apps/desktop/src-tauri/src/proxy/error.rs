@@ -55,6 +55,8 @@ pub enum ApiErrorKind {
     TooManyRequests,
     /// All enabled providers failed to serve the request.
     UpstreamError,
+    /// Non-streaming handler exceeded its deadline.
+    Timeout,
     /// No enabled providers available to handle the request.
     NoProvider,
     /// Catch-all internal failure.
@@ -71,6 +73,7 @@ impl ApiErrorKind {
             Self::BadRequest => StatusCode::BAD_REQUEST,
             Self::TooManyRequests => StatusCode::TOO_MANY_REQUESTS,
             Self::UpstreamError => StatusCode::BAD_GATEWAY,
+            Self::Timeout => StatusCode::GATEWAY_TIMEOUT,
             Self::Internal => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -85,6 +88,7 @@ impl ApiErrorKind {
             Self::BadRequest => "bad_request",
             Self::TooManyRequests => "rate_limit_exceeded",
             Self::UpstreamError => "upstream_error",
+            Self::Timeout => "request_timeout",
             Self::Internal => "internal_error",
         }
     }
@@ -99,6 +103,7 @@ impl ApiErrorKind {
             Self::ProvidersNotConfigured
             | Self::NoProvider
             | Self::UpstreamError
+            | Self::Timeout
             | Self::Internal => "api_error",
         }
     }
@@ -151,6 +156,10 @@ impl ApiError {
 
     pub fn internal(reason: impl Into<String>) -> Self {
         Self::new(ApiErrorKind::Internal, reason)
+    }
+
+    pub fn timeout(reason: impl Into<String>) -> Self {
+        Self::new(ApiErrorKind::Timeout, reason)
     }
 }
 
@@ -221,6 +230,7 @@ mod tests {
             ApiErrorKind::UpstreamError.status(),
             StatusCode::BAD_GATEWAY
         );
+        assert_eq!(ApiErrorKind::Timeout.status(), StatusCode::GATEWAY_TIMEOUT);
         assert_eq!(
             ApiErrorKind::NoProvider.status(),
             StatusCode::SERVICE_UNAVAILABLE
@@ -244,6 +254,7 @@ mod tests {
             "rate_limit_exceeded"
         );
         assert_eq!(ApiErrorKind::UpstreamError.type_str(), "upstream_error");
+        assert_eq!(ApiErrorKind::Timeout.type_str(), "request_timeout");
         assert_eq!(ApiErrorKind::NoProvider.type_str(), "no_provider_available");
         assert_eq!(ApiErrorKind::Internal.type_str(), "internal_error");
     }
@@ -263,6 +274,7 @@ mod tests {
             "rate_limit_error"
         );
         assert_eq!(ApiErrorKind::NoProvider.anthropic_type_str(), "api_error");
+        assert_eq!(ApiErrorKind::Timeout.anthropic_type_str(), "api_error");
         assert_eq!(
             ApiErrorKind::UpstreamError.anthropic_type_str(),
             "api_error"

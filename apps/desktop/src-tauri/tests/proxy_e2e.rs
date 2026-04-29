@@ -60,6 +60,14 @@ async fn start_proxy_with_providers_and_mapping(
     specs: &[ProviderSpec<'_>],
     model_mapping: ModelMapping,
 ) -> RunningProxy {
+    start_proxy_with_providers_mapping_and_timeout(specs, model_mapping, None).await
+}
+
+async fn start_proxy_with_providers_mapping_and_timeout(
+    specs: &[ProviderSpec<'_>],
+    model_mapping: ModelMapping,
+    non_streaming_timeout: Option<Duration>,
+) -> RunningProxy {
     let manager = Arc::new(ProviderManager::new());
     for spec in specs {
         let provider = OpenAIProvider::with_options(
@@ -85,7 +93,10 @@ async fn start_proxy_with_providers_and_mapping(
 
     let engine = Arc::new(SwitchEngine::new(Arc::clone(&manager)));
     let mapping = Arc::new(RwLock::new(model_mapping));
-    let state = ProxyAppState::new(engine, mapping, Arc::clone(&manager));
+    let mut state = ProxyAppState::new(engine, mapping, Arc::clone(&manager));
+    if let Some(timeout) = non_streaming_timeout {
+        state = state.with_non_streaming_timeout(timeout);
+    }
     let server = ProxyServer::bind(loopback_zero())
         .await
         .expect("bind proxy");
@@ -519,6 +530,86 @@ async fn chat_completions_keeps_original_model_without_mapping() {
     let received = upstream.received_requests().await.expect("received");
     let upstream_body: Value = serde_json::from_slice(&received[0].body).expect("json");
     assert_eq!(upstream_body["model"], "client-unmapped");
+
+    proxy.shutdown().await;
+}
+
+#[tokio::test]
+async fn chat_completions_non_streaming_handler_times_out() {
+    let upstream = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_delay(Duration::from_millis(250))
+                .set_body_json(openai_text_response("too late")),
+        )
+        .mount(&upstream)
+        .await;
+    let proxy = start_proxy_with_providers_mapping_and_timeout(
+        &[ProviderSpec {
+            id: "timeout-provider",
+            name: "Timeout Provider",
+            priority: 1,
+            server: &upstream,
+        }],
+        ModelMapping::new(),
+        Some(Duration::from_millis(25)),
+    )
+    .await;
+
+    let response = reqwest::Client::new()
+        .post(format!("{}/v1/chat/completions", proxy.base_url))
+        .json(&chat_request(false))
+        .send()
+        .await
+        .expect("proxy request");
+
+    assert_eq!(response.status(), StatusCode::GATEWAY_TIMEOUT);
+    let body: Value = response.json().await.expect("response json");
+    assert_eq!(body["error"]["type"], "request_timeout");
+
+    proxy.shutdown().await;
+}
+
+#[tokio::test]
+async fn chat_completions_streaming_ignores_non_streaming_handler_timeout() {
+    let upstream = MockServer::start().await;
+    let sse = "data: {\"id\":\"chatcmpl-timeout-stream\",\"model\":\"gpt-4o\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ok\"},\"finish_reason\":null}]}\n\n\
+               data: [DONE]\n\n";
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_delay(Duration::from_millis(75))
+                .set_body_string(sse)
+                .insert_header("content-type", "text/event-stream"),
+        )
+        .expect(1)
+        .mount(&upstream)
+        .await;
+    let proxy = start_proxy_with_providers_mapping_and_timeout(
+        &[ProviderSpec {
+            id: "stream-timeout-provider",
+            name: "Stream Timeout Provider",
+            priority: 1,
+            server: &upstream,
+        }],
+        ModelMapping::new(),
+        Some(Duration::from_millis(10)),
+    )
+    .await;
+
+    let response = reqwest::Client::new()
+        .post(format!("{}/v1/chat/completions", proxy.base_url))
+        .json(&chat_request(true))
+        .send()
+        .await
+        .expect("proxy request");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.text().await.expect("sse text");
+    assert!(body.contains("data: [DONE]"));
 
     proxy.shutdown().await;
 }

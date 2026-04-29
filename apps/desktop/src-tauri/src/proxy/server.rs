@@ -10,7 +10,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use axum::extract::State;
+use axum::extract::{DefaultBodyLimit, State};
 use axum::http::header::{AUTHORIZATION, CONTENT_TYPE};
 use axum::http::{HeaderName, Method};
 use axum::response::{IntoResponse, Json};
@@ -35,13 +35,16 @@ use crate::providers::{
     ProviderError, ProviderManager, ProviderWrapper, RuntimeProvider, StreamingResponse,
 };
 use crate::switch::request_log::{RequestLogInput, RequestLogRepository};
+use crate::switch::DispatchResult;
 
-use crate::providers::api::ApiRequest;
+use crate::providers::api::{ApiRequest, ApiResponse};
 
 use super::error::{ApiError, ApiErrorKind};
 use super::{bridge, sse};
 
 const MODELS_CACHE_TTL: Duration = Duration::from_secs(30);
+const MAX_REQUEST_BODY_BYTES: usize = 1024 * 1024;
+const DEFAULT_NON_STREAMING_HANDLER_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Errors raised while binding or running the proxy server.
 #[derive(thiserror::Error, Debug)]
@@ -94,6 +97,7 @@ pub struct ProxyAppState {
     pub request_log: Option<RequestLogRepository>,
     pub openai_converter: OpenAIConverter,
     pub anthropic_converter: AnthropicConverter,
+    non_streaming_timeout: Duration,
     models_cache: Arc<RwLock<Option<ModelsCache>>>,
 }
 
@@ -117,6 +121,7 @@ impl ProxyAppState {
             request_log: None,
             openai_converter: OpenAIConverter,
             anthropic_converter: AnthropicConverter,
+            non_streaming_timeout: DEFAULT_NON_STREAMING_HANDLER_TIMEOUT,
             models_cache: Arc::new(RwLock::new(None)),
         }
     }
@@ -125,6 +130,12 @@ impl ProxyAppState {
     #[must_use]
     pub fn with_request_log(mut self, db: Database) -> Self {
         self.request_log = Some(RequestLogRepository::new(db));
+        self
+    }
+
+    #[must_use]
+    pub fn with_non_streaming_timeout(mut self, timeout: Duration) -> Self {
+        self.non_streaming_timeout = timeout;
         self
     }
 
@@ -258,6 +269,7 @@ fn build_router(auth: Option<KeyStore>, state: ProxyAppState) -> Router {
         .route("/v1/models", get(list_models))
         .route("/v1/chat/completions", post(chat_completions))
         .route("/v1/messages", post(anthropic_messages))
+        .layer(DefaultBodyLimit::max(MAX_REQUEST_BODY_BYTES))
         .with_state(state);
     if let Some(store) = auth {
         v1 = v1.layer(axum::middleware::from_fn_with_state(
@@ -391,13 +403,7 @@ async fn chat_completions(
 
     let start = std::time::Instant::now();
 
-    let result = state
-        .engine
-        .dispatch_with_request_mapper(api_req.clone(), |request, provider| {
-            request_with_resolved_model(request, provider, &model_mapping)
-        })
-        .await
-        .map_err(ApiError::from)?;
+    let result = dispatch_non_streaming(&state, api_req.clone(), &model_mapping).await?;
 
     let elapsed = start.elapsed();
 
@@ -511,13 +517,7 @@ async fn anthropic_messages_inner(
     }
 
     let start = std::time::Instant::now();
-    let result = state
-        .engine
-        .dispatch_with_request_mapper(api_req.clone(), |request, provider| {
-            request_with_resolved_model(request, provider, &model_mapping)
-        })
-        .await
-        .map_err(ApiError::from)?;
+    let result = dispatch_non_streaming(&state, api_req.clone(), &model_mapping).await?;
     let elapsed = start.elapsed();
 
     if let Some(ref log_repo) = state.request_log {
@@ -607,6 +607,29 @@ fn request_with_resolved_model(
     let mut mapped = request.clone();
     mapped.model = resolved;
     mapped
+}
+
+async fn dispatch_non_streaming(
+    state: &ProxyAppState,
+    api_req: ApiRequest,
+    model_mapping: &ModelMapping,
+) -> Result<DispatchResult<ApiResponse>, ApiError> {
+    tokio::time::timeout(
+        state.non_streaming_timeout,
+        state
+            .engine
+            .dispatch_with_request_mapper(api_req, |request, provider| {
+                request_with_resolved_model(request, provider, model_mapping)
+            }),
+    )
+    .await
+    .map_err(|_| {
+        ApiError::timeout(format!(
+            "request timed out after {:?}",
+            state.non_streaming_timeout
+        ))
+    })?
+    .map_err(ApiError::from)
 }
 
 struct AnthropicSseBridge {

@@ -179,6 +179,26 @@ async fn chat_completions_returns_503_when_no_providers() {
 }
 
 #[tokio::test]
+async fn chat_completions_rejects_body_over_one_mib() {
+    let (base, tx, handle) = start_test_server().await;
+    let oversized_content = "x".repeat(1024 * 1024 + 1);
+    let request = serde_json::json!({
+        "model": "gpt-4o",
+        "messages": [{"role": "user", "content": oversized_content}]
+    });
+
+    let response = reqwest::Client::new()
+        .post(format!("{base}/v1/chat/completions"))
+        .json(&request)
+        .send()
+        .await
+        .expect("oversized request should reach the server");
+
+    assert_eq!(response.status(), reqwest::StatusCode::PAYLOAD_TOO_LARGE);
+    shutdown_test_server(tx, handle).await;
+}
+
+#[tokio::test]
 async fn anthropic_messages_returns_503_when_no_providers() {
     let (base, tx, handle) = start_test_server().await;
     let response = reqwest::Client::new()
