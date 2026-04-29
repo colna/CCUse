@@ -136,6 +136,16 @@ fn anthropic_messages_request() -> Value {
     })
 }
 
+fn anthropic_messages_stream_request() -> Value {
+    json!({
+        "model": "claude-3-5-sonnet-20241022",
+        "max_tokens": 128,
+        "system": "You are terse.",
+        "messages": [{"role": "user", "content": "ping"}],
+        "stream": true
+    })
+}
+
 fn openai_text_response(content: &str) -> Value {
     json!({
         "id": "chatcmpl-proxy-e2e",
@@ -193,6 +203,59 @@ async fn anthropic_messages_dispatches_non_streaming_request_to_upstream() {
     assert_eq!(upstream_body["messages"][1]["content"], "ping");
     assert_eq!(upstream_body["max_tokens"], 128);
     assert_eq!(upstream_body["stream"], false);
+
+    proxy.shutdown().await;
+}
+
+#[tokio::test]
+async fn anthropic_messages_streams_anthropic_sse_events() {
+    let upstream = MockServer::start().await;
+    let sse = "data: {\"id\":\"chatcmpl-anthropic-stream\",\"model\":\"gpt-4o\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\"},\"finish_reason\":null}]}\n\n\
+               data: {\"id\":\"chatcmpl-anthropic-stream\",\"model\":\"gpt-4o\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Hel\"},\"finish_reason\":null}]}\n\n\
+               data: {\"id\":\"chatcmpl-anthropic-stream\",\"model\":\"gpt-4o\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"lo\"},\"finish_reason\":null}]}\n\n\
+               data: {\"id\":\"chatcmpl-anthropic-stream\",\"model\":\"gpt-4o\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n\
+               data: [DONE]\n\n";
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string(sse)
+                .insert_header("content-type", "text/event-stream"),
+        )
+        .expect(1)
+        .mount(&upstream)
+        .await;
+    let proxy = start_proxy_with_providers(&[ProviderSpec {
+        id: "anthropic-stream",
+        name: "Anthropic Stream",
+        priority: 1,
+        server: &upstream,
+    }])
+    .await;
+
+    let response = reqwest::Client::new()
+        .post(format!("{}/v1/messages", proxy.base_url))
+        .json(&anthropic_messages_stream_request())
+        .send()
+        .await
+        .expect("proxy request");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.text().await.expect("sse text");
+    assert!(body.contains("event: message_start"));
+    assert!(body.contains("event: content_block_start"));
+    assert!(body.contains("event: content_block_delta"));
+    assert!(body.contains("event: content_block_stop"));
+    assert!(body.contains("event: message_delta"));
+    assert!(body.contains("event: message_stop"));
+    assert!(body.contains("\"text\":\"Hel\""));
+    assert!(body.contains("\"text\":\"lo\""));
+    assert!(body.contains("\"stop_reason\":\"end_turn\""));
+    assert!(!body.contains("data: [DONE]"));
+
+    let received = upstream.received_requests().await.expect("received");
+    let upstream_body: Value = serde_json::from_slice(&received[0].body).expect("json");
+    assert_eq!(upstream_body["stream"], true);
 
     proxy.shutdown().await;
 }

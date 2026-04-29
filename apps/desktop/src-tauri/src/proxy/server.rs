@@ -4,6 +4,7 @@
 //! graceful-shutdown contract. Real routes (`/v1/chat/completions`
 //! etc.) are introduced in T1.0.1.08; provider dispatch in T1.0.2.
 
+use std::collections::VecDeque;
 use std::future::Future;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -14,6 +15,8 @@ use axum::http::{HeaderName, Method};
 use axum::response::{IntoResponse, Json};
 use axum::routing::{get, post};
 use axum::Router;
+use bytes::Bytes;
+use futures::StreamExt;
 use serde_json::{json, Value};
 use tokio::net::TcpListener;
 use tokio::sync::RwLock;
@@ -23,10 +26,11 @@ use crate::auth::{require_local_api_key, KeyStore};
 use crate::commands::model_mapping::ModelMappingHandle;
 use crate::commands::switch::SwitchEngineHandle;
 use crate::converter::{
-    AnthropicConverter, FormatConverter, ModelMapping, OpenAIConverter, UnifiedRequest,
+    sse::parse_sse_frames, AnthropicConverter, FormatConverter, ModelMapping, OpenAIConverter,
+    UnifiedRequest,
 };
 use crate::db::Database;
-use crate::providers::ProviderManager;
+use crate::providers::{ProviderError, ProviderManager, StreamingResponse};
 use crate::switch::request_log::{RequestLogInput, RequestLogRepository};
 
 use crate::providers::api::ApiRequest;
@@ -408,13 +412,11 @@ async fn anthropic_messages(
         serde_json::from_slice(&body).map_err(|e| ApiError::bad_request(e.to_string()))?;
 
     let unified: UnifiedRequest = state.anthropic_converter.request_to_unified(&body_json)?;
+    let api_req = bridge::unified_to_api_request(&unified);
     if unified.stream {
-        return Err(ApiError::bad_request(
-            "stream=true for /v1/messages is not implemented yet",
-        ));
+        return handle_streaming_anthropic_messages(state, api_req).await;
     }
 
-    let api_req = bridge::unified_to_api_request(&unified);
     let start = std::time::Instant::now();
     let result = state
         .engine
@@ -455,6 +457,202 @@ async fn anthropic_messages(
         .anthropic_converter
         .unified_to_response(&unified_resp)?;
     Ok(Json(out).into_response())
+}
+
+async fn handle_streaming_anthropic_messages(
+    state: ProxyAppState,
+    api_req: ApiRequest,
+) -> Result<axum::response::Response, ApiError> {
+    let start = std::time::Instant::now();
+    let result = state
+        .engine
+        .dispatch_stream(api_req.clone())
+        .await
+        .map_err(ApiError::from)?;
+    let elapsed = start.elapsed();
+
+    if let Some(ref log_repo) = state.request_log {
+        let input = RequestLogInput {
+            provider_id: result.provider_id.clone(),
+            model: api_req.model.clone(),
+            status: "ok".into(),
+            error_kind: None,
+            latency_ms: i64::try_from(elapsed.as_millis()).unwrap_or(i64::MAX),
+            prompt_tokens: None,
+            completion_tokens: None,
+            total_tokens: None,
+            stream: true,
+        };
+        let _ = log_repo.insert(&input);
+    }
+
+    let stream = openai_sse_to_anthropic_sse(
+        result.response,
+        state.openai_converter,
+        state.anthropic_converter,
+    );
+    let stream = sse::with_keep_alive(stream, sse::DEFAULT_KEEP_ALIVE);
+    Ok(sse::stream_to_sse_response(stream))
+}
+
+struct AnthropicSseBridge {
+    openai: OpenAIConverter,
+    anthropic: AnthropicConverter,
+    text_block_started: bool,
+    text_block_stopped: bool,
+}
+
+impl AnthropicSseBridge {
+    fn new(openai: OpenAIConverter, anthropic: AnthropicConverter) -> Self {
+        Self {
+            openai,
+            anthropic,
+            text_block_started: false,
+            text_block_stopped: false,
+        }
+    }
+
+    fn push_frame_results(
+        &mut self,
+        raw: &str,
+        pending: &mut VecDeque<Result<Bytes, ProviderError>>,
+    ) {
+        for frame in parse_sse_frames(raw) {
+            if frame.data == "[DONE]" {
+                self.push_done(pending);
+                continue;
+            }
+
+            let chunk = match self.openai.parse_stream_chunk(&frame.data) {
+                Ok(Some(chunk)) => chunk,
+                Ok(None) => continue,
+                Err(err) => {
+                    pending.push_back(Err(ProviderError::Decode(err.to_string())));
+                    continue;
+                }
+            };
+
+            let has_text_delta = chunk.choices.iter().any(|choice| {
+                choice
+                    .delta
+                    .as_ref()
+                    .and_then(|delta| delta.content.as_ref())
+                    .is_some()
+            });
+            let has_finish = chunk
+                .choices
+                .iter()
+                .any(|choice| choice.finish_reason.is_some());
+
+            if has_text_delta && !self.text_block_started {
+                self.text_block_started = true;
+                pending.push_back(Ok(content_block_start_frame()));
+            }
+            if has_finish && self.text_block_started && !self.text_block_stopped {
+                self.text_block_stopped = true;
+                pending.push_back(Ok(content_block_stop_frame()));
+            }
+
+            match self.anthropic.encode_stream_chunk(&chunk) {
+                Ok(encoded) if !encoded.is_empty() => pending.push_back(Ok(Bytes::from(encoded))),
+                Ok(_) => {}
+                Err(err) => pending.push_back(Err(ProviderError::Decode(err.to_string()))),
+            }
+        }
+    }
+
+    fn push_done(&mut self, pending: &mut VecDeque<Result<Bytes, ProviderError>>) {
+        if self.text_block_started && !self.text_block_stopped {
+            self.text_block_stopped = true;
+            pending.push_back(Ok(content_block_stop_frame()));
+        }
+        pending.push_back(Ok(Bytes::from(self.anthropic.encode_stream_done())));
+    }
+}
+
+struct AnthropicStreamState {
+    upstream: StreamingResponse,
+    buffer: String,
+    pending: VecDeque<Result<Bytes, ProviderError>>,
+    bridge: AnthropicSseBridge,
+}
+
+impl AnthropicStreamState {
+    fn new(
+        upstream: StreamingResponse,
+        openai: OpenAIConverter,
+        anthropic: AnthropicConverter,
+    ) -> Self {
+        Self {
+            upstream,
+            buffer: String::new(),
+            pending: VecDeque::new(),
+            bridge: AnthropicSseBridge::new(openai, anthropic),
+        }
+    }
+
+    fn drain_complete_frames(&mut self) {
+        while let Some(end) = self.buffer.find("\n\n") {
+            let raw = self.buffer[..end + 2].to_owned();
+            self.buffer.drain(..end + 2);
+            self.bridge.push_frame_results(&raw, &mut self.pending);
+        }
+    }
+
+    fn flush_trailing_frame(&mut self) {
+        if self.buffer.trim().is_empty() {
+            self.buffer.clear();
+            return;
+        }
+        let raw = std::mem::take(&mut self.buffer);
+        self.bridge.push_frame_results(&raw, &mut self.pending);
+    }
+}
+
+fn openai_sse_to_anthropic_sse(
+    upstream: StreamingResponse,
+    openai: OpenAIConverter,
+    anthropic: AnthropicConverter,
+) -> StreamingResponse {
+    Box::pin(futures::stream::unfold(
+        AnthropicStreamState::new(upstream, openai, anthropic),
+        |mut state| async move {
+            loop {
+                if let Some(item) = state.pending.pop_front() {
+                    return Some((item, state));
+                }
+
+                match state.upstream.next().await {
+                    Some(Ok(bytes)) => match std::str::from_utf8(&bytes) {
+                        Ok(text) => {
+                            state.buffer.push_str(text);
+                            state.drain_complete_frames();
+                        }
+                        Err(err) => {
+                            return Some((Err(ProviderError::Decode(err.to_string())), state));
+                        }
+                    },
+                    Some(Err(err)) => return Some((Err(err), state)),
+                    None => {
+                        state.flush_trailing_frame();
+                        return state.pending.pop_front().map(|item| (item, state));
+                    }
+                }
+            }
+        },
+    ))
+}
+
+fn content_block_start_frame() -> Bytes {
+    Bytes::from_static(
+        b"event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n",
+    )
+}
+
+fn content_block_stop_frame() -> Bytes {
+    Bytes::from_static(
+        b"event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n",
+    )
 }
 
 #[cfg(test)]
