@@ -1,12 +1,18 @@
 //! Documentation contract tests for user-facing compatibility matrices.
 
 const USER_MANUAL: &str = include_str!("../../../../docs/user-manual.md");
+const README: &str = include_str!("../../../../README.md");
+
+fn assert_doc_contains(doc: &str, label: &str, needle: &str) {
+    assert!(doc.contains(needle), "{label} must contain `{needle}`");
+}
 
 fn assert_manual_contains(needle: &str) {
-    assert!(
-        USER_MANUAL.contains(needle),
-        "user manual must contain `{needle}`"
-    );
+    assert_doc_contains(USER_MANUAL, "user manual", needle);
+}
+
+fn assert_readme_contains(needle: &str) {
+    assert_doc_contains(README, "README", needle);
 }
 
 #[test]
@@ -50,5 +56,20 @@ fn user_manual_documents_auth_and_unsupported_local_api_surfaces() {
         "fine-tuning",
     ] {
         assert_manual_contains(needle);
+    }
+}
+
+#[test]
+fn readme_documents_chat_completions_curl_quick_check() {
+    for needle in [
+        "## 快速开始",
+        "### 本地 API 快速验证",
+        "curl -sS http://127.0.0.1:8787/v1/chat/completions",
+        "-H \"Authorization: Bearer sk-local-...\"",
+        "\"model\": \"gpt-4o-mini\"",
+        "\"stream\": false",
+        "providers_not_configured",
+    ] {
+        assert_readme_contains(needle);
     }
 }

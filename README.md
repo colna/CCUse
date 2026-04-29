@@ -81,6 +81,25 @@ cd apps/desktop/src-tauri && cargo test    # cargo test（Rust 端）
 pnpm desktop:typecheck
 ```
 
+### 本地 API 快速验证
+
+先在桌面端添加并启用至少一个供应商，然后从仪表盘复制 Base URL 与本地 API Key。将下面的 `sk-local-...` 替换成仪表盘显示的 key；如果你的代理端口不是 `8787`，也同步替换 URL。
+
+```bash
+curl -sS http://127.0.0.1:8787/v1/chat/completions \
+  -H "Authorization: Bearer sk-local-..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-4o-mini",
+    "messages": [
+      { "role": "user", "content": "Reply with: CCUse OK" }
+    ],
+    "stream": false
+  }'
+```
+
+成功时会返回 OpenAI-compatible `chat.completion` JSON，并且仪表盘监控会出现一条新的请求记录；如果返回 `providers_not_configured`，先确认至少有一个启用的供应商。
+
 > Phase 1.0.1 → 1.0.4 已完成。本地代理 + 多供应商管理 + 自动切换 + 格式转换 + 监控面板 + 系统托盘 + i18n 均已就绪。详见 [`开发计划.md`](./docs/开发计划.md)。
 
 ---
