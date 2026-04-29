@@ -26,6 +26,7 @@ import {
   deleteProvider,
   updateProvider,
   getHealthSnapshot,
+  onProviderStatusChanged,
   type Provider,
   type ProviderInput,
   type HealthSnapshot,
@@ -393,6 +394,26 @@ export function ProviderList({ refreshKey }: ProviderListProps) {
   useEffect(() => {
     const id = setInterval(fetchHealth, 5000);
     return () => clearInterval(id);
+  }, [fetchHealth]);
+
+  useEffect(() => {
+    const unlistenPromise = onProviderStatusChanged((event) => {
+      setHealthMap((current) => ({
+        ...current,
+        [event.provider_id]: {
+          provider_id: event.provider_id,
+          provider_name: event.provider_name,
+          status: event.new_status,
+          success_rate: event.success_rate,
+          response_time_us:
+            current[event.provider_id]?.response_time_us ?? null,
+        },
+      }));
+      void fetchHealth();
+    }).catch(() => null);
+    return () => {
+      void unlistenPromise.then((unlisten) => unlisten?.());
+    };
   }, [fetchHealth]);
 
   const sensors = useSensors(

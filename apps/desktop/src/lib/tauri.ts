@@ -120,6 +120,30 @@ export async function getHealthSnapshot(): Promise<HealthSnapshotResponse> {
   return invoke<HealthSnapshotResponse>("get_health_snapshot");
 }
 
+export interface ProviderStatusChangedEvent {
+  provider_id: string;
+  provider_name: string;
+  old_status: HealthStatus;
+  new_status: HealthStatus;
+  success_rate: number;
+}
+
+/** Stable event name; mirrors `health::EVENT_PROVIDER_STATUS_CHANGED`
+ * on the Rust side. */
+export const EVENT_PROVIDER_STATUS_CHANGED = "provider-status-changed";
+
+/** Subscribe to health status changes emitted by the backend checker. */
+export async function onProviderStatusChanged(
+  callback: (event: ProviderStatusChangedEvent) => void,
+): Promise<UnlistenFn> {
+  return listen<ProviderStatusChangedEvent>(
+    EVENT_PROVIDER_STATUS_CHANGED,
+    (event) => {
+      callback(event.payload);
+    },
+  );
+}
+
 // ─── Model Mapping (T1.0.3.12) ──────────────────────────────
 
 export interface MappingEntry {

@@ -8,7 +8,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, Emitter, Runtime};
 use tokio::sync::{watch, RwLock};
 use tokio::task::JoinHandle;
 
@@ -25,9 +26,11 @@ pub const DEFAULT_WINDOW_SIZE: usize = 10;
 pub const DEGRADED_THRESHOLD: f64 = 0.7;
 /// Below this success rate the provider is `Down`.
 pub const DOWN_THRESHOLD: f64 = 0.3;
+/// Tauri event emitted when a provider health status changes.
+pub const EVENT_PROVIDER_STATUS_CHANGED: &str = "provider-status-changed";
 
-/// Payload emitted on `provider-health-changed` (T1.0.2.08).
-#[derive(Debug, Clone, Serialize)]
+/// Payload emitted on `provider-status-changed` (T1.0.2.08).
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HealthChangedEvent {
     pub provider_id: String,
     pub provider_name: String,
@@ -101,6 +104,19 @@ impl HealthChecker {
     /// Subscribe to health-change events.
     pub fn event_receiver(&self) -> watch::Receiver<Option<HealthChangedEvent>> {
         self.event_rx.clone()
+    }
+
+    /// Forward health-change events to Tauri windows.
+    pub fn forward_events_to_app<R: Runtime>(&self, app: AppHandle<R>) {
+        let mut rx = self.event_receiver();
+        tauri::async_runtime::spawn(async move {
+            while rx.changed().await.is_ok() {
+                let Some(event) = rx.borrow_and_update().clone() else {
+                    continue;
+                };
+                emit_provider_status_changed(&app, &event);
+            }
+        });
     }
 
     /// Read the cached health snapshot (T1.0.2.07 / T1.0.2.21).
@@ -201,6 +217,12 @@ fn classify_health(success_rate: f64) -> HealthStatus {
     } else {
         HealthStatus::Down
     }
+}
+
+/// Best-effort Tauri event emission. A closed window or missing
+/// listener must not break the health loop.
+pub fn emit_provider_status_changed<R: Runtime>(app: &AppHandle<R>, event: &HealthChangedEvent) {
+    let _ = app.emit(EVENT_PROVIDER_STATUS_CHANGED, event.clone());
 }
 
 #[cfg(test)]
@@ -307,6 +329,29 @@ mod tests {
         assert_eq!(classify_health(0.3), HealthStatus::Degraded);
         assert_eq!(classify_health(0.29), HealthStatus::Down);
         assert_eq!(classify_health(0.0), HealthStatus::Down);
+    }
+
+    #[test]
+    fn event_name_is_stable_tauri_wire_id() {
+        assert_eq!(EVENT_PROVIDER_STATUS_CHANGED, "provider-status-changed");
+    }
+
+    #[test]
+    fn health_changed_event_serializes_frontend_wire_payload() {
+        let event = HealthChangedEvent {
+            provider_id: "provider-1".to_owned(),
+            provider_name: "Primary".to_owned(),
+            old_status: HealthStatus::Healthy,
+            new_status: HealthStatus::Down,
+            success_rate: 0.0,
+        };
+
+        let raw = serde_json::to_string(&event).expect("json payload");
+        let payload: HealthChangedEvent = serde_json::from_str(&raw).expect("json payload");
+
+        assert_eq!(payload.provider_id, "provider-1");
+        assert_eq!(payload.old_status, HealthStatus::Healthy);
+        assert_eq!(payload.new_status, HealthStatus::Down);
     }
 
     #[tokio::test]

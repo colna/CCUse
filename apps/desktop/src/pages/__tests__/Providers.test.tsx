@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -7,6 +7,7 @@ vi.mock("@/lib/tauri", () => ({
   deleteProvider: vi.fn(),
   getHealthSnapshot: vi.fn(),
   listProviders: vi.fn(),
+  onProviderStatusChanged: vi.fn(),
   testProviderConnection: vi.fn(),
   updateProvider: vi.fn(),
 }));
@@ -15,6 +16,8 @@ import {
   addProvider,
   getHealthSnapshot,
   listProviders,
+  onProviderStatusChanged,
+  type ProviderStatusChangedEvent,
   type Provider,
 } from "@/lib/tauri";
 import { ProvidersPage } from "../Providers";
@@ -34,10 +37,12 @@ const ADDED_PROVIDER: Provider = {
 };
 
 let providers: Provider[];
+let statusChangedCallback: ((event: ProviderStatusChangedEvent) => void) | null;
 
 describe("ProvidersPage", () => {
   beforeEach(() => {
     providers = [];
+    statusChangedCallback = null;
     vi.mocked(listProviders).mockReset();
     vi.mocked(listProviders).mockImplementation(async () => providers);
     vi.mocked(addProvider).mockReset();
@@ -47,6 +52,11 @@ describe("ProvidersPage", () => {
     });
     vi.mocked(getHealthSnapshot).mockReset();
     vi.mocked(getHealthSnapshot).mockResolvedValue({ providers: [] });
+    vi.mocked(onProviderStatusChanged).mockReset();
+    vi.mocked(onProviderStatusChanged).mockImplementation(async (callback) => {
+      statusChangedCallback = callback;
+      return vi.fn();
+    });
   });
 
   it("refreshes the provider list after adding a provider", async () => {
@@ -67,5 +77,49 @@ describe("ProvidersPage", () => {
     await waitFor(() => expect(listProviders).toHaveBeenCalledTimes(2));
     expect(await screen.findByText("Work OpenAI")).toBeInTheDocument();
     expect(screen.getByText("openai · 优先级 10")).toBeInTheDocument();
+  });
+
+  it("refreshes health status when provider status event arrives", async () => {
+    providers = [ADDED_PROVIDER];
+    vi.mocked(getHealthSnapshot).mockResolvedValue({
+      providers: [
+        {
+          provider_id: ADDED_PROVIDER.id,
+          provider_name: ADDED_PROVIDER.name,
+          status: "down",
+          success_rate: 0,
+          response_time_us: 42_000,
+        },
+      ],
+    });
+    vi.mocked(getHealthSnapshot).mockResolvedValueOnce({
+      providers: [
+        {
+          provider_id: ADDED_PROVIDER.id,
+          provider_name: ADDED_PROVIDER.name,
+          status: "healthy",
+          success_rate: 1,
+          response_time_us: 42_000,
+        },
+      ],
+    });
+
+    render(<ProvidersPage />);
+
+    expect(await screen.findByText("Work OpenAI")).toBeInTheDocument();
+    expect(await screen.findByTitle("healthy")).toBeInTheDocument();
+    expect(onProviderStatusChanged).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      statusChangedCallback?.({
+        provider_id: ADDED_PROVIDER.id,
+        provider_name: ADDED_PROVIDER.name,
+        old_status: "healthy",
+        new_status: "down",
+        success_rate: 0,
+      });
+    });
+
+    expect(await screen.findByTitle("down")).toBeInTheDocument();
   });
 });
