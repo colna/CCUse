@@ -13,6 +13,9 @@ use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde_json::json;
 
+use crate::converter::ConvertError;
+use crate::providers::api::ProviderError;
+
 /// Kind of error surfaced over the wire.
 ///
 /// `type_str` is mapped 1:1 to `OpenAI`'s `error.type` field so
@@ -27,6 +30,10 @@ pub enum ApiErrorKind {
     BadRequest,
     /// Rate limit reached on the proxy itself (distinct from upstream 429).
     TooManyRequests,
+    /// All enabled providers failed to serve the request.
+    UpstreamError,
+    /// No enabled providers available to handle the request.
+    NoProvider,
     /// Catch-all internal failure.
     Internal,
 }
@@ -36,10 +43,11 @@ impl ApiErrorKind {
     #[must_use]
     pub const fn status(self) -> StatusCode {
         match self {
-            Self::ProvidersNotConfigured => StatusCode::SERVICE_UNAVAILABLE,
+            Self::ProvidersNotConfigured | Self::NoProvider => StatusCode::SERVICE_UNAVAILABLE,
             Self::Unauthorized => StatusCode::UNAUTHORIZED,
             Self::BadRequest => StatusCode::BAD_REQUEST,
             Self::TooManyRequests => StatusCode::TOO_MANY_REQUESTS,
+            Self::UpstreamError => StatusCode::BAD_GATEWAY,
             Self::Internal => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -49,9 +57,11 @@ impl ApiErrorKind {
     pub const fn type_str(self) -> &'static str {
         match self {
             Self::ProvidersNotConfigured => "providers_not_configured",
+            Self::NoProvider => "no_provider_available",
             Self::Unauthorized => "unauthorized",
             Self::BadRequest => "bad_request",
             Self::TooManyRequests => "rate_limit_exceeded",
+            Self::UpstreamError => "upstream_error",
             Self::Internal => "internal_error",
         }
     }
@@ -94,6 +104,28 @@ impl ApiError {
     }
 }
 
+impl From<ProviderError> for ApiError {
+    fn from(err: ProviderError) -> Self {
+        match err {
+            ProviderError::Network(msg) => Self::new(ApiErrorKind::UpstreamError, msg),
+            ProviderError::Upstream { status, body } => Self::new(
+                ApiErrorKind::UpstreamError,
+                format!("upstream returned {status}: {body}"),
+            ),
+            ProviderError::Unauthorized(msg) => Self::new(ApiErrorKind::Unauthorized, msg),
+            ProviderError::RateLimited(msg) => Self::new(ApiErrorKind::TooManyRequests, msg),
+            ProviderError::BadRequest(msg) => Self::new(ApiErrorKind::BadRequest, msg),
+            ProviderError::Decode(msg) => Self::new(ApiErrorKind::Internal, msg),
+        }
+    }
+}
+
+impl From<ConvertError> for ApiError {
+    fn from(err: ConvertError) -> Self {
+        Self::new(ApiErrorKind::BadRequest, err.to_string())
+    }
+}
+
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let status = self.kind.status();
@@ -127,6 +159,14 @@ mod tests {
             StatusCode::TOO_MANY_REQUESTS
         );
         assert_eq!(
+            ApiErrorKind::UpstreamError.status(),
+            StatusCode::BAD_GATEWAY
+        );
+        assert_eq!(
+            ApiErrorKind::NoProvider.status(),
+            StatusCode::SERVICE_UNAVAILABLE
+        );
+        assert_eq!(
             ApiErrorKind::Internal.status(),
             StatusCode::INTERNAL_SERVER_ERROR
         );
@@ -134,8 +174,6 @@ mod tests {
 
     #[test]
     fn type_str_is_stable_wire_id() {
-        // These strings are part of the public wire contract; if they
-        // change clients break, so the test pins them deliberately.
         assert_eq!(
             ApiErrorKind::ProvidersNotConfigured.type_str(),
             "providers_not_configured"
@@ -146,6 +184,8 @@ mod tests {
             ApiErrorKind::TooManyRequests.type_str(),
             "rate_limit_exceeded"
         );
+        assert_eq!(ApiErrorKind::UpstreamError.type_str(), "upstream_error");
+        assert_eq!(ApiErrorKind::NoProvider.type_str(), "no_provider_available");
         assert_eq!(ApiErrorKind::Internal.type_str(), "internal_error");
     }
 
@@ -155,5 +195,54 @@ mod tests {
         let rendered = format!("{err}");
         assert!(rendered.contains("Unauthorized"));
         assert!(rendered.contains("missing api key"));
+    }
+
+    #[test]
+    fn from_provider_error_network_maps_to_upstream() {
+        let err: ApiError = ProviderError::Network("ETIMEDOUT".into()).into();
+        assert_eq!(err.kind, ApiErrorKind::UpstreamError);
+        assert!(err.message.contains("ETIMEDOUT"));
+    }
+
+    #[test]
+    fn from_provider_error_upstream_maps_to_bad_gateway() {
+        let err: ApiError = ProviderError::Upstream {
+            status: 502,
+            body: "bad gateway".into(),
+        }
+        .into();
+        assert_eq!(err.kind, ApiErrorKind::UpstreamError);
+        assert!(err.message.contains("502"));
+    }
+
+    #[test]
+    fn from_provider_error_unauthorized_preserved() {
+        let err: ApiError = ProviderError::Unauthorized("invalid key".into()).into();
+        assert_eq!(err.kind, ApiErrorKind::Unauthorized);
+    }
+
+    #[test]
+    fn from_provider_error_rate_limited_maps_to_429() {
+        let err: ApiError = ProviderError::RateLimited("slow down".into()).into();
+        assert_eq!(err.kind, ApiErrorKind::TooManyRequests);
+    }
+
+    #[test]
+    fn from_provider_error_bad_request_preserved() {
+        let err: ApiError = ProviderError::BadRequest("unknown model".into()).into();
+        assert_eq!(err.kind, ApiErrorKind::BadRequest);
+    }
+
+    #[test]
+    fn from_provider_error_decode_maps_to_internal() {
+        let err: ApiError = ProviderError::Decode("unexpected eof".into()).into();
+        assert_eq!(err.kind, ApiErrorKind::Internal);
+    }
+
+    #[test]
+    fn from_convert_error_maps_to_bad_request() {
+        let err: ApiError = ConvertError::MissingField("model".into()).into();
+        assert_eq!(err.kind, ApiErrorKind::BadRequest);
+        assert!(err.message.contains("model"));
     }
 }
