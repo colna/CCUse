@@ -133,8 +133,35 @@ fn select_load_balance(
     if candidates.is_empty() {
         return None;
     }
-    let idx = rr_state.counter.fetch_add(1, Ordering::Relaxed) % candidates.len();
-    candidates.get(idx).cloned()
+
+    let priorities = candidates
+        .iter()
+        .map(|provider| sanitized_priority(provider.get_priority()))
+        .collect::<Vec<_>>();
+    let max_priority = priorities.iter().copied().max().unwrap_or(1);
+    let weights = priorities
+        .iter()
+        .map(|priority| inverse_priority_weight(*priority, max_priority))
+        .collect::<Vec<_>>();
+    let total_weight = weights.iter().copied().sum::<usize>();
+
+    let mut slot = rr_state.counter.fetch_add(1, Ordering::Relaxed) % total_weight;
+    for (provider, weight) in candidates.iter().zip(weights) {
+        if slot < weight {
+            return Some(provider.clone());
+        }
+        slot -= weight;
+    }
+
+    candidates.first().cloned()
+}
+
+fn sanitized_priority(priority: i32) -> u32 {
+    u32::try_from(priority).unwrap_or(1).max(1)
+}
+
+fn inverse_priority_weight(priority: u32, max_priority: u32) -> usize {
+    usize::try_from((max_priority / priority).max(1)).unwrap_or(usize::MAX)
 }
 
 /// T1.0.2.14: 4-dimension weighted score. Higher score = better.
@@ -281,6 +308,26 @@ mod tests {
         let r1 = select(SwitchStrategy::LoadBalance, &candidates, &rr, &sw).unwrap();
         let r2 = select(SwitchStrategy::LoadBalance, &candidates, &rr, &sw).unwrap();
         assert_ne!(r1.id(), r2.id());
+    }
+
+    #[test]
+    fn load_balance_weights_by_inverse_priority() {
+        let high_priority = mock_wrapper("high", 10, None);
+        let backup = mock_wrapper("backup", 20, None);
+        let candidates = vec![high_priority, backup];
+        let rr = RoundRobinState::default();
+        let sw = SmartWeights::default();
+
+        let picks = (0..6)
+            .map(|_| {
+                select(SwitchStrategy::LoadBalance, &candidates, &rr, &sw)
+                    .unwrap()
+                    .id()
+                    .to_owned()
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(picks, ["high", "high", "backup", "high", "high", "backup"]);
     }
 
     #[test]
