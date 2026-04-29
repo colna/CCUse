@@ -83,6 +83,26 @@ impl ModelMapping {
             .cloned()
     }
 
+    /// Resolve a client-facing model for a concrete provider.
+    ///
+    /// Precedence is:
+    /// 1. exact provider id (for per-provider overrides),
+    /// 2. provider kind (`openai`, `anthropic`, `gemini`, ...),
+    /// 3. global wildcard (`*`),
+    /// 4. original client model.
+    #[must_use]
+    pub fn resolve_for_provider(
+        &self,
+        client_model: &str,
+        provider_id: &str,
+        provider_kind: &str,
+    ) -> String {
+        self.map_model(client_model, provider_id)
+            .or_else(|| self.map_model(client_model, provider_kind))
+            .or_else(|| self.map_model(client_model, "*"))
+            .unwrap_or_else(|| client_model.to_owned())
+    }
+
     /// Add or update a single mapping entry.
     pub fn set_mapping(&mut self, client_model: &str, vendor: &str, vendor_model: &str) {
         self.entries
@@ -160,6 +180,46 @@ mod tests {
     fn unknown_model_returns_none() {
         let mm = ModelMapping::new();
         assert!(mm.map_model("unknown-model", "openai").is_none());
+    }
+
+    #[test]
+    fn resolve_for_provider_prefers_exact_provider_id() {
+        let mut mm = ModelMapping::new();
+        mm.set_mapping("client-fast", "anthropic", "claude-kind-wide");
+        mm.set_mapping("client-fast", "provider-a", "claude-provider-a");
+
+        let resolved = mm.resolve_for_provider("client-fast", "provider-a", "anthropic");
+
+        assert_eq!(resolved, "claude-provider-a");
+    }
+
+    #[test]
+    fn resolve_for_provider_uses_provider_kind_fallback() {
+        let mut mm = ModelMapping::new();
+        mm.set_mapping("client-fast", "anthropic", "claude-kind-wide");
+
+        let resolved = mm.resolve_for_provider("client-fast", "provider-b", "anthropic");
+
+        assert_eq!(resolved, "claude-kind-wide");
+    }
+
+    #[test]
+    fn resolve_for_provider_uses_global_wildcard_fallback() {
+        let mut mm = ModelMapping::new();
+        mm.set_mapping("client-fast", "*", "universal-model");
+
+        let resolved = mm.resolve_for_provider("client-fast", "provider-c", "custom");
+
+        assert_eq!(resolved, "universal-model");
+    }
+
+    #[test]
+    fn resolve_for_provider_returns_original_model_without_match() {
+        let mm = ModelMapping::new();
+
+        let resolved = mm.resolve_for_provider("not-mapped", "provider-d", "custom");
+
+        assert_eq!(resolved, "not-mapped");
     }
 
     #[test]

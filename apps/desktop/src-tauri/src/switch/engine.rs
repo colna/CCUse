@@ -108,6 +108,20 @@ impl SwitchEngine {
         &self,
         request: ApiRequest,
     ) -> Result<DispatchResult<ApiResponse>, ProviderError> {
+        self.dispatch_with_request_mapper(request, clone_request_for_provider)
+            .await
+    }
+
+    /// Dispatch a non-streaming request, allowing callers to adjust the
+    /// provider-layer request after a concrete provider is selected.
+    pub async fn dispatch_with_request_mapper<F>(
+        &self,
+        request: ApiRequest,
+        map_request: F,
+    ) -> Result<DispatchResult<ApiResponse>, ProviderError>
+    where
+        F: Fn(&ApiRequest, &ProviderWrapper) -> ApiRequest + Send + Sync,
+    {
         let config = self.config.read().await.clone();
         let candidates = self.manager.enabled_by_priority().await;
 
@@ -133,7 +147,8 @@ impl SwitchEngine {
 
             tried.push(provider.id().to_owned());
 
-            match provider.send_request(request.clone()).await {
+            let provider_request = map_request(&request, provider.as_ref());
+            match provider.send_request(provider_request).await {
                 Ok(response) => {
                     return Ok(DispatchResult {
                         provider_id: provider.id().to_owned(),
@@ -165,6 +180,20 @@ impl SwitchEngine {
         &self,
         request: ApiRequest,
     ) -> Result<DispatchResult<StreamingResponse>, ProviderError> {
+        self.dispatch_stream_with_request_mapper(request, clone_request_for_provider)
+            .await
+    }
+
+    /// Dispatch a streaming request, allowing callers to adjust the
+    /// provider-layer request after a concrete provider is selected.
+    pub async fn dispatch_stream_with_request_mapper<F>(
+        &self,
+        request: ApiRequest,
+        map_request: F,
+    ) -> Result<DispatchResult<StreamingResponse>, ProviderError>
+    where
+        F: Fn(&ApiRequest, &ProviderWrapper) -> ApiRequest + Send + Sync,
+    {
         let config = self.config.read().await.clone();
         let candidates = self.manager.enabled_by_priority().await;
 
@@ -190,7 +219,8 @@ impl SwitchEngine {
 
             tried.push(provider.id().to_owned());
 
-            match provider.send_stream_request(request.clone()).await {
+            let provider_request = map_request(&request, provider.as_ref());
+            match provider.send_stream_request(provider_request).await {
                 Ok(stream) => {
                     return Ok(DispatchResult {
                         provider_id: provider.id().to_owned(),
@@ -214,6 +244,10 @@ impl SwitchEngine {
         Err(last_error
             .unwrap_or_else(|| ProviderError::BadRequest("all providers exhausted".into())))
     }
+}
+
+fn clone_request_for_provider(request: &ApiRequest, _: &ProviderWrapper) -> ApiRequest {
+    request.clone()
 }
 
 /// Select a provider, excluding those already tried.
@@ -255,12 +289,14 @@ mod tests {
     use futures::stream;
     use std::pin::Pin;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering as AtomicOrdering};
+    use std::sync::Mutex;
 
     #[derive(Debug)]
     struct MockDispatchProvider {
         id: String,
         should_succeed: Arc<AtomicBool>,
         call_count: Arc<AtomicUsize>,
+        seen_models: Arc<Mutex<Vec<String>>>,
     }
 
     #[async_trait]
@@ -283,8 +319,12 @@ mod tests {
         async fn health_check(&self) -> Result<HealthStatus, ProviderError> {
             Ok(HealthStatus::Healthy)
         }
-        async fn send_request(&self, _: ApiRequest) -> Result<ApiResponse, ProviderError> {
+        async fn send_request(&self, request: ApiRequest) -> Result<ApiResponse, ProviderError> {
             self.call_count.fetch_add(1, AtomicOrdering::Relaxed);
+            self.seen_models
+                .lock()
+                .expect("record models")
+                .push(request.model);
             if self.should_succeed.load(AtomicOrdering::Relaxed) {
                 Ok(ApiResponse {
                     id: format!("resp-{}", self.id),
@@ -314,9 +354,13 @@ mod tests {
         }
         async fn send_stream_request(
             &self,
-            _: ApiRequest,
+            request: ApiRequest,
         ) -> Result<StreamingResponse, ProviderError> {
             self.call_count.fetch_add(1, AtomicOrdering::Relaxed);
+            self.seen_models
+                .lock()
+                .expect("record models")
+                .push(request.model);
             if self.should_succeed.load(AtomicOrdering::Relaxed) {
                 Ok(Box::pin(stream::empty())
                     as Pin<Box<dyn futures::Stream<Item = StreamChunk> + Send>>)
@@ -346,14 +390,28 @@ mod tests {
     }
 
     async fn make_engine(providers: Vec<(String, bool)>) -> (SwitchEngine, Vec<Arc<AtomicUsize>>) {
+        let (engine, counters, _) = make_engine_with_model_records(providers).await;
+        (engine, counters)
+    }
+
+    async fn make_engine_with_model_records(
+        providers: Vec<(String, bool)>,
+    ) -> (
+        SwitchEngine,
+        Vec<Arc<AtomicUsize>>,
+        Vec<Arc<Mutex<Vec<String>>>>,
+    ) {
         let mgr = Arc::new(ProviderManager::new());
         let mut counters = Vec::new();
+        let mut seen_models = Vec::new();
         for (id, succeed) in providers {
             let count = Arc::new(AtomicUsize::new(0));
+            let models = Arc::new(Mutex::new(Vec::new()));
             let mock = MockDispatchProvider {
                 id: id.clone(),
                 should_succeed: Arc::new(AtomicBool::new(succeed)),
                 call_count: Arc::clone(&count),
+                seen_models: Arc::clone(&models),
             };
             let wrapper = Arc::new(ProviderWrapper::new(
                 &id,
@@ -366,8 +424,9 @@ mod tests {
             ));
             mgr.add(wrapper).await.unwrap();
             counters.push(count);
+            seen_models.push(models);
         }
-        (SwitchEngine::new(mgr), counters)
+        (SwitchEngine::new(mgr), counters, seen_models)
     }
 
     #[tokio::test]
@@ -387,6 +446,26 @@ mod tests {
         assert_eq!(result.attempts, 2);
         assert_eq!(counters[0].load(AtomicOrdering::Relaxed), 1);
         assert_eq!(counters[1].load(AtomicOrdering::Relaxed), 1);
+    }
+
+    #[tokio::test]
+    async fn dispatch_with_request_mapper_applies_selected_provider_model() {
+        let (engine, _, seen_models) =
+            make_engine_with_model_records(vec![("p1".into(), true)]).await;
+
+        engine
+            .dispatch_with_request_mapper(sample_request(), |request, provider| {
+                let mut mapped = request.clone();
+                mapped.model = format!("{}::{}", provider.id(), request.model);
+                mapped
+            })
+            .await
+            .expect("dispatch with mapped model");
+
+        assert_eq!(
+            seen_models[0].lock().expect("seen models").as_slice(),
+            &["p1::m"],
+        );
     }
 
     #[tokio::test]
