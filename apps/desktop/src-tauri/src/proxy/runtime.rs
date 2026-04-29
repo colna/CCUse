@@ -143,6 +143,26 @@ impl ProxyRuntime {
         runtime
     }
 
+    #[must_use]
+    pub fn with_dependencies_and_monitoring(
+        fallback_start: u16,
+        fallback_attempts: u16,
+        engine: SwitchEngineHandle,
+        model_mapping: ModelMappingHandle,
+        manager: Arc<ProviderManager>,
+        db: Database,
+    ) -> Self {
+        let mut runtime = Self::with_dependencies(
+            fallback_start,
+            fallback_attempts,
+            engine,
+            model_mapping,
+            manager,
+        );
+        runtime.state = runtime.state.with_monitoring(db);
+        runtime
+    }
+
     /// Start the proxy if it's not already running. Generates a fresh
     /// `sk-local-…` key and returns the resulting config snapshot.
     pub async fn start(&self) -> Result<LocalApiConfig, RuntimeError> {

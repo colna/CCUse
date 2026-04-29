@@ -14,6 +14,7 @@ use ccuse_desktop_lib::providers::{
     HealthStatus, OpenAIProvider, ProviderKind, ProviderManager, ProviderWrapper,
 };
 use ccuse_desktop_lib::proxy::{ProxyAppState, ProxyServer, ServerError};
+use ccuse_desktop_lib::switch::history::SwitchHistoryRepository;
 use ccuse_desktop_lib::switch::request_log::RequestLogRepository;
 use ccuse_desktop_lib::switch::SwitchEngine;
 use reqwest::StatusCode;
@@ -113,7 +114,7 @@ async fn start_proxy_with_providers_mapping_timeout_and_request_log(
     let mapping = Arc::new(RwLock::new(model_mapping));
     let mut state = ProxyAppState::new(engine, mapping, Arc::clone(&manager));
     if let Some(db) = request_log_db {
-        state = state.with_request_log(db);
+        state = state.with_monitoring(db);
     }
     if let Some(timeout) = non_streaming_timeout {
         state = state.with_non_streaming_timeout(timeout);
@@ -249,17 +250,24 @@ fn openai_text_response(content: &str) -> Value {
 }
 
 fn request_log_database_with_provider(provider_id: &str) -> (TempDir, Database) {
+    monitoring_database_with_providers(&[provider_id])
+}
+
+fn monitoring_database_with_providers(provider_ids: &[&str]) -> (TempDir, Database) {
     let dir = TempDir::new().expect("tempdir");
     let db = open_database(dir.path().join("monitoring.db")).expect("open database");
     run_migrations(&db).expect("run migrations");
     db.with_connection(|conn| {
-        conn.execute(
-            "INSERT INTO providers (id, name, kind, base_url, encrypted_api_key, enabled) \
-             VALUES (?1, 'Monitoring Provider', 'openai', 'https://api.example.test', x'00', 1)",
-            rusqlite::params![provider_id],
-        )
+        for provider_id in provider_ids {
+            conn.execute(
+                "INSERT INTO providers (id, name, kind, base_url, encrypted_api_key, enabled) \
+                 VALUES (?1, ?1, 'openai', 'https://api.example.test', x'00', 1)",
+                rusqlite::params![provider_id],
+            )?;
+        }
+        Ok(())
     })
-    .expect("seed provider row");
+    .expect("seed provider rows");
     (dir, db)
 }
 
@@ -1147,6 +1155,71 @@ async fn chat_completions_retries_after_429_and_uses_next_provider() {
         .await
         .expect("primary provider");
     assert_eq!(first.state.health().await, HealthStatus::Degraded);
+
+    proxy.shutdown().await;
+}
+
+#[tokio::test]
+async fn chat_completions_records_switch_history_after_503_failover() {
+    let primary = MockServer::start().await;
+    let backup = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(503).set_body_string("temporarily unavailable"))
+        .expect(1)
+        .mount(&primary)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(openai_text_response("backup")))
+        .expect(1)
+        .mount(&backup)
+        .await;
+    let (_dir, db) = monitoring_database_with_providers(&["primary-503", "backup-after-503"]);
+    let proxy = start_proxy_with_providers_mapping_timeout_and_request_log(
+        &[
+            ProviderSpec {
+                id: "primary-503",
+                name: "Primary 503",
+                priority: 1,
+                server: &primary,
+            },
+            ProviderSpec {
+                id: "backup-after-503",
+                name: "Backup After 503",
+                priority: 2,
+                server: &backup,
+            },
+        ],
+        ModelMapping::new(),
+        None,
+        Some(db.clone()),
+    )
+    .await;
+
+    let response = reqwest::Client::new()
+        .post(format!("{}/v1/chat/completions", proxy.base_url))
+        .json(&chat_request(false))
+        .send()
+        .await
+        .expect("proxy request");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let primary_wrapper = proxy
+        .manager
+        .get("primary-503")
+        .await
+        .expect("primary provider");
+    assert_eq!(primary_wrapper.state.health().await, HealthStatus::Degraded);
+    let events = SwitchHistoryRepository::new(db)
+        .list_recent(1)
+        .expect("switch events");
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].from_provider.as_deref(), Some("primary-503"));
+    assert_eq!(events[0].to_provider, "backup-after-503");
+    assert_eq!(events[0].strategy, "priority");
+    assert_eq!(events[0].reason, "upstream_503");
+    assert_eq!(events[0].attempts, 2);
 
     proxy.shutdown().await;
 }

@@ -111,8 +111,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let manager = Arc::new(ProviderManager::new());
     let engine = Arc::new(SwitchEngine::new(Arc::clone(&manager)));
     let model_mapping = Arc::new(RwLock::new(ModelMapping::new()));
-    let proxy_state = ProxyAppState::new(engine, model_mapping, Arc::clone(&manager))
-        .with_request_log(db.clone());
+    let proxy_state =
+        ProxyAppState::new(engine, model_mapping, Arc::clone(&manager)).with_monitoring(db.clone());
     let proxy = ProxyServer::bind(loopback_zero()).await?;
     let proxy_base_url = format!("http://{}", proxy.local_addr());
     let proxy_handle = tokio::spawn(proxy.serve_with_auth_and_shutdown(

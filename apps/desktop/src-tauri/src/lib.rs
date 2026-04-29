@@ -108,7 +108,7 @@ pub fn run() {
             app.manage(Arc::clone(&repo));
 
             let runtime: commands::RuntimeHandle =
-                Arc::new(ProxyRuntime::with_dependencies_and_request_log(
+                Arc::new(ProxyRuntime::with_dependencies_and_monitoring(
                     proxy::DEFAULT_PROXY_PORT,
                     proxy::DEFAULT_PROXY_ATTEMPTS,
                     Arc::clone(&runtime_engine),

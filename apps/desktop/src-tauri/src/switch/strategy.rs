@@ -34,6 +34,16 @@ impl SwitchStrategy {
         Self::LoadBalance,
         Self::Smart,
     ];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Priority => "priority",
+            Self::Fastest => "fastest",
+            Self::Cost => "cost",
+            Self::LoadBalance => "load_balance",
+            Self::Smart => "smart",
+        }
+    }
 }
 
 /// Weights for the `Smart` strategy (T1.0.2.14). Default 40/30/20/10.

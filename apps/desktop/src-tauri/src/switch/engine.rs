@@ -29,6 +29,12 @@ pub struct DispatchResult<T> {
     pub provider_name: String,
     /// Number of attempts before success (1 = no retry).
     pub attempts: usize,
+    /// Strategy snapshot used for this dispatch.
+    pub strategy: SwitchStrategy,
+    /// Last provider that failed before the successful provider.
+    pub switched_from_provider_id: Option<String>,
+    /// Machine-readable reason for the switch.
+    pub switch_reason: Option<String>,
     /// The upstream response.
     pub response: T,
 }
@@ -133,6 +139,8 @@ impl SwitchEngine {
 
         let mut tried: Vec<String> = Vec::new();
         let mut last_error: Option<ProviderError> = None;
+        let mut last_failed_provider_id: Option<String> = None;
+        let mut last_failure_reason: Option<String> = None;
 
         for attempt in 0..=config.max_retries {
             let candidate = select_excluding(
@@ -154,12 +162,17 @@ impl SwitchEngine {
                         provider_id: provider.id().to_owned(),
                         provider_name: provider.name().to_owned(),
                         attempts: attempt + 1,
+                        strategy: config.strategy,
+                        switched_from_provider_id: last_failed_provider_id,
+                        switch_reason: last_failure_reason,
                         response,
                     });
                 }
                 Err(err) => {
                     if err.is_retriable() {
                         provider.state.set_health(HealthStatus::Degraded).await;
+                        last_failed_provider_id = Some(provider.id().to_owned());
+                        last_failure_reason = Some(switch_reason_for_provider_error(&err));
                     }
                     last_error = Some(err);
                     if !last_error.as_ref().is_some_and(ProviderError::is_retriable) {
@@ -205,6 +218,8 @@ impl SwitchEngine {
 
         let mut tried: Vec<String> = Vec::new();
         let mut last_error: Option<ProviderError> = None;
+        let mut last_failed_provider_id: Option<String> = None;
+        let mut last_failure_reason: Option<String> = None;
 
         for attempt in 0..=config.max_retries {
             let candidate = select_excluding(
@@ -226,12 +241,17 @@ impl SwitchEngine {
                         provider_id: provider.id().to_owned(),
                         provider_name: provider.name().to_owned(),
                         attempts: attempt + 1,
+                        strategy: config.strategy,
+                        switched_from_provider_id: last_failed_provider_id,
+                        switch_reason: last_failure_reason,
                         response: stream,
                     });
                 }
                 Err(err) => {
                     if err.is_retriable() {
                         provider.state.set_health(HealthStatus::Degraded).await;
+                        last_failed_provider_id = Some(provider.id().to_owned());
+                        last_failure_reason = Some(switch_reason_for_provider_error(&err));
                     }
                     last_error = Some(err);
                     if !last_error.as_ref().is_some_and(ProviderError::is_retriable) {
@@ -248,6 +268,17 @@ impl SwitchEngine {
 
 fn clone_request_for_provider(request: &ApiRequest, _: &ProviderWrapper) -> ApiRequest {
     request.clone()
+}
+
+fn switch_reason_for_provider_error(error: &ProviderError) -> String {
+    match error {
+        ProviderError::Network(_) => "network".to_owned(),
+        ProviderError::Upstream { status, .. } => format!("upstream_{status}"),
+        ProviderError::RateLimited(_) => "rate_limited".to_owned(),
+        ProviderError::Unauthorized(_) => "unauthorized".to_owned(),
+        ProviderError::Decode(_) => "decode".to_owned(),
+        ProviderError::BadRequest(_) => "bad_request".to_owned(),
+    }
 }
 
 /// Select a provider, excluding those already tried.

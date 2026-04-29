@@ -34,6 +34,7 @@ use crate::db::Database;
 use crate::providers::{
     ProviderError, ProviderManager, ProviderWrapper, RuntimeProvider, StreamingResponse,
 };
+use crate::switch::history::{SwitchHistoryInput, SwitchHistoryRepository};
 use crate::switch::request_log::{RequestLogInput, RequestLogRepository};
 use crate::switch::DispatchResult;
 
@@ -95,6 +96,7 @@ pub struct ProxyAppState {
     pub model_mapping: ModelMappingHandle,
     pub manager: Arc<ProviderManager>,
     pub request_log: Option<RequestLogRepository>,
+    pub switch_history: Option<SwitchHistoryRepository>,
     pub openai_converter: OpenAIConverter,
     pub anthropic_converter: AnthropicConverter,
     non_streaming_timeout: Duration,
@@ -119,6 +121,7 @@ impl ProxyAppState {
             model_mapping,
             manager,
             request_log: None,
+            switch_history: None,
             openai_converter: OpenAIConverter,
             anthropic_converter: AnthropicConverter,
             non_streaming_timeout: DEFAULT_NON_STREAMING_HANDLER_TIMEOUT,
@@ -131,6 +134,19 @@ impl ProxyAppState {
     pub fn with_request_log(mut self, db: Database) -> Self {
         self.request_log = Some(RequestLogRepository::new(db));
         self
+    }
+
+    /// Set the switch history repository (requires database).
+    #[must_use]
+    pub fn with_switch_history(mut self, db: Database) -> Self {
+        self.switch_history = Some(SwitchHistoryRepository::new(db));
+        self
+    }
+
+    /// Set all monitoring repositories backed by the same database.
+    #[must_use]
+    pub fn with_monitoring(self, db: Database) -> Self {
+        self.with_request_log(db.clone()).with_switch_history(db)
     }
 
     #[must_use]
@@ -406,6 +422,7 @@ async fn chat_completions(
     let result = dispatch_non_streaming(&state, api_req.clone(), &model_mapping).await?;
 
     let elapsed = start.elapsed();
+    record_switch_if_any(&state, &result);
 
     // Fire-and-forget request logging
     if let Some(ref log_repo) = state.request_log {
@@ -461,6 +478,7 @@ async fn handle_streaming_chat(
         .map_err(ApiError::from)?;
 
     let elapsed = start.elapsed();
+    record_switch_if_any(&state, &result);
 
     // Log the stream initiation (tokens unknown until stream ends).
     if let Some(ref log_repo) = state.request_log {
@@ -519,6 +537,7 @@ async fn anthropic_messages_inner(
     let start = std::time::Instant::now();
     let result = dispatch_non_streaming(&state, api_req.clone(), &model_mapping).await?;
     let elapsed = start.elapsed();
+    record_switch_if_any(&state, &result);
 
     if let Some(ref log_repo) = state.request_log {
         let input = RequestLogInput {
@@ -568,6 +587,7 @@ async fn handle_streaming_anthropic_messages(
         .await
         .map_err(ApiError::from)?;
     let elapsed = start.elapsed();
+    record_switch_if_any(&state, &result);
 
     if let Some(ref log_repo) = state.request_log {
         let input = RequestLogInput {
@@ -630,6 +650,26 @@ async fn dispatch_non_streaming(
         ))
     })?
     .map_err(ApiError::from)
+}
+
+fn record_switch_if_any<T>(state: &ProxyAppState, result: &DispatchResult<T>) {
+    let Some(ref repo) = state.switch_history else {
+        return;
+    };
+    let Some(from_provider) = result.switched_from_provider_id.clone() else {
+        return;
+    };
+    let Some(reason) = result.switch_reason.clone() else {
+        return;
+    };
+    let input = SwitchHistoryInput {
+        from_provider: Some(from_provider),
+        to_provider: result.provider_id.clone(),
+        strategy: result.strategy.as_str().to_owned(),
+        reason,
+        attempts: i32::try_from(result.attempts).unwrap_or(i32::MAX),
+    };
+    let _ = repo.insert(&input);
 }
 
 struct AnthropicSseBridge {
