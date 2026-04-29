@@ -9,7 +9,7 @@
   "strategy_cost": "成本优先",
   "strategy_cost_desc": "选择每 token 成本最低的供应商",
   "strategy_load_balance": "负载均衡",
-  "strategy_load_balance_desc": "轮询所有可用供应商，平均分配请求",
+  "strategy_load_balance_desc": "按优先级权重轮询所有可用供应商",
   "strategy_smart": "智能策略",
   "strategy_smart_desc": "综合健康度、响应速度、成本和优先级四维加权",
   "current_badge": "当前",
@@ -22,5 +22,6 @@
   "weight_response_time": "响应速度",
   "weight_cost": "成本",
   "weight_priority": "优先级",
-  "weight_total": "总和：{{total}}（建议保持 100）"
+  "weight_total": "总和：{{total}} / {{target}}",
+  "weight_total_status": "已校验：权重总和为 {{target}}"
 }

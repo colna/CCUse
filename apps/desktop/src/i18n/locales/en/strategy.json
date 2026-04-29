@@ -9,7 +9,7 @@
   "strategy_cost": "Cost First",
   "strategy_cost_desc": "Select the provider with the lowest per-token cost",
   "strategy_load_balance": "Load Balance",
-  "strategy_load_balance_desc": "Round-robin across all available providers, distributing requests evenly",
+  "strategy_load_balance_desc": "Weighted round-robin across available providers by priority",
   "strategy_smart": "Smart",
   "strategy_smart_desc": "Four-dimensional weighted scoring: health, speed, cost, and priority",
   "current_badge": "Current",
@@ -22,5 +22,6 @@
   "weight_response_time": "Speed",
   "weight_cost": "Cost",
   "weight_priority": "Priority",
-  "weight_total": "Total: {{total}} (recommended: 100)"
+  "weight_total": "Total: {{total}} / {{target}}",
+  "weight_total_status": "Validated: weight total is {{target}}"
 }

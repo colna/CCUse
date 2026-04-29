@@ -2,12 +2,119 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import {
   getStrategy,
   updateStrategyParams,
   type SmartWeights,
   type StrategyResponse,
 } from "@/lib/tauri";
+
+type WeightKey = keyof SmartWeights;
+
+const TOTAL_WEIGHT = 100;
+const WEIGHT_KEYS: WeightKey[] = [
+  "health",
+  "response_time",
+  "cost",
+  "priority",
+];
+
+function clampWeight(value: number): number {
+  return Math.min(TOTAL_WEIGHT, Math.max(0, Math.round(value)));
+}
+
+function totalWeight(weights: SmartWeights): number {
+  return WEIGHT_KEYS.reduce((sum, key) => sum + weights[key], 0);
+}
+
+function distributeWeight(
+  keys: WeightKey[],
+  source: SmartWeights,
+  targetTotal: number,
+): Record<WeightKey, number> {
+  const target = clampWeight(targetTotal);
+  const result = Object.fromEntries(
+    WEIGHT_KEYS.map((key) => [key, 0]),
+  ) as Record<WeightKey, number>;
+
+  if (keys.length === 0 || target === 0) {
+    return result;
+  }
+
+  const sourceTotal = keys.reduce(
+    (sum, key) => sum + clampWeight(source[key]),
+    0,
+  );
+
+  if (sourceTotal === 0) {
+    const base = Math.floor(target / keys.length);
+    let remainder = target - base * keys.length;
+    for (const key of keys) {
+      result[key] = base + (remainder > 0 ? 1 : 0);
+      remainder = Math.max(0, remainder - 1);
+    }
+    return result;
+  }
+
+  const scaled = keys.map((key) => {
+    const raw = (clampWeight(source[key]) / sourceTotal) * target;
+    const base = Math.floor(raw);
+    return { key, base, fraction: raw - base };
+  });
+
+  let remainder = target - scaled.reduce((sum, item) => sum + item.base, 0);
+  const byLargestFraction = [...scaled].sort((a, b) => b.fraction - a.fraction);
+  for (const item of byLargestFraction) {
+    result[item.key] = item.base + (remainder > 0 ? 1 : 0);
+    remainder = Math.max(0, remainder - 1);
+  }
+
+  return result;
+}
+
+function normalizeWeights(weights: SmartWeights): SmartWeights {
+  const cleaned: SmartWeights = {
+    health: clampWeight(weights.health),
+    response_time: clampWeight(weights.response_time),
+    cost: clampWeight(weights.cost),
+    priority: clampWeight(weights.priority),
+  };
+
+  if (totalWeight(cleaned) === TOTAL_WEIGHT) {
+    return cleaned;
+  }
+
+  const distributed = distributeWeight(WEIGHT_KEYS, cleaned, TOTAL_WEIGHT);
+  return {
+    health: distributed.health,
+    response_time: distributed.response_time,
+    cost: distributed.cost,
+    priority: distributed.priority,
+  };
+}
+
+function rebalanceWeights(
+  weights: SmartWeights,
+  changedKey: WeightKey,
+  value: number,
+): SmartWeights {
+  const nextValue = clampWeight(value);
+  const otherKeys = WEIGHT_KEYS.filter((key) => key !== changedKey);
+  const distributed = distributeWeight(
+    otherKeys,
+    weights,
+    TOTAL_WEIGHT - nextValue,
+  );
+
+  return {
+    health: changedKey === "health" ? nextValue : distributed.health,
+    response_time:
+      changedKey === "response_time" ? nextValue : distributed.response_time,
+    cost: changedKey === "cost" ? nextValue : distributed.cost,
+    priority: changedKey === "priority" ? nextValue : distributed.priority,
+  };
+}
 
 export function AdvancedParams() {
   const { t } = useTranslation("strategy");
@@ -28,7 +135,7 @@ export function AdvancedParams() {
       .then((c) => {
         setConfig(c);
         setMaxRetries(String(c.max_retries));
-        setWeights(c.smart_weights);
+        setWeights(normalizeWeights(c.smart_weights));
       })
       .catch(console.error);
   }, []);
@@ -52,12 +159,15 @@ export function AdvancedParams() {
 
   const handleWeightChange = useCallback(
     (key: keyof SmartWeights, value: number) => {
-      setWeights((prev) => ({ ...prev, [key]: value }));
+      setWeights((prev) => rebalanceWeights(prev, key, value));
     },
     [],
   );
 
   if (!config) return null;
+
+  const smartWeightTotal = totalWeight(weights);
+  const smartWeightIsValid = smartWeightTotal === TOTAL_WEIGHT;
 
   return (
     <div className="space-y-5 rounded-2xl border border-border bg-card p-6 shadow-apple-card">
@@ -114,11 +224,20 @@ export function AdvancedParams() {
           />
           <p className="text-xs text-muted-foreground">
             {t("weight_total", {
-              total:
-                weights.health +
-                weights.response_time +
-                weights.cost +
-                weights.priority,
+              total: smartWeightTotal,
+              target: TOTAL_WEIGHT,
+            })}
+          </p>
+          <p
+            aria-live="polite"
+            className={cn(
+              "text-xs",
+              smartWeightIsValid ? "text-primary" : "text-destructive",
+            )}
+          >
+            {t("weight_total_status", {
+              total: smartWeightTotal,
+              target: TOTAL_WEIGHT,
             })}
           </p>
         </div>
@@ -126,7 +245,7 @@ export function AdvancedParams() {
 
       <footer className="flex items-center justify-end gap-3">
         {saved && <span className="text-xs text-primary">{tc("saved")}</span>}
-        <Button onClick={handleSave} disabled={saving}>
+        <Button onClick={handleSave} disabled={saving || !smartWeightIsValid}>
           {saving ? tc("saving") : tc("save")}
         </Button>
       </footer>
@@ -146,6 +265,7 @@ function WeightSlider({ label, value, onChange }: WeightSliderProps) {
       <span className="w-16 text-xs text-muted-foreground">{label}</span>
       <input
         type="range"
+        aria-label={label}
         min={0}
         max={100}
         value={value}
