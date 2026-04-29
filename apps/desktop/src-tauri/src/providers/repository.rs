@@ -57,6 +57,16 @@ impl ProviderRepository {
     /// populated by `SQLite`'s default value.
     pub fn add(&self, input: &ProviderInput) -> Result<Provider, RepositoryError> {
         let id = Uuid::new_v4().to_string();
+        self.insert_with_id(&id, input)
+    }
+
+    /// Insert a provider with a caller-supplied id. Used by command
+    /// rollback paths that need to restore a deleted row.
+    pub(crate) fn insert_with_id(
+        &self,
+        id: &str,
+        input: &ProviderInput,
+    ) -> Result<Provider, RepositoryError> {
         let ciphertext = encrypt(&self.key, input.api_key.as_bytes())?;
         let kind_str = input.kind.as_str();
         let enabled_int: i64 = i64::from(input.enabled);
@@ -68,7 +78,7 @@ impl ProviderRepository {
                   monthly_quota, rate_limit_rpm, cost_per_1k_tokens) \
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
                 params![
-                    &id,
+                    id,
                     &input.name,
                     kind_str,
                     &input.base_url,
@@ -83,7 +93,8 @@ impl ProviderRepository {
             Ok(())
         })?;
 
-        self.get(&id)?.ok_or(RepositoryError::NotFound(id))
+        self.get(id)?
+            .ok_or_else(|| RepositoryError::NotFound(id.to_owned()))
     }
 
     /// Mutate every column from `input`. Bumps `updated_at`. Returns

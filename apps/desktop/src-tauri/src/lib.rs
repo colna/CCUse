@@ -23,7 +23,7 @@ use tauri::Manager;
 
 use commands::health::HealthCheckerHandle;
 use commands::model_mapping::ModelMappingHandle;
-use commands::providers::ProviderRepoHandle;
+use commands::providers::{ProviderManagerHandle, ProviderRepoHandle};
 use commands::switch::SwitchEngineHandle;
 use providers::ProviderManager;
 use proxy::ProxyRuntime;
@@ -32,7 +32,7 @@ use switch::SwitchEngine;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Shared provider manager for switch engine + health checker.
-    let manager = Arc::new(ProviderManager::new());
+    let manager: ProviderManagerHandle = Arc::new(ProviderManager::new());
     let engine: SwitchEngineHandle = Arc::new(SwitchEngine::new(Arc::clone(&manager)));
     let checker: HealthCheckerHandle = Arc::new(health::HealthChecker::new(Arc::clone(&manager)));
 
@@ -55,6 +55,7 @@ pub fn run() {
         .manage(engine)
         .manage(checker)
         .manage(model_mapping)
+        .manage(Arc::clone(&manager))
         .invoke_handler(tauri::generate_handler![
             // Proxy (T1.0.1)
             commands::proxy::get_local_api_config,
