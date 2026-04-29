@@ -389,10 +389,72 @@ async fn handle_streaming_chat(
     Ok(sse::stream_to_sse_response(stream))
 }
 
-/// `POST /v1/messages` — Anthropic-format inbound. Stub until
-/// T1.0.3.04 + T1.0.2.15 land.
-async fn anthropic_messages(State(_state): State<ProxyAppState>) -> Result<Json<Value>, ApiError> {
-    Err(ApiError::providers_not_configured())
+/// `POST /v1/messages` — Anthropic-format inbound.
+///
+/// Flow mirrors `chat_completions`, but uses the Anthropic converter
+/// at the HTTP boundary so Anthropic SDKs receive `message` responses.
+async fn anthropic_messages(
+    State(state): State<ProxyAppState>,
+    body: axum::body::Bytes,
+) -> Result<axum::response::Response, ApiError> {
+    if state.manager.is_empty().await {
+        return Err(ApiError::new(
+            ApiErrorKind::NoProvider,
+            "No providers configured. Add a provider in CCUse settings.",
+        ));
+    }
+
+    let body_json: Value =
+        serde_json::from_slice(&body).map_err(|e| ApiError::bad_request(e.to_string()))?;
+
+    let unified: UnifiedRequest = state.anthropic_converter.request_to_unified(&body_json)?;
+    if unified.stream {
+        return Err(ApiError::bad_request(
+            "stream=true for /v1/messages is not implemented yet",
+        ));
+    }
+
+    let api_req = bridge::unified_to_api_request(&unified);
+    let start = std::time::Instant::now();
+    let result = state
+        .engine
+        .dispatch(api_req.clone())
+        .await
+        .map_err(ApiError::from)?;
+    let elapsed = start.elapsed();
+
+    if let Some(ref log_repo) = state.request_log {
+        let input = RequestLogInput {
+            provider_id: result.provider_id.clone(),
+            model: api_req.model.clone(),
+            status: "ok".into(),
+            error_kind: None,
+            latency_ms: i64::try_from(elapsed.as_millis()).unwrap_or(i64::MAX),
+            prompt_tokens: result
+                .response
+                .usage
+                .as_ref()
+                .map(|u| i64::from(u.prompt_tokens)),
+            completion_tokens: result
+                .response
+                .usage
+                .as_ref()
+                .map(|u| i64::from(u.completion_tokens)),
+            total_tokens: result
+                .response
+                .usage
+                .as_ref()
+                .map(|u| i64::from(u.total_tokens)),
+            stream: false,
+        };
+        let _ = log_repo.insert(&input);
+    }
+
+    let unified_resp = bridge::api_response_to_unified(&result.response);
+    let out = state
+        .anthropic_converter
+        .unified_to_response(&unified_resp)?;
+    Ok(Json(out).into_response())
 }
 
 #[cfg(test)]

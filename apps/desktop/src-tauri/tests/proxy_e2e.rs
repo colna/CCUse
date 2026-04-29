@@ -126,6 +126,16 @@ fn chat_request_with_tools() -> Value {
     })
 }
 
+fn anthropic_messages_request() -> Value {
+    json!({
+        "model": "claude-3-5-sonnet-20241022",
+        "max_tokens": 128,
+        "system": "You are terse.",
+        "messages": [{"role": "user", "content": "ping"}],
+        "stream": false
+    })
+}
+
 fn openai_text_response(content: &str) -> Value {
     json!({
         "id": "chatcmpl-proxy-e2e",
@@ -139,6 +149,52 @@ fn openai_text_response(content: &str) -> Value {
         }],
         "usage": {"prompt_tokens": 4, "completion_tokens": 2, "total_tokens": 6}
     })
+}
+
+#[tokio::test]
+async fn anthropic_messages_dispatches_non_streaming_request_to_upstream() {
+    let upstream = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(openai_text_response("pong")))
+        .expect(1)
+        .mount(&upstream)
+        .await;
+    let proxy = start_proxy_with_providers(&[ProviderSpec {
+        id: "anthropic-inbound",
+        name: "Anthropic Inbound",
+        priority: 1,
+        server: &upstream,
+    }])
+    .await;
+
+    let response = reqwest::Client::new()
+        .post(format!("{}/v1/messages", proxy.base_url))
+        .json(&anthropic_messages_request())
+        .send()
+        .await
+        .expect("proxy request");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = response.json().await.expect("response json");
+    assert_eq!(body["type"], "message");
+    assert_eq!(body["role"], "assistant");
+    assert_eq!(body["content"][0]["type"], "text");
+    assert_eq!(body["content"][0]["text"], "pong");
+    assert_eq!(body["usage"]["input_tokens"], 4);
+    assert_eq!(body["usage"]["output_tokens"], 2);
+
+    let received = upstream.received_requests().await.expect("received");
+    let upstream_body: Value = serde_json::from_slice(&received[0].body).expect("json");
+    assert_eq!(upstream_body["model"], "claude-3-5-sonnet-20241022");
+    assert_eq!(upstream_body["messages"][0]["role"], "system");
+    assert_eq!(upstream_body["messages"][0]["content"], "You are terse.");
+    assert_eq!(upstream_body["messages"][1]["role"], "user");
+    assert_eq!(upstream_body["messages"][1]["content"], "ping");
+    assert_eq!(upstream_body["max_tokens"], 128);
+    assert_eq!(upstream_body["stream"], false);
+
+    proxy.shutdown().await;
 }
 
 #[tokio::test]

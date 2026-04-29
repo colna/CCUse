@@ -179,7 +179,7 @@ async fn chat_completions_returns_503_when_no_providers() {
 }
 
 #[tokio::test]
-async fn anthropic_messages_stub_returns_503_with_openai_shaped_error() {
+async fn anthropic_messages_returns_503_when_no_providers() {
     let (base, tx, handle) = start_test_server().await;
     let response = reqwest::Client::new()
         .post(format!("{base}/v1/messages"))
@@ -189,7 +189,7 @@ async fn anthropic_messages_stub_returns_503_with_openai_shaped_error() {
         .expect("messages request should reach the server");
     assert_eq!(response.status(), reqwest::StatusCode::SERVICE_UNAVAILABLE);
     let body: Value = response.json().await.expect("body decodes as JSON");
-    assert_eq!(body["error"]["type"], "providers_not_configured");
+    assert_eq!(body["error"]["type"], "no_provider_available");
     shutdown_test_server(tx, handle).await;
 }
 
@@ -317,7 +317,7 @@ async fn auth_v1_messages_accepts_x_api_key_header() {
         .expect("request reaches server");
     assert_eq!(response.status(), reqwest::StatusCode::SERVICE_UNAVAILABLE);
     let body: Value = response.json().await.expect("body decodes");
-    assert_eq!(body["error"]["type"], "providers_not_configured");
+    assert_eq!(body["error"]["type"], "no_provider_available");
     shutdown_test_server(tx, handle).await;
 }
 
