@@ -189,7 +189,8 @@ async fn anthropic_messages_returns_503_when_no_providers() {
         .expect("messages request should reach the server");
     assert_eq!(response.status(), reqwest::StatusCode::SERVICE_UNAVAILABLE);
     let body: Value = response.json().await.expect("body decodes as JSON");
-    assert_eq!(body["error"]["type"], "no_provider_available");
+    assert_eq!(body["type"], "error");
+    assert_eq!(body["error"]["type"], "api_error");
     shutdown_test_server(tx, handle).await;
 }
 
@@ -289,6 +290,22 @@ async fn auth_v1_models_returns_401_when_no_key_provided() {
 }
 
 #[tokio::test]
+async fn auth_v1_messages_returns_anthropic_401_when_no_key_provided() {
+    let (base, _key, tx, handle) = start_authenticated_test_server().await;
+    let response = reqwest::Client::new()
+        .post(format!("{base}/v1/messages"))
+        .json(&serde_json::json!({"model": "claude", "messages": []}))
+        .send()
+        .await
+        .expect("request reaches server");
+    assert_eq!(response.status(), reqwest::StatusCode::UNAUTHORIZED);
+    let body: Value = response.json().await.expect("body decodes");
+    assert_eq!(body["type"], "error");
+    assert_eq!(body["error"]["type"], "authentication_error");
+    shutdown_test_server(tx, handle).await;
+}
+
+#[tokio::test]
 async fn auth_v1_chat_completions_accepts_bearer_authorization() {
     let (base, key, tx, handle) = start_authenticated_test_server().await;
     let response = reqwest::Client::new()
@@ -317,7 +334,8 @@ async fn auth_v1_messages_accepts_x_api_key_header() {
         .expect("request reaches server");
     assert_eq!(response.status(), reqwest::StatusCode::SERVICE_UNAVAILABLE);
     let body: Value = response.json().await.expect("body decodes");
-    assert_eq!(body["error"]["type"], "no_provider_available");
+    assert_eq!(body["type"], "error");
+    assert_eq!(body["error"]["type"], "api_error");
     shutdown_test_server(tx, handle).await;
 }
 

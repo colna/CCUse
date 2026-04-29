@@ -2,10 +2,14 @@
 //!
 //! Handlers that return `Result<T, ApiError>` get automatic
 //! conversion to `(StatusCode, Json<Value>)` via [`IntoResponse`],
-//! producing an `OpenAI`-shaped error envelope:
+//! producing an error envelope that matches the inbound protocol:
 //!
 //! ```json
 //! { "error": { "type": "...", "message": "..." } }
+//! ```
+//!
+//! ```json
+//! { "type": "error", "error": { "type": "...", "message": "..." } }
 //! ```
 
 use axum::http::StatusCode;
@@ -15,6 +19,25 @@ use serde_json::json;
 
 use crate::converter::ConvertError;
 use crate::providers::api::ProviderError;
+
+/// Wire error envelope to use for a request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ErrorProtocol {
+    OpenAi,
+    Anthropic,
+}
+
+impl ErrorProtocol {
+    /// Infer the error protocol from the request path.
+    #[must_use]
+    pub fn for_path(path: &str) -> Self {
+        if path == "/v1/messages" || path.starts_with("/v1/messages/") {
+            Self::Anthropic
+        } else {
+            Self::OpenAi
+        }
+    }
+}
 
 /// Kind of error surfaced over the wire.
 ///
@@ -65,6 +88,20 @@ impl ApiErrorKind {
             Self::Internal => "internal_error",
         }
     }
+
+    /// Stable wire string for Anthropic's `error.type` field.
+    #[must_use]
+    pub const fn anthropic_type_str(self) -> &'static str {
+        match self {
+            Self::Unauthorized => "authentication_error",
+            Self::BadRequest => "invalid_request_error",
+            Self::TooManyRequests => "rate_limit_error",
+            Self::ProvidersNotConfigured
+            | Self::NoProvider
+            | Self::UpstreamError
+            | Self::Internal => "api_error",
+        }
+    }
 }
 
 /// Error returned by proxy HTTP handlers.
@@ -73,6 +110,7 @@ impl ApiErrorKind {
 pub struct ApiError {
     pub kind: ApiErrorKind,
     pub message: String,
+    protocol: ErrorProtocol,
 }
 
 impl ApiError {
@@ -80,7 +118,19 @@ impl ApiError {
         Self {
             kind,
             message: message.into(),
+            protocol: ErrorProtocol::OpenAi,
         }
+    }
+
+    #[must_use]
+    pub fn with_protocol(mut self, protocol: ErrorProtocol) -> Self {
+        self.protocol = protocol;
+        self
+    }
+
+    #[must_use]
+    pub fn anthropic(self) -> Self {
+        self.with_protocol(ErrorProtocol::Anthropic)
     }
 
     pub fn providers_not_configured() -> Self {
@@ -129,12 +179,21 @@ impl From<ConvertError> for ApiError {
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let status = self.kind.status();
-        let body = Json(json!({
-            "error": {
-                "type": self.kind.type_str(),
-                "message": self.message,
-            }
-        }));
+        let body = match self.protocol {
+            ErrorProtocol::OpenAi => Json(json!({
+                "error": {
+                    "type": self.kind.type_str(),
+                    "message": self.message,
+                }
+            })),
+            ErrorProtocol::Anthropic => Json(json!({
+                "type": "error",
+                "error": {
+                    "type": self.kind.anthropic_type_str(),
+                    "message": self.message,
+                }
+            })),
+        };
         (status, body).into_response()
     }
 }
@@ -187,6 +246,69 @@ mod tests {
         assert_eq!(ApiErrorKind::UpstreamError.type_str(), "upstream_error");
         assert_eq!(ApiErrorKind::NoProvider.type_str(), "no_provider_available");
         assert_eq!(ApiErrorKind::Internal.type_str(), "internal_error");
+    }
+
+    #[test]
+    fn anthropic_type_str_maps_to_anthropic_error_ids() {
+        assert_eq!(
+            ApiErrorKind::Unauthorized.anthropic_type_str(),
+            "authentication_error"
+        );
+        assert_eq!(
+            ApiErrorKind::BadRequest.anthropic_type_str(),
+            "invalid_request_error"
+        );
+        assert_eq!(
+            ApiErrorKind::TooManyRequests.anthropic_type_str(),
+            "rate_limit_error"
+        );
+        assert_eq!(ApiErrorKind::NoProvider.anthropic_type_str(), "api_error");
+        assert_eq!(
+            ApiErrorKind::UpstreamError.anthropic_type_str(),
+            "api_error"
+        );
+    }
+
+    #[test]
+    fn error_protocol_is_inferred_from_path() {
+        assert_eq!(
+            ErrorProtocol::for_path("/v1/messages"),
+            ErrorProtocol::Anthropic
+        );
+        assert_eq!(
+            ErrorProtocol::for_path("/v1/messages/foo"),
+            ErrorProtocol::Anthropic
+        );
+        assert_eq!(
+            ErrorProtocol::for_path("/v1/chat/completions"),
+            ErrorProtocol::OpenAi
+        );
+    }
+
+    #[tokio::test]
+    async fn into_response_uses_openai_envelope_by_default() {
+        let response = ApiError::bad_request("missing model").into_response();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body bytes");
+        let body: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
+        assert_eq!(body["error"]["type"], "bad_request");
+        assert!(body.get("type").is_none());
+    }
+
+    #[tokio::test]
+    async fn into_response_uses_anthropic_envelope_when_marked() {
+        let response = ApiError::bad_request("missing model")
+            .anthropic()
+            .into_response();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body bytes");
+        let body: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
+        assert_eq!(body["type"], "error");
+        assert_eq!(body["error"]["type"], "invalid_request_error");
     }
 
     #[test]

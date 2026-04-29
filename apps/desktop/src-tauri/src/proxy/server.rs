@@ -484,6 +484,15 @@ async fn anthropic_messages(
     State(state): State<ProxyAppState>,
     body: axum::body::Bytes,
 ) -> Result<axum::response::Response, ApiError> {
+    anthropic_messages_inner(state, body)
+        .await
+        .map_err(ApiError::anthropic)
+}
+
+async fn anthropic_messages_inner(
+    state: ProxyAppState,
+    body: axum::body::Bytes,
+) -> Result<axum::response::Response, ApiError> {
     if state.manager.is_empty().await {
         return Err(ApiError::new(
             ApiErrorKind::NoProvider,

@@ -13,7 +13,7 @@ use axum::middleware::Next;
 use axum::response::Response;
 use subtle::ConstantTimeEq;
 
-use crate::proxy::error::ApiError;
+use crate::proxy::error::{ApiError, ErrorProtocol};
 
 /// Live, mutably-shared expected key. `RwLock` because regeneration
 /// happens off the hot request path; reads are cheap and uncontended.
@@ -60,23 +60,25 @@ pub async fn require_local_api_key(
     request: Request,
     next: Next,
 ) -> Result<Response, ApiError> {
+    let protocol = ErrorProtocol::for_path(request.uri().path());
     let Some(presented) = extract_presented_key(request.headers()) else {
         return Err(ApiError::unauthorized(
             "missing api key: send `Authorization: Bearer sk-local-...` or `x-api-key`",
-        ));
+        )
+        .with_protocol(protocol));
     };
     // Snapshot once; release the read lock before the constant-time
     // compare so a slow path can't backpressure regenerate_api_key.
     let expected = {
-        let guard = store
-            .read()
-            .map_err(|_| ApiError::internal("auth keystore lock poisoned"))?;
+        let guard = store.read().map_err(|_| {
+            ApiError::internal("auth keystore lock poisoned").with_protocol(protocol)
+        })?;
         guard.clone()
     };
     if presented.as_bytes().ct_eq(expected.as_bytes()).into() {
         Ok(next.run(request).await)
     } else {
-        Err(ApiError::unauthorized("invalid api key"))
+        Err(ApiError::unauthorized("invalid api key").with_protocol(protocol))
     }
 }
 
