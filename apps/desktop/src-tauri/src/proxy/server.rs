@@ -6,7 +6,9 @@
 
 use std::future::Future;
 use std::net::SocketAddr;
+use std::sync::Arc;
 
+use axum::extract::State;
 use axum::http::header::{AUTHORIZATION, CONTENT_TYPE};
 use axum::http::{HeaderName, Method};
 use axum::response::Json;
@@ -14,9 +16,14 @@ use axum::routing::{get, post};
 use axum::Router;
 use serde_json::{json, Value};
 use tokio::net::TcpListener;
+use tokio::sync::RwLock;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
 use crate::auth::{require_local_api_key, KeyStore};
+use crate::commands::model_mapping::ModelMappingHandle;
+use crate::commands::switch::SwitchEngineHandle;
+use crate::converter::ModelMapping;
+use crate::providers::ProviderManager;
 
 use super::error::ApiError;
 
@@ -61,6 +68,28 @@ pub enum ServerError {
 pub struct ProxyServer {
     listener: TcpListener,
     local_addr: SocketAddr,
+}
+
+#[derive(Debug, Clone)]
+pub struct ProxyAppState {
+    pub engine: SwitchEngineHandle,
+    pub model_mapping: ModelMappingHandle,
+    pub manager: Arc<ProviderManager>,
+}
+
+impl ProxyAppState {
+    #[must_use]
+    pub fn new(
+        engine: SwitchEngineHandle,
+        model_mapping: Arc<RwLock<ModelMapping>>,
+        manager: Arc<ProviderManager>,
+    ) -> Self {
+        Self {
+            engine,
+            model_mapping,
+            manager,
+        }
+    }
 }
 
 impl std::fmt::Debug for ProxyServer {
@@ -126,11 +155,15 @@ impl ProxyServer {
     /// Static dispatch on the shutdown future (per `rust-best-practices`
     /// §6) — callers usually pass `tokio::signal::ctrl_c()` or a
     /// `oneshot::Receiver`; both are zero-cost here.
-    pub async fn serve_with_shutdown<F>(self, shutdown: F) -> Result<(), ServerError>
+    pub async fn serve_with_shutdown<F>(
+        self,
+        state: ProxyAppState,
+        shutdown: F,
+    ) -> Result<(), ServerError>
     where
         F: Future<Output = ()> + Send + 'static,
     {
-        let app = build_router(None);
+        let app = build_router(None, state);
         axum::serve(self.listener, app)
             .with_graceful_shutdown(shutdown)
             .await?;
@@ -143,12 +176,13 @@ impl ProxyServer {
     pub async fn serve_with_auth_and_shutdown<F>(
         self,
         key_store: KeyStore,
+        state: ProxyAppState,
         shutdown: F,
     ) -> Result<(), ServerError>
     where
         F: Future<Output = ()> + Send + 'static,
     {
-        let app = build_router(Some(key_store));
+        let app = build_router(Some(key_store), state);
         axum::serve(self.listener, app)
             .with_graceful_shutdown(shutdown)
             .await?;
@@ -165,11 +199,12 @@ impl ProxyServer {
 ///
 /// When `auth` is `Some`, the `/v1/*` routes require the
 /// `sk-local-…` API key (T1.0.1.13). `/healthz` is always open.
-fn build_router(auth: Option<KeyStore>) -> Router {
+fn build_router(auth: Option<KeyStore>, state: ProxyAppState) -> Router {
     let mut v1 = Router::new()
         .route("/v1/models", get(list_models))
         .route("/v1/chat/completions", post(chat_completions))
-        .route("/v1/messages", post(anthropic_messages));
+        .route("/v1/messages", post(anthropic_messages))
+        .with_state(state);
     if let Some(store) = auth {
         v1 = v1.layer(axum::middleware::from_fn_with_state(
             store,
@@ -219,7 +254,7 @@ async fn healthz() -> &'static str {
 ///
 /// Shape mirrors `OpenAI`'s `/v1/models` so generic clients see
 /// "no models available" instead of a hard 404.
-async fn list_models() -> Json<Value> {
+async fn list_models(State(_state): State<ProxyAppState>) -> Json<Value> {
     Json(json!({
         "object": "list",
         "data": [],
@@ -228,13 +263,13 @@ async fn list_models() -> Json<Value> {
 
 /// `POST /v1/chat/completions` — `OpenAI`-format inbound. Stub until
 /// T1.0.2.15 `SwitchEngine` `execute_request` is plumbed in.
-async fn chat_completions() -> Result<Json<Value>, ApiError> {
+async fn chat_completions(State(_state): State<ProxyAppState>) -> Result<Json<Value>, ApiError> {
     Err(ApiError::providers_not_configured())
 }
 
 /// `POST /v1/messages` — Anthropic-format inbound. Stub until
 /// T1.0.3.04 + T1.0.2.15 land.
-async fn anthropic_messages() -> Result<Json<Value>, ApiError> {
+async fn anthropic_messages(State(_state): State<ProxyAppState>) -> Result<Json<Value>, ApiError> {
     Err(ApiError::providers_not_configured())
 }
 

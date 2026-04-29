@@ -6,18 +6,31 @@
 //! 3. resolving the shutdown future causes `serve` to return cleanly.
 
 use std::net::SocketAddr;
+use std::sync::Arc;
 use std::time::Duration;
 
 use ccuse_desktop_lib::auth::key_store;
-use ccuse_desktop_lib::proxy::{ProxyServer, ServerError};
+use ccuse_desktop_lib::commands::model_mapping::ModelMappingHandle;
+use ccuse_desktop_lib::commands::switch::SwitchEngineHandle;
+use ccuse_desktop_lib::converter::ModelMapping;
+use ccuse_desktop_lib::providers::ProviderManager;
+use ccuse_desktop_lib::proxy::{ProxyAppState, ProxyServer, ServerError};
+use ccuse_desktop_lib::switch::SwitchEngine;
 use serde_json::Value;
-use tokio::sync::oneshot;
+use tokio::sync::{oneshot, RwLock};
 use tokio::task::JoinHandle;
 
 fn loopback_zero() -> SocketAddr {
     "127.0.0.1:0"
         .parse()
         .expect("loopback string is a valid SocketAddr")
+}
+
+fn test_proxy_state() -> ProxyAppState {
+    let manager = Arc::new(ProviderManager::new());
+    let engine: SwitchEngineHandle = Arc::new(SwitchEngine::new(Arc::clone(&manager)));
+    let model_mapping: ModelMappingHandle = Arc::new(RwLock::new(ModelMapping::new()));
+    ProxyAppState::new(engine, model_mapping, manager)
 }
 
 /// Spin up a proxy server bound to an ephemeral port and return
@@ -34,7 +47,7 @@ async fn start_test_server() -> (
         .expect("bind to ephemeral port should succeed");
     let base = format!("http://{}", server.local_addr());
     let (tx, rx) = oneshot::channel::<()>();
-    let handle = tokio::spawn(server.serve_with_shutdown(async move {
+    let handle = tokio::spawn(server.serve_with_shutdown(test_proxy_state(), async move {
         let _ = rx.await;
     }));
     tokio::time::sleep(Duration::from_millis(50)).await;
@@ -72,7 +85,7 @@ async fn healthz_endpoint_responds_with_ok() {
     let base = format!("http://{}", server.local_addr());
     let (tx, rx) = oneshot::channel::<()>();
 
-    let serve_handle = tokio::spawn(server.serve_with_shutdown(async move {
+    let serve_handle = tokio::spawn(server.serve_with_shutdown(test_proxy_state(), async move {
         let _ = rx.await;
     }));
 
@@ -104,7 +117,7 @@ async fn serve_returns_after_shutdown_signal() {
         .expect("bind succeeds");
     let (tx, rx) = oneshot::channel::<()>();
 
-    let serve_handle = tokio::spawn(server.serve_with_shutdown(async move {
+    let serve_handle = tokio::spawn(server.serve_with_shutdown(test_proxy_state(), async move {
         let _ = rx.await;
     }));
 
@@ -253,9 +266,12 @@ async fn start_authenticated_test_server() -> (
     let key = "sk-local-integration-test-key".to_owned();
     let store = key_store(key.clone());
     let (tx, rx) = oneshot::channel::<()>();
-    let handle = tokio::spawn(server.serve_with_auth_and_shutdown(store, async move {
-        let _ = rx.await;
-    }));
+    let handle =
+        tokio::spawn(
+            server.serve_with_auth_and_shutdown(store, test_proxy_state(), async move {
+                let _ = rx.await;
+            }),
+        );
     tokio::time::sleep(Duration::from_millis(50)).await;
     (base, key, tx, handle)
 }

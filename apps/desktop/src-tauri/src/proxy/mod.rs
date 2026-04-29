@@ -13,4 +13,4 @@ pub use error::{ApiError, ApiErrorKind};
 pub use runtime::{
     LocalApiConfig, ProxyRuntime, RuntimeError, DEFAULT_PROXY_ATTEMPTS, DEFAULT_PROXY_PORT,
 };
-pub use server::{ProxyServer, ServerError};
+pub use server::{ProxyAppState, ProxyServer, ServerError};

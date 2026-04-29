@@ -15,7 +15,15 @@ use std::time::Duration;
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use tokio::sync::oneshot;
 
-use ccuse_desktop_lib::proxy::ProxyServer;
+use std::sync::Arc;
+
+use ccuse_desktop_lib::commands::model_mapping::ModelMappingHandle;
+use ccuse_desktop_lib::commands::switch::SwitchEngineHandle;
+use ccuse_desktop_lib::converter::ModelMapping;
+use ccuse_desktop_lib::providers::ProviderManager;
+use ccuse_desktop_lib::proxy::{ProxyAppState, ProxyServer};
+use ccuse_desktop_lib::switch::SwitchEngine;
+use tokio::sync::RwLock;
 
 fn bench_healthz_throughput(c: &mut Criterion) {
     let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
@@ -26,7 +34,11 @@ fn bench_healthz_throughput(c: &mut Criterion) {
             .expect("bind");
         let base = format!("http://{}", server.local_addr());
         let (tx, rx) = oneshot::channel::<()>();
-        let handle = tokio::spawn(server.serve_with_shutdown(async move {
+        let manager = Arc::new(ProviderManager::new());
+        let engine: SwitchEngineHandle = Arc::new(SwitchEngine::new(Arc::clone(&manager)));
+        let model_mapping: ModelMappingHandle = Arc::new(RwLock::new(ModelMapping::new()));
+        let state = ProxyAppState::new(engine, model_mapping, manager);
+        let handle = tokio::spawn(server.serve_with_shutdown(state, async move {
             let _ = rx.await;
         }));
         tokio::time::sleep(Duration::from_millis(50)).await;

@@ -5,14 +5,20 @@
 //! to mutate. Pure-Rust API so tests don't have to spin up `Tauri`.
 
 use std::net::SocketAddr;
+use std::sync::Arc;
 
 use serde::Serialize;
-use tokio::sync::{oneshot, Mutex};
+use tokio::sync::{oneshot, Mutex, RwLock};
 use tokio::task::JoinHandle;
 
 use crate::auth::{generate_local_api_key, key_store, KeyStore, LocalApiKey};
+use crate::commands::model_mapping::ModelMappingHandle;
+use crate::commands::switch::SwitchEngineHandle;
+use crate::converter::ModelMapping;
+use crate::providers::ProviderManager;
+use crate::switch::SwitchEngine;
 
-use super::server::{ProxyServer, ServerError};
+use super::server::{ProxyAppState, ProxyServer, ServerError};
 
 /// Default loopback start port for the proxy. Probed range is
 /// `[8787, 8887)` (100 attempts) — matches the desktop spec in
@@ -74,6 +80,7 @@ pub struct ProxyRuntime {
     inner: Mutex<Option<RunningState>>,
     fallback_start: u16,
     fallback_attempts: u16,
+    state: ProxyAppState,
 }
 
 impl Default for ProxyRuntime {
@@ -87,10 +94,31 @@ impl ProxyRuntime {
     /// to let the OS allocate; production uses the defaults.
     #[must_use]
     pub fn new(fallback_start: u16, fallback_attempts: u16) -> Self {
+        let manager = Arc::new(ProviderManager::new());
+        let engine: SwitchEngineHandle = Arc::new(SwitchEngine::new(Arc::clone(&manager)));
+        let model_mapping: ModelMappingHandle = Arc::new(RwLock::new(ModelMapping::new()));
+        Self::with_dependencies(
+            fallback_start,
+            fallback_attempts,
+            engine,
+            model_mapping,
+            manager,
+        )
+    }
+
+    #[must_use]
+    pub fn with_dependencies(
+        fallback_start: u16,
+        fallback_attempts: u16,
+        engine: SwitchEngineHandle,
+        model_mapping: ModelMappingHandle,
+        manager: Arc<ProviderManager>,
+    ) -> Self {
         Self {
             inner: Mutex::new(None),
             fallback_start,
             fallback_attempts,
+            state: ProxyAppState::new(engine, model_mapping, manager),
         }
     }
 
@@ -114,11 +142,13 @@ impl ProxyRuntime {
         let api_key = generate_local_api_key();
         let store = key_store(api_key.as_str().to_owned());
         let (shutdown, rx) = oneshot::channel::<()>();
-        let handle = tokio::spawn(
-            server.serve_with_auth_and_shutdown(store.clone(), async move {
+        let handle = tokio::spawn(server.serve_with_auth_and_shutdown(
+            store.clone(),
+            self.state.clone(),
+            async move {
                 let _ = rx.await;
-            }),
-        );
+            },
+        ));
         let config = LocalApiConfig {
             base_url: format!("http://{addr}"),
             api_key: api_key.as_str().to_owned(),
@@ -201,6 +231,24 @@ mod tests {
     /// not race over fixed ports like 8787.
     fn ephemeral_runtime() -> ProxyRuntime {
         ProxyRuntime::new(0, 1)
+    }
+
+    #[test]
+    fn with_dependencies_reuses_injected_handles() {
+        let manager = Arc::new(ProviderManager::new());
+        let engine: SwitchEngineHandle = Arc::new(SwitchEngine::new(Arc::clone(&manager)));
+        let model_mapping: ModelMappingHandle = Arc::new(RwLock::new(ModelMapping::new()));
+        let runtime = ProxyRuntime::with_dependencies(
+            0,
+            1,
+            Arc::clone(&engine),
+            Arc::clone(&model_mapping),
+            Arc::clone(&manager),
+        );
+
+        assert!(Arc::ptr_eq(&runtime.state.engine, &engine));
+        assert!(Arc::ptr_eq(&runtime.state.model_mapping, &model_mapping));
+        assert!(Arc::ptr_eq(&runtime.state.manager, &manager));
     }
 
     #[tokio::test]

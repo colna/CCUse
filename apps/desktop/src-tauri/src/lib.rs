@@ -31,9 +31,6 @@ use switch::SwitchEngine;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let runtime: commands::RuntimeHandle = Arc::new(ProxyRuntime::default());
-    let startup = runtime.clone();
-
     // Shared provider manager for switch engine + health checker.
     let manager = Arc::new(ProviderManager::new());
     let engine: SwitchEngineHandle = Arc::new(SwitchEngine::new(Arc::clone(&manager)));
@@ -42,6 +39,15 @@ pub fn run() {
     // Model mapping with defaults (T1.0.3.12).
     let model_mapping: ModelMappingHandle =
         Arc::new(tokio::sync::RwLock::new(converter::ModelMapping::new()));
+
+    let runtime: commands::RuntimeHandle = Arc::new(ProxyRuntime::with_dependencies(
+        proxy::DEFAULT_PROXY_PORT,
+        proxy::DEFAULT_PROXY_ATTEMPTS,
+        Arc::clone(&engine),
+        Arc::clone(&model_mapping),
+        Arc::clone(&manager),
+    ));
+    let startup = runtime.clone();
 
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
