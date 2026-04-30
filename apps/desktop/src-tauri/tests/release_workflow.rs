@@ -57,6 +57,7 @@ fn release_workflow_only_builds_missing_required_assets() {
         "CCUse_${VERSION}_aarch64.dmg",
         "CCUse_${VERSION}_x64.dmg",
         "CCUse_${VERSION}_x64-setup.exe",
+        ".assets | any(.name == $asset)",
         "asset_key: macos_aarch64",
         "asset_key: macos_x64",
         "asset_key: windows_x64",

@@ -102,13 +102,13 @@ jobs:
           if RELEASE_JSON=$(gh release view "$TAG" --json assets 2>/dev/null); then
             echo "Release $TAG already exists — checking required assets."
             echo "release_exists=true" >> "$GITHUB_OUTPUT"
-            if jq -e --arg asset "$MACOS_AARCH64_ASSET" '.assets[].name == $asset' <<< "$RELEASE_JSON" >/dev/null; then
+            if jq -e --arg asset "$MACOS_AARCH64_ASSET" '.assets | any(.name == $asset)' <<< "$RELEASE_JSON" >/dev/null; then
               missing_macos_aarch64=false
             fi
-            if jq -e --arg asset "$MACOS_X64_ASSET" '.assets[].name == $asset' <<< "$RELEASE_JSON" >/dev/null; then
+            if jq -e --arg asset "$MACOS_X64_ASSET" '.assets | any(.name == $asset)' <<< "$RELEASE_JSON" >/dev/null; then
               missing_macos_x64=false
             fi
-            if jq -e --arg asset "$WINDOWS_X64_ASSET" '.assets[].name == $asset' <<< "$RELEASE_JSON" >/dev/null; then
+            if jq -e --arg asset "$WINDOWS_X64_ASSET" '.assets | any(.name == $asset)' <<< "$RELEASE_JSON" >/dev/null; then
               missing_windows_x64=false
             fi
           else
