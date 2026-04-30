@@ -36,8 +36,22 @@ fn release_workflow_uses_desktop_monorepo_paths() {
 }
 
 #[test]
+fn release_workflow_recovers_when_tag_exists_but_release_is_missing() {
+    for needle in [
+        "gh release view \"$TAG\"",
+        "tag_exists: ${{ steps.check.outputs.tag_exists }}",
+        "release_exists: ${{ steps.check.outputs.release_exists }}",
+        "needs.check-version.outputs.tag_exists != 'true'",
+        "needs.create-tag.result == 'success' || needs.create-tag.result == 'skipped'",
+    ] {
+        assert_workflow_contains(needle);
+    }
+}
+
+#[test]
 fn release_workflow_preserves_official_release_and_artifact_contract() {
     for needle in [
+        "version: 10.30.3",
         "prerelease: ${{ needs.check-version.outputs.is_prerelease == 'true' }}",
         "MAJOR=\"${VERSION%%.*}\"",
         "CCUse_<version>_aarch64.dmg",

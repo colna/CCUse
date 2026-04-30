@@ -3,8 +3,8 @@ name: Release
 # 触发：main 分支推送
 # 行为：
 #   1. 读取 apps/desktop/src-tauri/tauri.conf.json 的 version
-#   2. 若该版本对应的 tag (v<version>) 不存在 —— 自动打 tag、构建三平台产物、发布 GitHub Release
-#   3. 若 tag 已存在 —— 跳过（说明本次 push 没有版本变更）
+#   2. 若该版本对应的 GitHub Release 不存在 —— 确保 tag 存在、构建三平台产物、发布 GitHub Release
+#   3. 若 Release 已存在 —— 跳过（说明本次 push 没有版本变更）
 #
 # 产物（每次发布固定 3 个）：
 #   - CCUse_<version>_aarch64.dmg          (macOS Apple Silicon)
@@ -33,6 +33,8 @@ jobs:
     outputs:
       version: ${{ steps.read.outputs.version }}
       tag: v${{ steps.read.outputs.version }}
+      tag_exists: ${{ steps.check.outputs.tag_exists }}
+      release_exists: ${{ steps.check.outputs.release_exists }}
       is_prerelease: ${{ steps.read.outputs.is_prerelease }}
       should_release: ${{ steps.check.outputs.should_release }}
     steps:
@@ -63,22 +65,35 @@ jobs:
             echo "::notice::version is 0.0.0 (placeholder) — release will be skipped by check-version step"
           fi
 
-      - name: Check if tag already exists
+      - name: Check if release already exists
         id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ steps.read.outputs.version }}"
           TAG="v$VERSION"
           # 0.0.0 是仓库初始占位版本，不发布任何 release
           if [ "$VERSION" = "0.0.0" ]; then
             echo "Version is 0.0.0 — skip release."
+            echo "tag_exists=false" >> "$GITHUB_OUTPUT"
+            echo "release_exists=false" >> "$GITHUB_OUTPUT"
             echo "should_release=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
-            echo "Tag $TAG already exists — skip release."
+            echo "Tag $TAG already exists."
+            echo "tag_exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Tag $TAG not found — will create it before release."
+            echo "tag_exists=false" >> "$GITHUB_OUTPUT"
+          fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists — skip release."
+            echo "release_exists=true" >> "$GITHUB_OUTPUT"
             echo "should_release=false" >> "$GITHUB_OUTPUT"
           else
-            echo "Tag $TAG not found — will release."
+            echo "Release $TAG not found — will build and publish."
+            echo "release_exists=false" >> "$GITHUB_OUTPUT"
             echo "should_release=true" >> "$GITHUB_OUTPUT"
           fi
 
@@ -88,7 +103,7 @@ jobs:
   create-tag:
     name: Create tag
     needs: check-version
-    if: needs.check-version.outputs.should_release == 'true'
+    if: needs.check-version.outputs.should_release == 'true' && needs.check-version.outputs.tag_exists != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -106,7 +121,7 @@ jobs:
   build:
     name: Build ${{ matrix.label }}
     needs: [check-version, create-tag]
-    if: needs.check-version.outputs.should_release == 'true'
+    if: always() && needs.check-version.outputs.should_release == 'true' && (needs.create-tag.result == 'success' || needs.create-tag.result == 'skipped')
     strategy:
       fail-fast: false
       matrix:
@@ -130,7 +145,7 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 9
+          version: 10.30.3
 
       - name: Setup Node
         uses: actions/setup-node@v4
