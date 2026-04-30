@@ -1,0 +1,28 @@
+---
+title: CCUse 文档
+description: 从这里了解本地代理和供应商故障切换链路。
+section: 入门
+order: 1
+---
+
+# CCUse 文档
+
+这个页面用于验证完整用户手册落地前的 MDX 文档管线。
+
+## 本地代理快速开始
+
+把任意 OpenAI 兼容客户端指向本地端点：
+
+```ts
+const baseUrl = "http://127.0.0.1:8787";
+const apiKey = "sk-local-example";
+```
+
+然后在 CCUse 中添加供应商，客户端配置无需跟随上游供应商变化。
+
+## 基线覆盖
+
+- GitHub Flavored Markdown
+- YAML frontmatter 解析
+- 标题 slug 和锚点链接
+- Shiki 代码高亮

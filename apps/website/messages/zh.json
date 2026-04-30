@@ -130,6 +130,10 @@
   "Metadata": {
     "description": "面向多供应商 AI 路由、健康检查与自动故障切换的本地 API 代理。"
   },
+  "Docs": {
+    "sidebarLabel": "文档导航",
+    "sidebarTitle": "文档目录"
+  },
   "Navigation": {
     "brandLabel": "CCUse 首页",
     "primaryLabel": "主导航",

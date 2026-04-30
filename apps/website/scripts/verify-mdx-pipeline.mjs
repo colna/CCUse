@@ -22,10 +22,12 @@ function assertPath(relativePath) {
 const packageJson = readJson("package.json");
 const nextConfig = read("next.config.mjs");
 const mdxComponents = read("mdx-components.tsx");
-const docsPage = read("app/[locale]/docs/page.mdx");
+const docsPage = read("content/docs/en/index.mdx");
 
 for (const requiredPath of [
-  "app/[locale]/docs/page.mdx",
+  "app/[locale]/docs/page.tsx",
+  "content/docs/en/index.mdx",
+  "content/docs/zh/index.mdx",
   "mdx-components.tsx",
 ]) {
   assertPath(requiredPath);

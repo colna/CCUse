@@ -130,6 +130,10 @@
   "Metadata": {
     "description": "Local API proxy for multi-provider AI routing, health checks, and automatic failover."
   },
+  "Docs": {
+    "sidebarLabel": "Documentation navigation",
+    "sidebarTitle": "Documentation"
+  },
   "Navigation": {
     "brandLabel": "CCUse home",
     "primaryLabel": "Primary navigation",
