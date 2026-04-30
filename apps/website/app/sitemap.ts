@@ -34,6 +34,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
         changeFrequency: "weekly" as const,
         priority: 0.9,
       },
+      {
+        url: absoluteUrl(`/${locale}/download`),
+        lastModified,
+        changeFrequency: "hourly" as const,
+        priority: 0.9,
+      },
       ...docsPages,
     ];
   });

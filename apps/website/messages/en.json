@@ -669,6 +669,43 @@
       }
     }
   },
+  "DownloadPage": {
+    "metadata": {
+      "title": "Download",
+      "description": "Download the latest CCUse desktop release from GitHub release assets."
+    },
+    "hero": {
+      "eyebrow": "Desktop downloads",
+      "title": "Install the local proxy on your machine.",
+      "description": "The download page reads the latest GitHub Release with a 60 second revalidation window, then lists the assets published by the release workflow.",
+      "actionsLabel": "Download page actions",
+      "primaryAction": "View assets",
+      "secondaryAction": "GitHub releases"
+    },
+    "release": {
+      "latest": "Latest GitHub Release",
+      "version": "Version",
+      "stable": "Stable",
+      "prerelease": "Pre-release",
+      "published": "Published",
+      "assets": "Assets",
+      "assetCount": "{count} assets",
+      "unavailableTitle": "Latest release is unavailable",
+      "unavailableDescription": "CCUse could not read the latest GitHub Release right now. The page will retry when the ISR cache revalidates."
+    },
+    "assets": {
+      "eyebrow": "Release assets",
+      "title": "Files from the latest release.",
+      "description": "This list is intentionally raw for now: the next tasks add platform detection, strict package cards, SHA-256 display, and pre-release separation.",
+      "viewRelease": "View release",
+      "downloadAsset": "Download asset",
+      "contentType": "Content type",
+      "updated": "Updated",
+      "empty": "The latest release does not expose downloadable assets yet.",
+      "unavailableTitle": "Assets cannot be loaded",
+      "unavailableDescription": "The GitHub API request failed or returned an unexpected response. Use the GitHub releases link while the cache refreshes."
+    }
+  },
   "Metadata": {
     "description": "Local API proxy for multi-provider AI routing, health checks, and automatic failover."
   },

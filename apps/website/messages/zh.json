@@ -669,6 +669,43 @@
       }
     }
   },
+  "DownloadPage": {
+    "metadata": {
+      "title": "下载",
+      "description": "从 GitHub Release 资产下载最新版 CCUse 桌面端。"
+    },
+    "hero": {
+      "eyebrow": "桌面端下载",
+      "title": "把本地代理安装到你的机器上。",
+      "description": "下载页会读取最新 GitHub Release，并以 60 秒 revalidation 窗口刷新缓存，然后列出发布流水线产出的资产。",
+      "actionsLabel": "下载页操作",
+      "primaryAction": "查看资产",
+      "secondaryAction": "GitHub Releases"
+    },
+    "release": {
+      "latest": "最新 GitHub Release",
+      "version": "版本",
+      "stable": "Stable",
+      "prerelease": "Pre-release",
+      "published": "发布时间",
+      "assets": "资产",
+      "assetCount": "{count} 个资产",
+      "unavailableTitle": "最新 Release 暂不可用",
+      "unavailableDescription": "CCUse 当前无法读取最新 GitHub Release。ISR 缓存重新验证时会自动重试。"
+    },
+    "assets": {
+      "eyebrow": "Release 资产",
+      "title": "来自最新 Release 的文件。",
+      "description": "这里暂时保留原始资产列表：后续任务会继续加入平台自动识别、严格三产物下载卡、SHA-256 展示和 pre-release 分流。",
+      "viewRelease": "查看 Release",
+      "downloadAsset": "下载资产",
+      "contentType": "Content type",
+      "updated": "更新时间",
+      "empty": "最新 Release 暂未暴露可下载资产。",
+      "unavailableTitle": "资产无法加载",
+      "unavailableDescription": "GitHub API 请求失败，或返回了非预期响应。缓存刷新期间可先使用 GitHub releases 链接。"
+    }
+  },
   "Metadata": {
     "description": "面向多供应商 AI 路由、健康检查与自动故障切换的本地 API 代理。"
   },
