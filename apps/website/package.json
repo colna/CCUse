@@ -6,11 +6,13 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "postbuild": "node scripts/build-pagefind-index.mjs",
+    "pagefind": "node scripts/build-pagefind-index.mjs",
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "lint": "pnpm --dir ../.. exec eslint apps/website",
     "lint:fix": "pnpm --dir ../.. exec eslint apps/website --fix",
-    "test": "node scripts/verify-next-app.mjs && node scripts/verify-tailwind.mjs && node scripts/verify-i18n-routing.mjs && node scripts/verify-theme.mjs && node scripts/verify-seo.mjs && node scripts/verify-home-hero.mjs && node scripts/verify-home-features.mjs && node scripts/verify-home-architecture.mjs && node scripts/verify-mdx-pipeline.mjs && node scripts/verify-docs-sidebar.mjs && node scripts/verify-docs-toc.mjs"
+    "test": "node scripts/verify-next-app.mjs && node scripts/verify-tailwind.mjs && node scripts/verify-i18n-routing.mjs && node scripts/verify-theme.mjs && node scripts/verify-seo.mjs && node scripts/verify-home-hero.mjs && node scripts/verify-home-features.mjs && node scripts/verify-home-architecture.mjs && node scripts/verify-mdx-pipeline.mjs && node scripts/verify-docs-sidebar.mjs && node scripts/verify-docs-toc.mjs && node scripts/verify-docs-search.mjs"
   },
   "dependencies": {
     "@mdx-js/loader": "^3.1.1",
@@ -41,6 +43,7 @@
     "@types/react": "18.3.12",
     "@types/react-dom": "18.3.1",
     "autoprefixer": "10.5.0",
+    "pagefind": "^1.5.2",
     "postcss": "8.5.12",
     "tailwindcss": "3.4.19",
     "tailwindcss-animate": "1.0.7",

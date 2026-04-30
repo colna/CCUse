@@ -2,6 +2,7 @@ import { getTranslations } from "next-intl/server";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 
+import { DocsSearch } from "../../../components/docs-search";
 import { isLocale } from "../../../i18n/routing";
 import { getDocsNavigation } from "../../../lib/docs";
 
@@ -24,6 +25,13 @@ export default async function DocsLayout({
 
   const t = await getTranslations({ locale, namespace: "Docs" });
   const navigationGroups = getDocsNavigation(locale);
+  const searchLabels = {
+    empty: t("searchEmpty"),
+    error: t("searchError"),
+    label: t("searchLabel"),
+    loading: t("searchLoading"),
+    placeholder: t("searchPlaceholder"),
+  };
 
   return (
     <main className="bg-background text-foreground">
@@ -36,6 +44,7 @@ export default async function DocsLayout({
             <summary className="cursor-pointer text-sm font-semibold">
               {t("sidebarTitle")}
             </summary>
+            <DocsSearch labels={searchLabels} locale={locale} />
             <nav className="mt-4 grid gap-5">
               {navigationGroups.map((group, groupIndex) => (
                 <section

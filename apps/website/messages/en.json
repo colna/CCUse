@@ -131,6 +131,11 @@
     "description": "Local API proxy for multi-provider AI routing, health checks, and automatic failover."
   },
   "Docs": {
+    "searchEmpty": "No results",
+    "searchError": "Search is unavailable",
+    "searchLabel": "Search documentation",
+    "searchLoading": "Searching...",
+    "searchPlaceholder": "Search docs",
     "sidebarLabel": "Documentation navigation",
     "sidebarTitle": "Documentation",
     "tocLabel": "On this page"

@@ -10,6 +10,7 @@ export default tseslint.config(
   {
     ignores: [
       "**/.next/**",
+      "apps/website/public/_pagefind/**",
       "**/coverage/**",
       "**/dist/**",
       "**/node_modules/**",

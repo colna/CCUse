@@ -12,6 +12,7 @@ build/
 out/
 .next/
 .turbo/
+apps/website/public/_pagefind/
 
 # Tauri (匹配任意层级下的 src-tauri/...)
 **/src-tauri/target/

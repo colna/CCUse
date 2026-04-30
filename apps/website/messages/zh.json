@@ -131,6 +131,11 @@
     "description": "面向多供应商 AI 路由、健康检查与自动故障切换的本地 API 代理。"
   },
   "Docs": {
+    "searchEmpty": "没有结果",
+    "searchError": "搜索暂不可用",
+    "searchLabel": "搜索文档",
+    "searchLoading": "搜索中...",
+    "searchPlaceholder": "搜索文档",
     "sidebarLabel": "文档导航",
     "sidebarTitle": "文档目录",
     "tocLabel": "本页目录"

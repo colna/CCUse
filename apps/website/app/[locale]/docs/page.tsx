@@ -26,7 +26,10 @@ export default async function DocsIndexPage({ params }: DocsIndexPageProps) {
 
   return (
     <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_14rem]">
-      <article className="min-w-0 rounded-lg border border-border bg-card p-6 shadow-sm">
+      <article
+        className="min-w-0 rounded-lg border border-border bg-card p-6 shadow-sm"
+        data-pagefind-body
+      >
         <Content />
       </article>
       <DocsTableOfContents items={tocItems} label={t("tocLabel")} />

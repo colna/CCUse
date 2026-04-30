@@ -72,11 +72,21 @@ for (const source of [enIndex, zhIndex]) {
 }
 
 assert.deepEqual(Object.keys(enMessages.Docs), [
+  "searchEmpty",
+  "searchError",
+  "searchLabel",
+  "searchLoading",
+  "searchPlaceholder",
   "sidebarLabel",
   "sidebarTitle",
   "tocLabel",
 ]);
 assert.deepEqual(Object.keys(zhMessages.Docs), [
+  "searchEmpty",
+  "searchError",
+  "searchLabel",
+  "searchLoading",
+  "searchPlaceholder",
   "sidebarLabel",
   "sidebarTitle",
   "tocLabel",
