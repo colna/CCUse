@@ -4,6 +4,7 @@ const USER_MANUAL: &str = include_str!("../../../../docs/user-manual.md");
 const README: &str = include_str!("../../../../README.md");
 const TASK_REPORT: &str = include_str!("../../../../docs/任务报告.md");
 const CHANGELOG: &str = include_str!("../../../../CHANGELOG.md");
+const SMOKE_REPORT: &str = include_str!("../../../../docs/smoke-test-report.md");
 
 fn assert_doc_contains(doc: &str, label: &str, needle: &str) {
     assert!(doc.contains(needle), "{label} must contain `{needle}`");
@@ -23,6 +24,10 @@ fn assert_task_report_contains(needle: &str) {
 
 fn assert_changelog_contains(needle: &str) {
     assert_doc_contains(CHANGELOG, "CHANGELOG", needle);
+}
+
+fn assert_smoke_report_contains(needle: &str) {
+    assert_doc_contains(SMOKE_REPORT, "smoke test report", needle);
 }
 
 #[test]
@@ -109,5 +114,25 @@ fn changelog_documents_1_0_1_proxy_endpoint_fix() {
         "README `curl` quick check",
     ] {
         assert_changelog_contains(needle);
+    }
+}
+
+#[test]
+fn smoke_report_documents_release_assets_and_clean_install_scope() {
+    for needle in [
+        "# CCUse v1.0.1 Smoke Test Report",
+        "https://github.com/colna/CCUse/releases/tag/v1.0.1",
+        "`CCUse_1.0.1_aarch64.dmg`",
+        "`CCUse_1.0.1_x64.dmg`",
+        "`CCUse_1.0.1_x64-setup.exe`",
+        "macOS Apple Silicon",
+        "macOS Intel",
+        "Windows x64",
+        "Manual clean VM installer smoke",
+        "Run `25146771380`",
+        "Run `25146771404`",
+        "Not executed against the NSIS installer",
+    ] {
+        assert_smoke_report_contains(needle);
     }
 }
