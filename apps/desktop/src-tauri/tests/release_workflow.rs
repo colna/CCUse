@@ -87,8 +87,8 @@ fn release_workflow_preserves_official_release_and_artifact_contract() {
 #[test]
 fn release_workflow_gates_optional_code_signing_secrets() {
     for needle in [
-        "vars.APPLE_SIGNING_ENABLED == 'true'",
-        "vars.WINDOWS_SIGNING_ENABLED == 'true'",
+        "vars.CCUSE_APPLE_SIGNING_ENABLED == 'true'",
+        "vars.CCUSE_WINDOWS_SIGNING_ENABLED == 'true'",
         "secrets.APPLE_CERTIFICATE || ''",
         "secrets.APPLE_CERTIFICATE_PASSWORD || ''",
         "secrets.APPLE_SIGNING_IDENTITY || ''",
