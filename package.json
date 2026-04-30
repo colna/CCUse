@@ -13,6 +13,7 @@
     "desktop:build": "pnpm --filter @ccuse/desktop tauri build",
     "desktop:test": "pnpm --filter @ccuse/desktop test",
     "desktop:typecheck": "pnpm --filter @ccuse/desktop typecheck",
+    "website:verify-workspace": "node scripts/verify-phase-1-0-w-workspace.mjs",
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
