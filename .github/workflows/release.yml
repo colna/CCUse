@@ -150,7 +150,7 @@ jobs:
   build:
     name: Build ${{ matrix.label }}
     needs: [check-version, create-tag]
-    if: always() && needs.check-version.outputs.should_release == 'true' && (needs.create-tag.result == 'success' || needs.create-tag.result == 'skipped') && ((matrix.asset_key == 'macos_aarch64' && needs.check-version.outputs.missing_macos_aarch64 == 'true') || (matrix.asset_key == 'macos_x64' && needs.check-version.outputs.missing_macos_x64 == 'true') || (matrix.asset_key == 'windows_x64' && needs.check-version.outputs.missing_windows_x64 == 'true'))
+    if: always() && needs.check-version.outputs.should_release == 'true' && (needs.create-tag.result == 'success' || needs.create-tag.result == 'skipped')
     strategy:
       fail-fast: false
       matrix:
@@ -201,6 +201,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build & upload to Release
+        if: (matrix.asset_key == 'macos_aarch64' && needs.check-version.outputs.missing_macos_aarch64 == 'true') || (matrix.asset_key == 'macos_x64' && needs.check-version.outputs.missing_macos_x64 == 'true') || (matrix.asset_key == 'windows_x64' && needs.check-version.outputs.missing_windows_x64 == 'true')
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
