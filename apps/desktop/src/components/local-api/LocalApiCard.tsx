@@ -101,6 +101,7 @@ export function LocalApiCard() {
   return (
     <article
       aria-labelledby="local-api-card-title"
+      data-testid="local-api-card"
       className="rounded-2xl border border-border bg-card p-6 shadow-apple-card"
     >
       <header className="flex items-start justify-between gap-4">
@@ -122,6 +123,7 @@ export function LocalApiCard() {
         <Field
           label={t("local_api_base_url")}
           value={config?.base_url ?? "--"}
+          testId="local-api-base-url"
           copyable={Boolean(config?.base_url)}
           onCopy={() => handleCopy("base", config?.base_url ?? "")}
           copyAriaLabel={t("local_api_copy_aria", { label: "Base URL" })}
@@ -129,6 +131,7 @@ export function LocalApiCard() {
         <KeyField
           value={displayedKey}
           visible={keyVisible}
+          testId="local-api-key"
           onToggleVisible={() => setKeyVisible((v) => !v)}
           copyable={Boolean(config?.api_key)}
           onCopy={() => handleCopy("key", config?.api_key ?? "")}
@@ -208,19 +211,30 @@ function StatusBadge({ status }: { status: Status }) {
 interface FieldProps {
   label: string;
   value: string;
+  testId?: string;
   copyable: boolean;
   onCopy: () => void;
   copyAriaLabel: string;
 }
 
-function Field({ label, value, copyable, onCopy, copyAriaLabel }: FieldProps) {
+function Field({
+  label,
+  value,
+  testId,
+  copyable,
+  onCopy,
+  copyAriaLabel,
+}: FieldProps) {
   return (
     <div>
       <dt className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
         {label}
       </dt>
       <dd className="mt-1 flex items-center gap-2">
-        <code className="flex-1 truncate rounded-md border border-border bg-muted/40 px-3 py-2 font-mono text-xs">
+        <code
+          data-testid={testId}
+          className="flex-1 truncate rounded-md border border-border bg-muted/40 px-3 py-2 font-mono text-xs"
+        >
           {value}
         </code>
         <Button
@@ -241,6 +255,7 @@ function Field({ label, value, copyable, onCopy, copyAriaLabel }: FieldProps) {
 interface KeyFieldProps {
   value: string;
   visible: boolean;
+  testId?: string;
   copyable: boolean;
   onToggleVisible: () => void;
   onCopy: () => void;
@@ -249,6 +264,7 @@ interface KeyFieldProps {
 function KeyField({
   value,
   visible,
+  testId,
   copyable,
   onToggleVisible,
   onCopy,
@@ -261,13 +277,17 @@ function KeyField({
         {t("local_api_key")}
       </dt>
       <dd className="mt-1 flex items-center gap-2">
-        <code className="flex-1 truncate rounded-md border border-border bg-muted/40 px-3 py-2 font-mono text-xs">
+        <code
+          data-testid={testId}
+          className="flex-1 truncate rounded-md border border-border bg-muted/40 px-3 py-2 font-mono text-xs"
+        >
           {value}
         </code>
         <Button
           type="button"
           variant="ghost"
           size="sm"
+          data-testid="local-api-toggle-key"
           aria-label={
             visible
               ? t("local_api_hide_key_aria")

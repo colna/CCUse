@@ -102,18 +102,21 @@ export function StatusCards() {
   return (
     <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
       <StatCard
+        testId="current-provider-card"
         icon={<Server className="size-4" />}
         label={t("current_provider")}
         value={loading ? "--" : (data.currentProvider ?? t("none"))}
         loading={loading}
       />
       <StatCard
+        testId="today-requests-card"
         icon={<Activity className="size-4" />}
         label={t("today_requests")}
         value={loading ? "--" : String(data.todayRequests)}
         loading={loading}
       />
       <StatCard
+        testId="success-rate-card"
         icon={<TrendingUp className="size-4" />}
         label={t("success_rate")}
         value={
@@ -131,6 +134,7 @@ export function StatusCards() {
         }
       />
       <StatCard
+        testId="avg-response-time-card"
         icon={<Clock className="size-4" />}
         label={t("avg_response_time")}
         value={
@@ -147,6 +151,7 @@ export function StatusCards() {
 }
 
 interface StatCardProps {
+  testId: string;
   icon: React.ReactNode;
   label: string;
   value: string;
@@ -154,14 +159,25 @@ interface StatCardProps {
   highlight?: "warning" | "error";
 }
 
-function StatCard({ icon, label, value, loading, highlight }: StatCardProps) {
+function StatCard({
+  testId,
+  icon,
+  label,
+  value,
+  loading,
+  highlight,
+}: StatCardProps) {
   return (
-    <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+    <div
+      data-testid={testId}
+      className="rounded-xl border border-border bg-card p-4 shadow-sm"
+    >
       <div className="flex items-center gap-2 text-muted-foreground">
         {icon}
         <span className="text-xs uppercase tracking-wide">{label}</span>
       </div>
       <p
+        data-testid={`${testId}-value`}
         className={cn(
           "mt-2 text-xl font-semibold tabular-nums tracking-tight",
           loading && "animate-pulse text-muted-foreground",
