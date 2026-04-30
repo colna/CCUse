@@ -90,6 +90,9 @@ for (const requiredPath of [
   "app/icon.png",
   "app/apple-icon.png",
   "app/favicon.ico",
+  "app/sitemap.ts",
+  "app/robots.ts",
+  "public/opengraph-image.png",
   "i18n/request.ts",
   "i18n/routing.ts",
   "messages/en.json",
@@ -167,6 +170,11 @@ assert.deepEqual(
   websiteIcon,
   masterIcon,
   "website app/icon.png must be copied from docs/icon.png",
+);
+assert.deepEqual(
+  readBytes("public/opengraph-image.png"),
+  masterIcon,
+  "website Open Graph image must be copied from docs/icon.png",
 );
 
 assert.deepEqual(pngInfo("app/icon.png"), {

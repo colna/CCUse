@@ -13,6 +13,7 @@ import { SiteFooter } from "../../components/site-footer";
 import { SiteHeader } from "../../components/site-header";
 import { ThemeProvider } from "../../components/theme-provider";
 import { defaultLocale, isLocale, locales } from "../../i18n/routing";
+import { absoluteUrl, siteName, siteUrl } from "../../site";
 
 type LocaleLayoutProps = {
   children: ReactNode;
@@ -30,14 +31,51 @@ export async function generateMetadata({
 }: LocaleLayoutProps): Promise<Metadata> {
   const locale = isLocale(params.locale) ? params.locale : defaultLocale;
   const t = await getTranslations({ locale, namespace: "Metadata" });
+  const description = t("description");
+  const canonical = `/${locale}`;
+  const openGraphImage = absoluteUrl("/opengraph-image.png");
+  const languages = Object.fromEntries(
+    locales.map((item) => [item, `/${item}`]),
+  );
 
   return {
+    metadataBase: new URL(siteUrl),
     title: {
-      default: "CCUse",
-      template: "%s | CCUse",
+      default: siteName,
+      template: `%s | ${siteName}`,
     },
-    description: t("description"),
-    applicationName: "CCUse",
+    description,
+    applicationName: siteName,
+    alternates: {
+      canonical,
+      languages: {
+        ...languages,
+        "x-default": `/${defaultLocale}`,
+      },
+    },
+    openGraph: {
+      title: siteName,
+      description,
+      siteName,
+      url: absoluteUrl(canonical),
+      type: "website",
+      locale: locale === "zh" ? "zh_CN" : "en_US",
+      alternateLocale: locale === "zh" ? ["en_US"] : ["zh_CN"],
+      images: [
+        {
+          url: openGraphImage,
+          width: 801,
+          height: 801,
+          alt: siteName,
+        },
+      ],
+    },
+    twitter: {
+      card: "summary",
+      title: siteName,
+      description,
+      images: [openGraphImage],
+    },
   };
 }
 
