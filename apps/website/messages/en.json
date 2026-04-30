@@ -53,11 +53,34 @@
       "failoverLead": "Failover triggered.",
       "failoverText": "When the primary provider slows down or fails, the request moves to the next available route."
     },
-    "capabilitiesTitle": "Core capabilities",
-    "capabilities": {
-      "proxy": "Local OpenAI-compatible proxy",
-      "routing": "Multi-provider routing",
-      "failover": "Automatic failover"
+    "featuresEyebrow": "Core features",
+    "featuresTitle": "Turn many AI providers into one reliable entry point.",
+    "featuresDescription": "From local auth and health checks to strategy selection, CCUse keeps resilience inside the proxy layer while clients keep using familiar OpenAI-compatible requests.",
+    "features": {
+      "failover": {
+        "title": "Seamless failover",
+        "description": "When the primary provider times out, rate limits, or returns a 5xx, the proxy chooses the next available route within the request chain."
+      },
+      "multiProvider": {
+        "title": "Multi-provider",
+        "description": "Manage OpenAI, Claude, Gemini, relay services, and custom endpoints behind one local Base URL for every client."
+      },
+      "healthCheck": {
+        "title": "Health checks",
+        "description": "Background probes use model listings or low-cost requests, then cache Healthy, Degraded, and Down states for fast routing decisions."
+      },
+      "smartStrategy": {
+        "title": "Smart strategy",
+        "description": "Route by priority, speed, cost, load balancing, or weighted scoring to match stability and budget goals."
+      },
+      "monitoring": {
+        "title": "Live monitoring",
+        "description": "Track request volume, latency, success rate, switch history, and estimated cost without digging through raw logs."
+      },
+      "crossPlatform": {
+        "title": "Cross-platform",
+        "description": "Built with Tauri 2 for macOS Apple Silicon, macOS Intel, and Windows x64 desktop installers."
+      }
     }
   },
   "Metadata": {

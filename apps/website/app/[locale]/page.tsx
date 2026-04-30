@@ -2,12 +2,17 @@ import { Button } from "@ccuse/ui/button";
 import { Card, CardContent } from "@ccuse/ui/card";
 import {
   Activity,
-  ArrowRight,
+  BarChart3,
+  BrainCircuit,
   Download,
   Gauge,
   Github,
+  HeartPulse,
+  Laptop,
+  Network,
   ServerCog,
   ShieldCheck,
+  Shuffle,
 } from "lucide-react";
 import Image from "next/image";
 import { getTranslations, setRequestLocale } from "next-intl/server";
@@ -15,11 +20,42 @@ import { notFound } from "next/navigation";
 
 import { isLocale } from "../../i18n/routing";
 
-const capabilityKeys = ["proxy", "routing", "failover"] as const;
 const heroMetricKeys = [
   { key: "endpoint", Icon: ServerCog },
   { key: "providers", Icon: ShieldCheck },
   { key: "failover", Icon: Gauge },
+] as const;
+const featureItems = [
+  {
+    key: "failover",
+    Icon: Shuffle,
+    iconClassName: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-300",
+  },
+  {
+    key: "multiProvider",
+    Icon: Network,
+    iconClassName: "bg-sky-500/10 text-sky-600 dark:text-sky-300",
+  },
+  {
+    key: "healthCheck",
+    Icon: HeartPulse,
+    iconClassName: "bg-rose-500/10 text-rose-600 dark:text-rose-300",
+  },
+  {
+    key: "smartStrategy",
+    Icon: BrainCircuit,
+    iconClassName: "bg-violet-500/10 text-violet-600 dark:text-violet-300",
+  },
+  {
+    key: "monitoring",
+    Icon: BarChart3,
+    iconClassName: "bg-amber-500/10 text-amber-600 dark:text-amber-300",
+  },
+  {
+    key: "crossPlatform",
+    Icon: Laptop,
+    iconClassName: "bg-zinc-500/10 text-zinc-700 dark:text-zinc-200",
+  },
 ] as const;
 const providerRows = [
   {
@@ -129,24 +165,42 @@ export default async function HomePage({ params }: HomePageProps) {
         </div>
       </section>
       <section
-        aria-labelledby="capabilities-title"
+        aria-labelledby="features-title"
         id="features"
         className="bg-muted/40"
       >
-        <div className="mx-auto grid max-w-6xl gap-6 px-6 py-12 sm:grid-cols-3">
-          <h2 id="capabilities-title" className="sr-only">
-            {t("capabilitiesTitle")}
-          </h2>
-          <ul className="contents">
-            {capabilityKeys.map((key) => (
+        <div className="mx-auto max-w-6xl px-6 py-16">
+          <div className="max-w-2xl">
+            <p className="text-sm font-semibold text-primary">
+              {t("featuresEyebrow")}
+            </p>
+            <h2
+              id="features-title"
+              className="mt-3 font-display text-3xl font-semibold leading-apple-tile sm:text-4xl"
+            >
+              {t("featuresTitle")}
+            </h2>
+            <p className="mt-4 text-base leading-7 text-muted-foreground">
+              {t("featuresDescription")}
+            </p>
+          </div>
+
+          <ul className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {featureItems.map(({ key, Icon, iconClassName }) => (
               <li key={key}>
-                <Card className="h-full shadow-apple-card">
-                  <CardContent className="flex h-full items-center justify-between gap-4 p-5 text-sm font-medium">
-                    <span>{t(`capabilities.${key}`)}</span>
-                    <ArrowRight
-                      aria-hidden="true"
-                      className="h-4 w-4 shrink-0 text-primary"
-                    />
+                <Card className="h-full border-border/70 bg-card shadow-none transition-colors hover:border-primary/50">
+                  <CardContent className="flex h-full flex-col p-6">
+                    <div
+                      className={`flex h-10 w-10 items-center justify-center rounded-lg ${iconClassName}`}
+                    >
+                      <Icon aria-hidden="true" className="h-5 w-5" />
+                    </div>
+                    <h3 className="mt-5 font-display text-xl font-semibold leading-7">
+                      {t(`features.${key}.title`)}
+                    </h3>
+                    <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                      {t(`features.${key}.description`)}
+                    </p>
                   </CardContent>
                 </Card>
               </li>

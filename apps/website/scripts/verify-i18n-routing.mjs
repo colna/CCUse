@@ -102,14 +102,17 @@ assert.match(footer, /src="\/icon\.png"/);
 
 assert.equal(en.HomePage.actions.download, "Download desktop");
 assert.equal(zh.HomePage.actions.download, "下载桌面端");
-assert.deepEqual(Object.keys(en.HomePage.capabilities), [
-  "proxy",
-  "routing",
+assert.deepEqual(Object.keys(en.HomePage.features), [
   "failover",
+  "multiProvider",
+  "healthCheck",
+  "smartStrategy",
+  "monitoring",
+  "crossPlatform",
 ]);
 assert.deepEqual(
-  Object.keys(en.HomePage.capabilities),
-  Object.keys(zh.HomePage.capabilities),
+  Object.keys(en.HomePage.features),
+  Object.keys(zh.HomePage.features),
 );
 assert.deepEqual(Object.keys(en.Navigation.items), [
   "home",

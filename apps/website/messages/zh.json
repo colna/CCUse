@@ -53,11 +53,34 @@
       "failoverLead": "自动切换已触发。",
       "failoverText": "主供应商变慢或失败时，请求会切换到下一条可用链路。"
     },
-    "capabilitiesTitle": "核心能力",
-    "capabilities": {
-      "proxy": "本地 OpenAI 兼容代理",
-      "routing": "多供应商路由",
-      "failover": "自动故障切换"
+    "featuresEyebrow": "核心特性",
+    "featuresTitle": "把多个 AI 供应商收拢成一个稳定入口。",
+    "featuresDescription": "从本地认证、健康检查到策略选择，CCUse 把高可用链路封装在代理层，让客户端继续使用熟悉的 OpenAI 兼容请求方式。",
+    "features": {
+      "failover": {
+        "title": "无感切换",
+        "description": "主供应商超时、限流或返回 5xx 时，代理在同一次请求链路内选择下一条可用供应商。"
+      },
+      "multiProvider": {
+        "title": "多供应商",
+        "description": "统一管理 OpenAI、Claude、Gemini、中转商和自定义端点，客户端只需要保存一个本地 Base URL。"
+      },
+      "healthCheck": {
+        "title": "健康检查",
+        "description": "后台定时探测模型列表或低成本请求，缓存 Healthy、Degraded、Down 状态供路由层快速判断。"
+      },
+      "smartStrategy": {
+        "title": "智能策略",
+        "description": "按优先级、速度、成本、负载均衡或综合评分选择供应商，适配不同稳定性和成本目标。"
+      },
+      "monitoring": {
+        "title": "实时监控",
+        "description": "监控请求量、延迟、成功率、切换历史和成本估算，定位故障链路时不需要翻日志。"
+      },
+      "crossPlatform": {
+        "title": "跨平台",
+        "description": "基于 Tauri 2 面向 macOS Apple Silicon、macOS Intel 与 Windows x64 产出桌面安装包。"
+      }
     }
   },
   "Metadata": {
