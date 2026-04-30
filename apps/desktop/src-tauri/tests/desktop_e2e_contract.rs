@@ -46,6 +46,16 @@ fn tauri_spec_uses_tauri_driver_and_covers_proxy_monitor_flow() {
 }
 
 #[test]
+fn tauri_spec_sends_json_body_for_webdriver_click() {
+    for needle in [
+        "`/session/${this.sessionId}/element/${element[ELEMENT_KEY]}/click`,",
+        "{},",
+    ] {
+        assert_contains(TAURI_E2E_SPEC, "Tauri E2E spec", needle);
+    }
+}
+
+#[test]
 fn ci_runs_tauri_driver_on_linux_and_windows() {
     for needle in [
         "name: Desktop Tauri E2E",

@@ -61,7 +61,7 @@ fn release_workflow_only_builds_missing_required_assets() {
         "asset_key: macos_x64",
         "asset_key: windows_x64",
         "matrix.asset_key == 'macos_aarch64'",
-        "needs.check-version.outputs.missing_macos_aarch64 == 'true'",
+        "should_build=${{ needs.check-version.outputs.missing_macos_aarch64 }}",
     ] {
         assert_workflow_contains(needle);
     }
@@ -87,13 +87,24 @@ fn release_workflow_preserves_official_release_and_artifact_contract() {
 #[test]
 fn release_workflow_gates_optional_code_signing_secrets() {
     for needle in [
+        "Build & upload unsigned to Release",
+        "Build & upload signed macOS to Release",
+        "Build & upload signed Windows to Release",
+        "steps.asset.outputs.should_build == 'true'",
         "vars.CCUSE_APPLE_SIGNING_ENABLED == 'true'",
         "vars.CCUSE_WINDOWS_SIGNING_ENABLED == 'true'",
+        "APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}",
+        "WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}",
+    ] {
+        assert_workflow_contains(needle);
+    }
+
+    for needle in [
         "secrets.APPLE_CERTIFICATE || ''",
         "secrets.APPLE_CERTIFICATE_PASSWORD || ''",
         "secrets.APPLE_SIGNING_IDENTITY || ''",
         "secrets.WINDOWS_CERTIFICATE || ''",
     ] {
-        assert_workflow_contains(needle);
+        assert_workflow_excludes(needle);
     }
 }

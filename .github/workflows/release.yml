@@ -200,21 +200,90 @@ jobs:
       - name: Install frontend deps
         run: pnpm install --frozen-lockfile
 
-      - name: Build & upload to Release
-        if: (matrix.asset_key == 'macos_aarch64' && needs.check-version.outputs.missing_macos_aarch64 == 'true') || (matrix.asset_key == 'macos_x64' && needs.check-version.outputs.missing_macos_x64 == 'true') || (matrix.asset_key == 'windows_x64' && needs.check-version.outputs.missing_windows_x64 == 'true')
+      - name: Select missing asset
+        id: asset
+        shell: bash
+        run: |
+          case "${{ matrix.asset_key }}" in
+            macos_aarch64)
+              echo "should_build=${{ needs.check-version.outputs.missing_macos_aarch64 }}" >> "$GITHUB_OUTPUT"
+              ;;
+            macos_x64)
+              echo "should_build=${{ needs.check-version.outputs.missing_macos_x64 }}" >> "$GITHUB_OUTPUT"
+              ;;
+            windows_x64)
+              echo "should_build=${{ needs.check-version.outputs.missing_windows_x64 }}" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "::error::unknown asset key ${{ matrix.asset_key }}"
+              exit 1
+              ;;
+          esac
+
+      - name: Build & upload unsigned to Release
+        if: steps.asset.outputs.should_build == 'true' && (((matrix.asset_key == 'macos_aarch64' || matrix.asset_key == 'macos_x64') && vars.CCUSE_APPLE_SIGNING_ENABLED != 'true') || (matrix.asset_key == 'windows_x64' && vars.CCUSE_WINDOWS_SIGNING_ENABLED != 'true'))
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # ---- macOS 公证 / 签名（可选；显式启用，避免占位/损坏 secret 阻断构建）----
-          APPLE_CERTIFICATE: ${{ vars.CCUSE_APPLE_SIGNING_ENABLED == 'true' && secrets.APPLE_CERTIFICATE || '' }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ vars.CCUSE_APPLE_SIGNING_ENABLED == 'true' && secrets.APPLE_CERTIFICATE_PASSWORD || '' }}
-          APPLE_SIGNING_IDENTITY: ${{ vars.CCUSE_APPLE_SIGNING_ENABLED == 'true' && secrets.APPLE_SIGNING_IDENTITY || '' }}
-          APPLE_ID: ${{ vars.CCUSE_APPLE_SIGNING_ENABLED == 'true' && secrets.APPLE_ID || '' }}
-          APPLE_PASSWORD: ${{ vars.CCUSE_APPLE_SIGNING_ENABLED == 'true' && secrets.APPLE_PASSWORD || '' }}
-          APPLE_TEAM_ID: ${{ vars.CCUSE_APPLE_SIGNING_ENABLED == 'true' && secrets.APPLE_TEAM_ID || '' }}
-          # ---- Windows 代码签名（可选；显式启用）----
-          WINDOWS_CERTIFICATE: ${{ vars.CCUSE_WINDOWS_SIGNING_ENABLED == 'true' && secrets.WINDOWS_CERTIFICATE || '' }}
-          WINDOWS_CERTIFICATE_PASSWORD: ${{ vars.CCUSE_WINDOWS_SIGNING_ENABLED == 'true' && secrets.WINDOWS_CERTIFICATE_PASSWORD || '' }}
+        with:
+          tagName: ${{ needs.check-version.outputs.tag }}
+          releaseName: CCUse ${{ needs.check-version.outputs.tag }}
+          releaseBody: |
+            ## CCUse ${{ needs.check-version.outputs.tag }}
+
+            ### 下载
+            - **macOS (Apple Silicon)** — `*_aarch64.dmg`
+            - **macOS (Intel)** — `*_x64.dmg`
+            - **Windows** — `*_x64-setup.exe`
+
+            自动由 GitHub Actions 构建发布。
+          releaseDraft: false
+          # 0.x.y → pre-release；1.0.0 起转为正式 release
+          prerelease: ${{ needs.check-version.outputs.is_prerelease == 'true' }}
+          projectPath: apps/desktop
+          args: ${{ matrix.args }}
+
+      - name: Build & upload signed macOS to Release
+        if: steps.asset.outputs.should_build == 'true' && (matrix.asset_key == 'macos_aarch64' || matrix.asset_key == 'macos_x64') && vars.CCUSE_APPLE_SIGNING_ENABLED == 'true'
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # ---- macOS 公证 / 签名（显式启用时才注入，避免空变量触发 security import）----
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # ---- Tauri Updater 签名（可选）----
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ needs.check-version.outputs.tag }}
+          releaseName: CCUse ${{ needs.check-version.outputs.tag }}
+          releaseBody: |
+            ## CCUse ${{ needs.check-version.outputs.tag }}
+
+            ### 下载
+            - **macOS (Apple Silicon)** — `*_aarch64.dmg`
+            - **macOS (Intel)** — `*_x64.dmg`
+            - **Windows** — `*_x64-setup.exe`
+
+            自动由 GitHub Actions 构建发布。
+          releaseDraft: false
+          # 0.x.y → pre-release；1.0.0 起转为正式 release
+          prerelease: ${{ needs.check-version.outputs.is_prerelease == 'true' }}
+          projectPath: apps/desktop
+          args: ${{ matrix.args }}
+
+      - name: Build & upload signed Windows to Release
+        if: steps.asset.outputs.should_build == 'true' && matrix.asset_key == 'windows_x64' && vars.CCUSE_WINDOWS_SIGNING_ENABLED == 'true'
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # ---- Windows 代码签名（显式启用时才注入）----
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
           # ---- Tauri Updater 签名（可选）----
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}

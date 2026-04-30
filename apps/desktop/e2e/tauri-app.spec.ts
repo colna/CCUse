@@ -80,6 +80,7 @@ class TauriDriverSession {
     await webdriverRequest(
       "POST",
       `/session/${this.sessionId}/element/${element[ELEMENT_KEY]}/click`,
+      {},
     );
   }
 
