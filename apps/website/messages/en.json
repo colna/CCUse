@@ -716,6 +716,34 @@
         }
       }
     },
+    "packages": {
+      "eyebrow": "Supported installers",
+      "title": "Three release artifacts, matched by filename.",
+      "description": "CCUse only promotes the supported desktop packages: macOS Apple Silicon DMG, macOS Intel DMG, and Windows x64 setup installer.",
+      "filenamePattern": "Required filename",
+      "status": "Status",
+      "size": "Size",
+      "missing": "Not found",
+      "missingDescription": "The latest release does not include this required package yet.",
+      "download": "Download",
+      "targets": {
+        "macosAarch64": {
+          "title": "macOS Apple Silicon",
+          "description": "DMG package for M-series Macs.",
+          "pattern": "*_aarch64.dmg"
+        },
+        "macosX64": {
+          "title": "macOS Intel",
+          "description": "DMG package for Intel Macs.",
+          "pattern": "*_x64.dmg"
+        },
+        "windowsX64": {
+          "title": "Windows x64",
+          "description": "Setup installer for 64-bit Windows.",
+          "pattern": "*_x64-setup.exe"
+        }
+      }
+    },
     "assets": {
       "eyebrow": "Release assets",
       "title": "Files from the latest release.",

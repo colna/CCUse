@@ -716,6 +716,34 @@
         }
       }
     },
+    "packages": {
+      "eyebrow": "支持的安装器",
+      "title": "严格按文件名匹配三个发布产物。",
+      "description": "CCUse 只突出展示受支持的桌面端安装包：macOS Apple Silicon DMG、macOS Intel DMG 和 Windows x64 setup 安装器。",
+      "filenamePattern": "要求的文件名",
+      "status": "状态",
+      "size": "大小",
+      "missing": "未找到",
+      "missingDescription": "最新 Release 暂未包含这个必需安装包。",
+      "download": "下载",
+      "targets": {
+        "macosAarch64": {
+          "title": "macOS Apple Silicon",
+          "description": "适用于 M 系列 Mac 的 DMG 安装包。",
+          "pattern": "*_aarch64.dmg"
+        },
+        "macosX64": {
+          "title": "macOS Intel",
+          "description": "适用于 Intel Mac 的 DMG 安装包。",
+          "pattern": "*_x64.dmg"
+        },
+        "windowsX64": {
+          "title": "Windows x64",
+          "description": "适用于 64 位 Windows 的 setup 安装器。",
+          "pattern": "*_x64-setup.exe"
+        }
+      }
+    },
     "assets": {
       "eyebrow": "Release 资产",
       "title": "来自最新 Release 的文件。",

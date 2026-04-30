@@ -7,6 +7,8 @@ import {
   ExternalLink,
   FileArchive,
   Github,
+  Laptop as LaptopIcon,
+  MonitorDown,
   PackageCheck,
 } from "lucide-react";
 import type { Metadata } from "next";
@@ -15,13 +17,34 @@ import { notFound } from "next/navigation";
 
 import { DownloadPlatformRecommendation } from "../../../components/download-platform-recommendation";
 import { defaultLocale, isLocale, locales } from "../../../i18n/routing";
-import type { DownloadAssetCandidate } from "../../../lib/download-platform";
+import {
+  matchesAssetName,
+  type DownloadAssetCandidate,
+  type PlatformRecommendationId,
+} from "../../../lib/download-platform";
 import { absoluteUrl, siteName } from "../../../site";
 
 export const revalidate = 60;
 
 const latestReleaseApiUrl =
   "https://api.github.com/repos/colna/CCUse/releases/latest";
+const downloadTargets = [
+  {
+    key: "macosAarch64",
+    platformId: "macos-aarch64",
+    Icon: LaptopIcon,
+  },
+  {
+    key: "macosX64",
+    platformId: "macos-x64",
+    Icon: LaptopIcon,
+  },
+  {
+    key: "windowsX64",
+    platformId: "windows-x64",
+    Icon: MonitorDown,
+  },
+] as const;
 
 type DownloadPageProps = {
   params: {
@@ -58,6 +81,7 @@ type ReleaseState =
     };
 
 type DownloadTranslator = Awaited<ReturnType<typeof getTranslations>>;
+type DownloadTarget = (typeof downloadTargets)[number];
 
 export async function generateMetadata({
   params,
@@ -145,7 +169,7 @@ export default async function DownloadPage({ params }: DownloadPageProps) {
               className="mt-8 flex flex-col gap-3 sm:flex-row"
             >
               <Button asChild size="lg">
-                <a href="#release-assets">
+                <a href="#download-packages">
                   <Download aria-hidden="true" />
                   {t("hero.primaryAction")}
                 </a>
@@ -171,6 +195,11 @@ export default async function DownloadPage({ params }: DownloadPageProps) {
           />
         </div>
       </section>
+
+      <DownloadPackagesSection
+        release={releaseState.status === "ready" ? releaseState.release : null}
+        t={t}
+      />
 
       <section
         aria-labelledby="release-assets-title"
@@ -213,6 +242,121 @@ export default async function DownloadPage({ params }: DownloadPageProps) {
         </div>
       </section>
     </main>
+  );
+}
+
+function DownloadPackagesSection({
+  release,
+  t,
+}: {
+  release: LatestRelease | null;
+  t: DownloadTranslator;
+}) {
+  return (
+    <section
+      aria-labelledby="download-packages-title"
+      className="border-b border-border bg-background"
+      id="download-packages"
+    >
+      <div className="mx-auto max-w-6xl px-6 py-16">
+        <div className="max-w-2xl">
+          <p className="text-sm font-semibold text-primary">
+            {t("packages.eyebrow")}
+          </p>
+          <h2
+            className="mt-3 font-display text-3xl font-semibold leading-apple-tile sm:text-4xl"
+            id="download-packages-title"
+          >
+            {t("packages.title")}
+          </h2>
+          <p className="mt-4 text-base leading-7 text-muted-foreground">
+            {t("packages.description")}
+          </p>
+        </div>
+
+        <ul className="mt-10 grid gap-4 lg:grid-cols-3">
+          {downloadTargets.map((target) => (
+            <li key={target.key}>
+              <DownloadPackageCard
+                asset={findTargetAsset(release, target.platformId)}
+                target={target}
+                t={t}
+              />
+            </li>
+          ))}
+        </ul>
+      </div>
+    </section>
+  );
+}
+
+function DownloadPackageCard({
+  asset,
+  target,
+  t,
+}: {
+  asset?: ReleaseAsset;
+  target: DownloadTarget;
+  t: DownloadTranslator;
+}) {
+  const { Icon, key } = target;
+
+  return (
+    <Card className="h-full border-border/80 bg-card shadow-none">
+      <CardContent className="flex h-full flex-col p-6">
+        <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <Icon aria-hidden="true" className="h-6 w-6" />
+        </div>
+        <h3 className="mt-5 font-display text-xl font-semibold leading-7">
+          {t(`packages.targets.${key}.title`)}
+        </h3>
+        <p className="mt-3 text-sm leading-6 text-muted-foreground">
+          {t(`packages.targets.${key}.description`)}
+        </p>
+        <dl className="mt-5 grid gap-3">
+          <div className="rounded-lg border border-border bg-background p-3">
+            <dt className="text-xs font-medium text-muted-foreground">
+              {t("packages.filenamePattern")}
+            </dt>
+            <dd className="mt-1 font-mono text-sm font-semibold">
+              {t(`packages.targets.${key}.pattern`)}
+            </dd>
+          </div>
+          <div className="rounded-lg border border-border bg-background p-3">
+            <dt className="text-xs font-medium text-muted-foreground">
+              {asset ? t("packages.size") : t("packages.status")}
+            </dt>
+            <dd className="mt-1 text-sm font-semibold">
+              {asset ? formatBytes(asset.size) : t("packages.missing")}
+            </dd>
+          </div>
+        </dl>
+
+        {asset ? (
+          <div className="mt-auto pt-6">
+            <Button asChild className="w-full">
+              <a href={asset.downloadUrl}>
+                <Download aria-hidden="true" />
+                {t("packages.download")}
+              </a>
+            </Button>
+          </div>
+        ) : (
+          <p className="mt-auto pt-6 text-sm leading-6 text-muted-foreground">
+            {t("packages.missingDescription")}
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function findTargetAsset(
+  release: LatestRelease | null,
+  platformId: Exclude<PlatformRecommendationId, "unknown">,
+) {
+  return release?.assets.find((asset) =>
+    matchesAssetName(asset.name, platformId),
   );
 }
 
