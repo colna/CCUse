@@ -1,0 +1,101 @@
+---
+title: FAQ 与故障排查
+description: 处理常见安装、本地代理、WebView2、公证与 Windows 安全提示问题。
+section: 支持
+order: 5
+---
+
+# FAQ 与故障排查
+
+当 CCUse 能打开，但本地代理、安装器或系统信任提示不符合预期时，可以先从这里排查。
+
+## 本地代理端口被占用
+
+CCUse 只监听 `127.0.0.1`。它会优先尝试 `8787`，然后继续探测 100 个 loopback 端口，直到 `8886`。
+
+如果 Local API 卡片显示了不同端口，请复制应用里显示的完整 Base URL：
+
+```txt
+Base URL: http://127.0.0.1:8788
+API Key: sk-local-...
+```
+
+不要继续使用旧的客户端配置；端口变化后，Cursor、Claude Desktop 或脚本里的 Base URL 也要同步更新。
+
+### 找到占用端口的进程
+
+macOS：
+
+```bash
+lsof -nP -iTCP:8787 -sTCP:LISTEN
+```
+
+Windows PowerShell：
+
+```powershell
+netstat -ano | findstr :8787
+```
+
+然后关闭冲突进程或重启 CCUse。如果 `8787` 到 `8886` 全部被占用，先释放其中一个端口，再使用 Restart Proxy。
+
+## Windows 缺少 WebView2
+
+CCUse 使用 Microsoft Edge WebView2 Runtime 渲染桌面 UI。Windows 11 通常自带 WebView2；部分 Windows 10、离线机器或受管控的企业镜像可能缺失。
+
+Windows 安装器已配置 `webviewInstallMode: downloadBootstrapper`，在网络策略允许时会在安装阶段下载 WebView2。
+
+如果仍然安装失败：
+
+1. 安装 Microsoft Edge WebView2 Evergreen Runtime。
+2. 重新运行 `CCUse_<version>_x64-setup.exe`。
+3. 如果机器阻止 bootstrap 下载，请让 IT 放行 WebView2 runtime installer。
+
+## macOS 提示无法验证开发者
+
+正式 Release 构建在 CI 启用 Apple signing secrets 时会进行 Developer ID 签名和公证。如果 macOS 仍然阻止打开：
+
+1. 确认文件来自 CCUse GitHub Release 页面。
+2. 选择与你 Mac 匹配的包：Apple Silicon 使用 `CCUse_<version>_aarch64.dmg`，Intel 使用 `CCUse_<version>_x64.dmg`。
+3. 右键点击 CCUse 选择打开，或进入系统设置 -> 隐私与安全性 -> 仍然打开。
+
+不要绕过 Gatekeeper 打开未知来源的安装包。
+
+## Windows SmartScreen 或 Defender 误报
+
+Windows 可能会在新版本或尚未建立声誉的构建上弹出警告。把它当成验证步骤，不要无脑忽略。
+
+运行前先确认：
+
+- 安装器名称是 `CCUse_<version>_x64-setup.exe`。
+- 文件来自 CCUse GitHub Release 页面，而不是镜像站。
+- Release notes 中列出了同名 asset。
+
+如果你确认信任该 Release，可以点击更多信息 -> 仍要运行。企业环境中，建议让 IT allow-list 已签名安装器或 release hash，而不是全局关闭 Defender。
+
+## 客户端返回 401 Unauthorized
+
+本地代理接受两种 header：
+
+```txt
+Authorization: Bearer sk-local-...
+x-api-key: sk-local-...
+```
+
+重新生成本地 key 后，旧 key 会失效。请从 Local API 卡片复制新 key，并更新 Cursor、Claude Desktop 或任何使用代理的脚本。
+
+## 客户端返回 providers_not_configured
+
+这表示代理已经启动，但当前没有可用的已启用供应商可以处理请求。
+
+请检查：
+
+- 至少启用了一个供应商。
+- 供应商 Base URL 正确。
+- 上游 API key 有效。
+- 必要时，模型名已经映射到供应商模型。
+
+添加或编辑供应商后，发送一个短测试请求，并查看仪表盘请求计数是否变化。
+
+## 请求正常，但搜索或文档看起来过期
+
+官网搜索使用 `next build` 阶段生成的 Pagefind 索引。生产环境会重新生成 `public/_pagefind`。本地新增文档后，如果搜索不到，请重新执行 website build。

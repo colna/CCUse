@@ -1,0 +1,101 @@
+---
+title: FAQ and Troubleshooting
+description: Fix common install, local proxy, WebView2, notarization, and Windows warning issues.
+section: Support
+order: 5
+---
+
+# FAQ and Troubleshooting
+
+Start here when CCUse opens but the local proxy, installer, or operating-system trust prompt does not behave as expected.
+
+## Local Proxy Port Is Busy
+
+CCUse listens only on `127.0.0.1`. It tries port `8787` first, then probes 100 loopback ports through `8886`.
+
+If the Local API card shows a different port, copy the exact Base URL from the app:
+
+```txt
+Base URL: http://127.0.0.1:8788
+API Key: sk-local-...
+```
+
+Do not keep an old client configuration if CCUse moved to another port.
+
+### Find the Process Using a Port
+
+macOS:
+
+```bash
+lsof -nP -iTCP:8787 -sTCP:LISTEN
+```
+
+Windows PowerShell:
+
+```powershell
+netstat -ano | findstr :8787
+```
+
+Then close the conflicting process or restart CCUse. If every port in `8787` through `8886` is occupied, free one of those ports and use Restart Proxy.
+
+## WebView2 Is Missing on Windows
+
+CCUse uses the Microsoft Edge WebView2 Runtime for its desktop UI. Windows 11 usually includes it. Some Windows 10 machines, offline machines, or locked-down corporate images may not.
+
+The Windows installer is configured with `webviewInstallMode: downloadBootstrapper`, so it can fetch WebView2 during install when network policy allows it.
+
+If installation still fails:
+
+1. Install the Microsoft Edge WebView2 Evergreen Runtime.
+2. Re-run `CCUse_<version>_x64-setup.exe`.
+3. Ask IT to allow the WebView2 runtime installer if the machine blocks bootstrap downloads.
+
+## macOS Says The App Cannot Be Verified
+
+Official release builds are intended to be signed and notarized when the Apple signing secrets are enabled in CI. If macOS still blocks the app:
+
+1. Confirm the file came from the CCUse GitHub Release page.
+2. Use the package matching your Mac: `CCUse_<version>_aarch64.dmg` for Apple Silicon, `CCUse_<version>_x64.dmg` for Intel.
+3. Right-click CCUse and choose Open, or use System Settings -> Privacy & Security -> Open Anyway.
+
+Do not bypass Gatekeeper for a package from an unknown source.
+
+## Windows SmartScreen or Defender Warns
+
+Windows may warn for a new or unsigned build before it has enough reputation. Treat the warning as a verification step, not something to ignore blindly.
+
+Before running anyway:
+
+- Confirm the installer name is `CCUse_<version>_x64-setup.exe`.
+- Download it from the CCUse GitHub Release page, not a mirror.
+- Check that the release notes list the same asset.
+
+If you trust the release, click More info -> Run anyway. In managed environments, ask IT to allow-list the signed installer or release hash instead of disabling Defender globally.
+
+## Client Gets 401 Unauthorized
+
+The local proxy accepts either header:
+
+```txt
+Authorization: Bearer sk-local-...
+x-api-key: sk-local-...
+```
+
+Regenerating the local key invalidates the old one. Copy the new key from the Local API card and update Cursor, Claude Desktop, or any script using the proxy.
+
+## Client Gets providers_not_configured
+
+This means the proxy is running but no enabled provider can serve the request.
+
+Check:
+
+- At least one provider is enabled.
+- The provider Base URL is correct.
+- The upstream API key is valid.
+- The model name maps to a provider model when needed.
+
+After adding or editing a provider, send a short test request and check the dashboard request count.
+
+## Requests Work, But Search Or Docs Look Stale
+
+Website search uses Pagefind generated during `next build`. In production, the build regenerates `public/_pagefind`. Locally, run the website build again if a newly added docs page is not searchable yet.
