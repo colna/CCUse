@@ -83,3 +83,17 @@ fn release_workflow_preserves_official_release_and_artifact_contract() {
         assert_workflow_contains(needle);
     }
 }
+
+#[test]
+fn release_workflow_gates_optional_code_signing_secrets() {
+    for needle in [
+        "vars.APPLE_SIGNING_ENABLED == 'true'",
+        "vars.WINDOWS_SIGNING_ENABLED == 'true'",
+        "secrets.APPLE_CERTIFICATE || ''",
+        "secrets.APPLE_CERTIFICATE_PASSWORD || ''",
+        "secrets.APPLE_SIGNING_IDENTITY || ''",
+        "secrets.WINDOWS_CERTIFICATE || ''",
+    ] {
+        assert_workflow_contains(needle);
+    }
+}
