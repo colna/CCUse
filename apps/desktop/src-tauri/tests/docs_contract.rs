@@ -5,6 +5,7 @@ const README: &str = include_str!("../../../../README.md");
 const TASK_REPORT: &str = include_str!("../../../../docs/任务报告.md");
 const CHANGELOG: &str = include_str!("../../../../CHANGELOG.md");
 const SMOKE_REPORT: &str = include_str!("../../../../docs/smoke-test-report.md");
+const TASK_REVIEW: &str = include_str!("../../../../docs/1.0.x-review.md");
 
 fn assert_doc_contains(doc: &str, label: &str, needle: &str) {
     assert!(doc.contains(needle), "{label} must contain `{needle}`");
@@ -28,6 +29,10 @@ fn assert_changelog_contains(needle: &str) {
 
 fn assert_smoke_report_contains(needle: &str) {
     assert_doc_contains(SMOKE_REPORT, "smoke test report", needle);
+}
+
+fn assert_task_review_contains(needle: &str) {
+    assert_doc_contains(TASK_REVIEW, "1.0.x task review", needle);
 }
 
 #[test]
@@ -134,5 +139,26 @@ fn smoke_report_documents_release_assets_and_clean_install_scope() {
         "Not executed against the NSIS installer",
     ] {
         assert_smoke_report_contains(needle);
+    }
+}
+
+#[test]
+fn task_review_documents_completion_scope_and_remaining_exceptions() {
+    for needle in [
+        "# CCUse 1.0.x Task Completion Review",
+        "146 planned desktop tasks",
+        "`T1.0.1.01` through `T1.0.1.27`",
+        "`T1.0.2.04-08`",
+        "`T1.0.3.01-11`",
+        "`T1.0.4.01-25`",
+        "`T1.0.5.18`, `T1.0.5.19`",
+        "`T1.0.5.20`",
+        "`T1.0.5.21`, `T1.0.6.33`",
+        "`T1.0.6.33`",
+        "v1.0.0",
+        "v1.0.1",
+        "not fully complete as written",
+    ] {
+        assert_task_review_contains(needle);
     }
 }
