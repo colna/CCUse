@@ -2,6 +2,7 @@ import { Button } from "@ccuse/ui/button";
 import { Card, CardContent } from "@ccuse/ui/card";
 import {
   Activity,
+  ArrowRight,
   BarChart3,
   BrainCircuit,
   Download,
@@ -17,8 +18,10 @@ import {
 import Image from "next/image";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { notFound } from "next/navigation";
+import type { ReactNode } from "react";
 
 import { isLocale } from "../../i18n/routing";
+import { architectureMermaid } from "../../lib/architecture";
 
 const heroMetricKeys = [
   { key: "endpoint", Icon: ServerCog },
@@ -75,6 +78,20 @@ const providerRows = [
   },
 ] as const;
 const trafficSteps = ["client", "proxy", "provider"] as const;
+const architectureColumns = [
+  { key: "client", Icon: Laptop, nodeKeys: ["tools", "key", "baseUrl"] },
+  {
+    key: "proxy",
+    Icon: ServerCog,
+    nodeKeys: ["auth", "parse", "strategy", "forward"],
+  },
+  {
+    key: "providers",
+    Icon: Network,
+    nodeKeys: ["claude", "openai", "gemini"],
+  },
+] as const;
+const architectureFlowKeys = ["request", "selection", "recovery"] as const;
 
 type HomePageProps = {
   params: {
@@ -208,6 +225,7 @@ export default async function HomePage({ params }: HomePageProps) {
           </ul>
         </div>
       </section>
+      <ArchitectureSection t={t} />
     </main>
   );
 }
@@ -316,5 +334,136 @@ function HeroProductPreview({ t }: { t: HomeTranslator }) {
         </div>
       </div>
     </figure>
+  );
+}
+
+function ArchitectureSection({ t }: { t: HomeTranslator }) {
+  return (
+    <section
+      aria-labelledby="architecture-title"
+      className="bg-background"
+      id="architecture"
+    >
+      <div className="mx-auto max-w-6xl px-6 py-16">
+        <div className="max-w-2xl">
+          <p className="text-sm font-semibold text-primary">
+            {t("architecture.eyebrow")}
+          </p>
+          <h2
+            className="mt-3 font-display text-3xl font-semibold leading-apple-tile sm:text-4xl"
+            id="architecture-title"
+          >
+            {t("architecture.title")}
+          </h2>
+          <p className="mt-4 text-base leading-7 text-muted-foreground">
+            {t("architecture.description")}
+          </p>
+        </div>
+
+        <div
+          aria-label={t("architecture.diagramLabel")}
+          className="mt-10 hidden rounded-lg border border-border bg-card p-5 text-card-foreground lg:block"
+          role="img"
+        >
+          <div className="grid grid-cols-[1fr_auto_1.2fr_auto_1fr] items-stretch gap-4">
+            {architectureColumns.map(({ key, Icon, nodeKeys }, index) => (
+              <FragmentWithArrow
+                arrowLabel={
+                  index < architectureFlowKeys.length - 1
+                    ? t(`architecture.flows.${architectureFlowKeys[index]}`)
+                    : undefined
+                }
+                key={key}
+                showArrow={index < architectureColumns.length - 1}
+              >
+                <div className="flex h-full flex-col rounded-lg border border-border/80 bg-background p-5">
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                      <Icon aria-hidden="true" className="h-5 w-5" />
+                    </span>
+                    <h3 className="font-display text-xl font-semibold">
+                      {t(`architecture.columns.${key}.title`)}
+                    </h3>
+                  </div>
+                  <ul className="mt-5 grid gap-3">
+                    {nodeKeys.map((nodeKey) => (
+                      <li
+                        className="rounded-md border border-border bg-muted/50 px-3 py-2 text-sm"
+                        key={nodeKey}
+                      >
+                        {t(`architecture.columns.${key}.nodes.${nodeKey}`)}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </FragmentWithArrow>
+            ))}
+          </div>
+
+          <div className="mt-5 grid gap-3 rounded-lg border border-border bg-muted/40 p-4 sm:grid-cols-3">
+            {architectureFlowKeys.map((key) => (
+              <p className="text-sm leading-6 text-muted-foreground" key={key}>
+                <span className="font-semibold text-foreground">
+                  {t(`architecture.flows.${key}`)}
+                </span>{" "}
+                {t(`architecture.flowDescriptions.${key}`)}
+              </p>
+            ))}
+          </div>
+
+          <pre className="sr-only">{architectureMermaid}</pre>
+        </div>
+
+        <div className="mt-10 lg:hidden">
+          <Image
+            alt={t("architecture.mobileAlt")}
+            className="w-full rounded-lg border border-border bg-card"
+            height={520}
+            src="/architecture-mobile.svg"
+            width={720}
+          />
+          <ol className="mt-5 grid gap-3">
+            {architectureFlowKeys.map((key, index) => (
+              <li
+                className="flex gap-3 rounded-lg border border-border bg-card p-4 text-sm"
+                key={key}
+              >
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10 font-semibold text-primary">
+                  {index + 1}
+                </span>
+                <span className="leading-6 text-muted-foreground">
+                  <span className="font-semibold text-foreground">
+                    {t(`architecture.flows.${key}`)}
+                  </span>{" "}
+                  {t(`architecture.flowDescriptions.${key}`)}
+                </span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function FragmentWithArrow({
+  arrowLabel,
+  children,
+  showArrow,
+}: {
+  arrowLabel?: string;
+  children: ReactNode;
+  showArrow: boolean;
+}) {
+  return (
+    <>
+      {children}
+      {showArrow ? (
+        <div className="flex min-w-24 flex-col items-center justify-center gap-2 text-center text-xs font-medium text-muted-foreground">
+          <ArrowRight aria-hidden="true" className="h-6 w-6 text-primary" />
+          <span>{arrowLabel}</span>
+        </div>
+      ) : null}
+    </>
   );
 }

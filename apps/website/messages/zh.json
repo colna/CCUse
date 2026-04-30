@@ -81,6 +81,50 @@
         "title": "跨平台",
         "description": "基于 Tauri 2 面向 macOS Apple Silicon、macOS Intel 与 Windows x64 产出桌面安装包。"
       }
+    },
+    "architecture": {
+      "eyebrow": "端到端架构",
+      "title": "客户端不变，可靠性留在本地代理层。",
+      "description": "官网首页复用产品技术文档中的 Mermaid 架构源：客户端只指向本地端点，CCUse 在 Rust 代理中完成认证、解析、供应商选择、转发和失败恢复。",
+      "diagramLabel": "CCUse 端到端代理架构图",
+      "mobileAlt": "CCUse 架构图：客户端连接本地代理，本地代理路由到多个供应商。",
+      "columns": {
+        "client": {
+          "title": "用户客户端",
+          "nodes": {
+            "tools": "Claude Desktop / Cursor / Continue",
+            "key": "API Key: sk-local-xxxxx",
+            "baseUrl": "Base URL: http://localhost:8787"
+          }
+        },
+        "proxy": {
+          "title": "本地 API 代理",
+          "nodes": {
+            "auth": "请求验证",
+            "parse": "请求解析",
+            "strategy": "供应商选择",
+            "forward": "请求转发 / 响应处理"
+          }
+        },
+        "providers": {
+          "title": "供应商",
+          "nodes": {
+            "claude": "Claude Provider",
+            "openai": "OpenAI Provider",
+            "gemini": "Gemini Provider"
+          }
+        }
+      },
+      "flows": {
+        "request": "HTTP Request",
+        "selection": "策略路由",
+        "recovery": "失败恢复"
+      },
+      "flowDescriptions": {
+        "request": "客户端继续发送 OpenAI 兼容请求到本地 Base URL。",
+        "selection": "代理验证本地 Key，解析请求，然后按当前策略选择健康供应商。",
+        "recovery": "响应失败会触发自动切换；健康检查器持续更新供应商状态。"
+      }
     }
   },
   "Metadata": {

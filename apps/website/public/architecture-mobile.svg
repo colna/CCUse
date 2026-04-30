@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="520" viewBox="0 0 720 520" role="img" aria-labelledby="title desc">
+  <title id="title">CCUse architecture mobile fallback</title>
+  <desc id="desc">Clients connect to the CCUse local proxy, which routes requests to healthy AI providers.</desc>
+  <rect width="720" height="520" rx="8" fill="#f5f5f7" />
+  <g fill="#ffffff" stroke="#d2d2d7" stroke-width="2">
+    <rect x="92" y="54" width="536" height="98" rx="8" />
+    <rect x="92" y="212" width="536" height="118" rx="8" />
+    <rect x="92" y="390" width="536" height="76" rx="8" />
+  </g>
+  <g fill="#1d1d1f" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif" text-anchor="middle">
+    <text x="360" y="96" font-size="25" font-weight="700">CLIENTS</text>
+    <text x="360" y="128" font-size="17">Cursor · Claude Desktop · Continue</text>
+    <text x="360" y="252" font-size="25" font-weight="700">CCUse LOCAL PROXY</text>
+    <text x="360" y="286" font-size="17">Auth · Parse · Strategy · Failover</text>
+    <text x="360" y="430" font-size="25" font-weight="700">PROVIDERS</text>
+    <text x="360" y="454" font-size="17">Claude · OpenAI · Gemini</text>
+  </g>
+  <g stroke="#0071e3" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M360 158v44" />
+    <path d="M344 186l16 16 16-16" />
+    <path d="M360 336v44" />
+    <path d="M344 364l16 16 16-16" />
+  </g>
+  <g fill="#0071e3">
+    <circle cx="164" cy="103" r="9" />
+    <circle cx="164" cy="270" r="9" />
+    <circle cx="164" cy="430" r="9" />
+  </g>
+</svg>

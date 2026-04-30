@@ -81,6 +81,50 @@
         "title": "Cross-platform",
         "description": "Built with Tauri 2 for macOS Apple Silicon, macOS Intel, and Windows x64 desktop installers."
       }
+    },
+    "architecture": {
+      "eyebrow": "End-to-end architecture",
+      "title": "Clients stay unchanged while resilience lives in the local proxy.",
+      "description": "The homepage reuses the Mermaid architecture source from the product technical document: clients point at one local endpoint, while CCUse handles auth, parsing, provider selection, forwarding, and recovery inside the Rust proxy.",
+      "diagramLabel": "CCUse end-to-end proxy architecture diagram",
+      "mobileAlt": "CCUse architecture diagram: clients connect to the local proxy, which routes requests to multiple providers.",
+      "columns": {
+        "client": {
+          "title": "User clients",
+          "nodes": {
+            "tools": "Claude Desktop / Cursor / Continue",
+            "key": "API Key: sk-local-xxxxx",
+            "baseUrl": "Base URL: http://localhost:8787"
+          }
+        },
+        "proxy": {
+          "title": "Local API proxy",
+          "nodes": {
+            "auth": "Request authentication",
+            "parse": "Request parsing",
+            "strategy": "Provider selection",
+            "forward": "Forwarding / response handling"
+          }
+        },
+        "providers": {
+          "title": "Providers",
+          "nodes": {
+            "claude": "Claude Provider",
+            "openai": "OpenAI Provider",
+            "gemini": "Gemini Provider"
+          }
+        }
+      },
+      "flows": {
+        "request": "HTTP Request",
+        "selection": "Strategy routing",
+        "recovery": "Failure recovery"
+      },
+      "flowDescriptions": {
+        "request": "Clients keep sending OpenAI-compatible requests to the local Base URL.",
+        "selection": "The proxy validates the local key, parses the request, and chooses a healthy provider by the active strategy.",
+        "recovery": "Failed responses trigger automatic switching while the health checker keeps provider state fresh."
+      }
     }
   },
   "Metadata": {

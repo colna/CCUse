@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "pnpm --dir ../.. exec eslint apps/website",
     "lint:fix": "pnpm --dir ../.. exec eslint apps/website --fix",
-    "test": "node scripts/verify-next-app.mjs && node scripts/verify-tailwind.mjs && node scripts/verify-i18n-routing.mjs && node scripts/verify-theme.mjs && node scripts/verify-seo.mjs && node scripts/verify-home-hero.mjs && node scripts/verify-home-features.mjs"
+    "test": "node scripts/verify-next-app.mjs && node scripts/verify-tailwind.mjs && node scripts/verify-i18n-routing.mjs && node scripts/verify-theme.mjs && node scripts/verify-seo.mjs && node scripts/verify-home-hero.mjs && node scripts/verify-home-features.mjs && node scripts/verify-home-architecture.mjs"
   },
   "dependencies": {
     "lucide-react": "^0.453.0",
