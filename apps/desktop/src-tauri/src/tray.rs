@@ -5,6 +5,7 @@
 
 use std::sync::Arc;
 
+use tauri::image::Image;
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager};
@@ -16,6 +17,7 @@ const ID_SHOW_WINDOW: &str = "tray_show_window";
 const ID_COPY_API_KEY: &str = "tray_copy_api_key";
 const ID_RESTART_PROXY: &str = "tray_restart_proxy";
 const ID_QUIT: &str = "tray_quit";
+const TRAY_TEMPLATE_ICON: &[u8] = include_bytes!("../icons/tray-template.png");
 
 /// Build and register the system tray. Called from `lib.rs` setup.
 ///
@@ -39,8 +41,10 @@ pub fn setup(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         .build()?;
 
     let app_handle = app.clone();
+    let icon = Image::from_bytes(TRAY_TEMPLATE_ICON)?;
+
     TrayIconBuilder::new()
-        .icon(app.default_window_icon().cloned().expect("icon must exist"))
+        .icon(icon)
         .icon_as_template(true)
         .menu(&menu)
         .on_menu_event(move |_tray, event| {

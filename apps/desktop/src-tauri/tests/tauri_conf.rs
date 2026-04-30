@@ -44,6 +44,25 @@ fn bundle_targets_locked_to_dmg_and_nsis_only() {
 }
 
 #[test]
+fn icon_config_uses_template_tray_icon_and_windows_ico() {
+    let conf = load_conf();
+    assert_eq!(
+        conf["app"]["trayIcon"]["iconPath"], "icons/tray-template.png",
+        "tray icon should use the monochrome template asset"
+    );
+    assert_eq!(conf["app"]["trayIcon"]["iconAsTemplate"], true);
+
+    let icons = conf["bundle"]["icon"]
+        .as_array()
+        .expect("bundle.icon must be an array");
+    let icon_paths: Vec<&str> = icons.iter().filter_map(Value::as_str).collect();
+    assert!(
+        icon_paths.contains(&"icons/icon.ico"),
+        "Windows bundle icon must include icons/icon.ico, found {icon_paths:?}"
+    );
+}
+
+#[test]
 fn macos_minimum_version_is_big_sur() {
     let conf = load_conf();
     assert_eq!(
