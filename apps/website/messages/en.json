@@ -693,6 +693,29 @@
       "unavailableTitle": "Latest release is unavailable",
       "unavailableDescription": "CCUse could not read the latest GitHub Release right now. The page will retry when the ISR cache revalidates."
     },
+    "platform": {
+      "title": "Recommended package",
+      "description": "The page checks the browser user agent and high-entropy architecture hints when available, then highlights the matching desktop package.",
+      "detectedLabel": "Detected platform",
+      "unknownTitle": "Choose manually",
+      "unknownDescription": "This browser did not expose enough platform details to choose safely. Pick the package that matches your operating system and CPU.",
+      "noAsset": "The latest release does not include a matching package yet. Use the raw asset list below or open GitHub releases.",
+      "downloadRecommended": "Download recommended",
+      "options": {
+        "macosAarch64": {
+          "title": "macOS Apple Silicon",
+          "description": "For M1, M2, M3, M4, and newer Apple Silicon Macs."
+        },
+        "macosX64": {
+          "title": "macOS Intel",
+          "description": "For Intel-based Macs that need the x64 DMG."
+        },
+        "windowsX64": {
+          "title": "Windows x64",
+          "description": "For 64-bit Windows desktops using the setup installer."
+        }
+      }
+    },
     "assets": {
       "eyebrow": "Release assets",
       "title": "Files from the latest release.",

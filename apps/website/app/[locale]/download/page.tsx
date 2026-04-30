@@ -13,7 +13,9 @@ import type { Metadata } from "next";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { notFound } from "next/navigation";
 
+import { DownloadPlatformRecommendation } from "../../../components/download-platform-recommendation";
 import { defaultLocale, isLocale, locales } from "../../../i18n/routing";
+import type { DownloadAssetCandidate } from "../../../lib/download-platform";
 import { absoluteUrl, siteName } from "../../../site";
 
 export const revalidate = 60;
@@ -113,6 +115,10 @@ export default async function DownloadPage({ params }: DownloadPageProps) {
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: "DownloadPage" });
   const releaseState = await getLatestRelease();
+  const assetCandidates =
+    releaseState.status === "ready"
+      ? releaseState.release.assets.map(toAssetCandidate)
+      : [];
 
   return (
     <main className="bg-background text-foreground">
@@ -154,6 +160,15 @@ export default async function DownloadPage({ params }: DownloadPageProps) {
           </div>
 
           <ReleaseSummary locale={locale} state={releaseState} t={t} />
+        </div>
+      </section>
+
+      <section className="border-b border-border bg-background">
+        <div className="mx-auto max-w-6xl px-6 py-12">
+          <DownloadPlatformRecommendation
+            assets={assetCandidates}
+            labels={getPlatformLabels(t)}
+          />
         </div>
       </section>
 
@@ -199,6 +214,40 @@ export default async function DownloadPage({ params }: DownloadPageProps) {
       </section>
     </main>
   );
+}
+
+function toAssetCandidate(asset: ReleaseAsset): DownloadAssetCandidate {
+  return {
+    downloadUrl: asset.downloadUrl,
+    name: asset.name,
+    sizeLabel: formatBytes(asset.size),
+  };
+}
+
+function getPlatformLabels(t: DownloadTranslator) {
+  return {
+    detectedLabel: t("platform.detectedLabel"),
+    description: t("platform.description"),
+    downloadRecommended: t("platform.downloadRecommended"),
+    noAsset: t("platform.noAsset"),
+    options: {
+      "macos-aarch64": {
+        description: t("platform.options.macosAarch64.description"),
+        title: t("platform.options.macosAarch64.title"),
+      },
+      "macos-x64": {
+        description: t("platform.options.macosX64.description"),
+        title: t("platform.options.macosX64.title"),
+      },
+      "windows-x64": {
+        description: t("platform.options.windowsX64.description"),
+        title: t("platform.options.windowsX64.title"),
+      },
+    },
+    title: t("platform.title"),
+    unknownDescription: t("platform.unknownDescription"),
+    unknownTitle: t("platform.unknownTitle"),
+  };
 }
 
 async function getLatestRelease(): Promise<ReleaseState> {
