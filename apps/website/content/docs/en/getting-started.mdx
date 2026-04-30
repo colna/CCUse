@@ -1,0 +1,86 @@
+---
+title: Getting Started
+description: Install CCUse, add the first provider, and connect Cursor or Claude Desktop.
+section: Start
+order: 2
+---
+
+# Getting Started
+
+Use this guide to go from a fresh install to a client request that reaches a provider through the local proxy.
+
+## Install CCUse
+
+Download the package that matches your machine from the Download page.
+
+- Apple Silicon Mac: `*_aarch64.dmg`
+- Intel Mac: `*_x64.dmg`
+- Windows: `*_x64-setup.exe`
+
+Open CCUse after installation. The app starts the local API service on `127.0.0.1`; the default port is `8787`, and CCUse will try the next available port if that port is already in use.
+
+## Add Your First Provider
+
+Open the Providers view and add an OpenAI-compatible provider first. That path works with OpenAI itself and most relay providers.
+
+Fill in:
+
+- Name: a label such as `OpenAI primary`
+- Kind: `OpenAI` or `Custom`
+- Base URL: the provider endpoint, for example `https://api.openai.com`
+- API Key: the upstream provider key
+- Priority: `1` for the first provider
+
+Save the provider and leave it enabled. CCUse stores the upstream key locally and only sends the generated local key to your client tools.
+
+## Copy The Local Endpoint
+
+Open the Local API card in CCUse and copy both values:
+
+```txt
+Base URL: http://127.0.0.1:8787
+API Key: sk-local-...
+```
+
+If CCUse had to use a different port, copy the exact Base URL shown in the app.
+
+## Connect Cursor
+
+Open Cursor model settings and choose the OpenAI-compatible custom endpoint flow.
+
+Use:
+
+```txt
+OpenAI Base URL: http://127.0.0.1:8787/v1
+OpenAI API Key: sk-local-...
+```
+
+Keep your model name unchanged if it already maps to a provider model. CCUse routes the request to an enabled provider and can switch providers without requiring Cursor to change its configuration.
+
+## Connect Claude Desktop
+
+For Claude Desktop, configure the local CCUse endpoint where the app accepts custom Anthropic-compatible API settings.
+
+Use:
+
+```txt
+Anthropic Base URL: http://127.0.0.1:8787
+Anthropic API Key: sk-local-...
+```
+
+Requests sent to the local endpoint are authenticated with the local key, converted when needed, and forwarded through the current switching strategy.
+
+## Verify The Setup
+
+Send a short prompt from your client. In CCUse, check that the dashboard shows a request count and that the provider status remains healthy.
+
+For an OpenAI-compatible smoke test:
+
+```bash
+curl http://127.0.0.1:8787/v1/chat/completions \
+  -H "Authorization: Bearer sk-local-..." \
+  -H "Content-Type: application/json" \
+  -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"Say hello from CCUse"}]}'
+```
+
+If the request fails, confirm the local port, local key, provider key, and provider Base URL first.

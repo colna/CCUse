@@ -1,0 +1,86 @@
+---
+title: 入门指南
+description: 安装 CCUse、添加第一个供应商，并接入 Cursor 或 Claude Desktop。
+section: 入门
+order: 2
+---
+
+# 入门指南
+
+按这份指南完成从首次安装到客户端请求经过本地代理转发到供应商的最小闭环。
+
+## 安装 CCUse
+
+从下载页选择与你的设备匹配的安装包。
+
+- Apple Silicon Mac：`*_aarch64.dmg`
+- Intel Mac：`*_x64.dmg`
+- Windows：`*_x64-setup.exe`
+
+安装后打开 CCUse。应用会在 `127.0.0.1` 启动本地 API 服务，默认端口是 `8787`；如果端口被占用，CCUse 会继续尝试后续可用端口。
+
+## 添加第一个供应商
+
+打开 Providers 页面，先添加一个 OpenAI 兼容供应商。这个路径同时适用于 OpenAI 和多数中转供应商。
+
+填写：
+
+- 名称：例如 `OpenAI primary`
+- 类型：`OpenAI` 或 `Custom`
+- Base URL：供应商端点，例如 `https://api.openai.com`
+- API Key：上游供应商的 key
+- 优先级：第一个供应商可设为 `1`
+
+保存并保持启用。CCUse 会把上游 key 存在本机，只把生成的本地 key 提供给客户端工具。
+
+## 复制本地端点
+
+打开 CCUse 的 Local API 卡片，复制这两项：
+
+```txt
+Base URL: http://127.0.0.1:8787
+API Key: sk-local-...
+```
+
+如果 CCUse 使用了其他端口，以应用里显示的 Base URL 为准。
+
+## 接入 Cursor
+
+打开 Cursor 的模型设置，选择 OpenAI 兼容的自定义端点配置方式。
+
+填写：
+
+```txt
+OpenAI Base URL: http://127.0.0.1:8787/v1
+OpenAI API Key: sk-local-...
+```
+
+如果你的模型名已经能映射到供应商模型，可以保持不变。CCUse 会把请求路由到已启用供应商，并能在供应商变化时保持 Cursor 配置不变。
+
+## 接入 Claude Desktop
+
+在 Claude Desktop 中，把自定义 Anthropic 兼容 API 设置指向 CCUse 本地端点。
+
+填写：
+
+```txt
+Anthropic Base URL: http://127.0.0.1:8787
+Anthropic API Key: sk-local-...
+```
+
+发送到本地端点的请求会先用本地 key 鉴权，必要时进行格式转换，再按当前切换策略转发到供应商。
+
+## 验证配置
+
+从客户端发送一个短 prompt。回到 CCUse，确认 dashboard 出现请求计数，并且供应商状态保持健康。
+
+OpenAI 兼容路径可以用下面的 smoke test：
+
+```bash
+curl http://127.0.0.1:8787/v1/chat/completions \
+  -H "Authorization: Bearer sk-local-..." \
+  -H "Content-Type: application/json" \
+  -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"Say hello from CCUse"}]}'
+```
+
+如果请求失败，优先检查本地端口、本地 key、供应商 key 和供应商 Base URL。

@@ -56,8 +56,11 @@ assert.match(layout, /images: \[openGraphImage\]/);
 assert.match(layout, /card: "summary"/);
 
 assert.match(sitemap, /MetadataRoute\.Sitemap/);
-assert.match(sitemap, /locales\.map/);
+assert.match(sitemap, /locales\.flatMap/);
+assert.match(sitemap, /getRegisteredDocsSlugs/);
 assert.match(sitemap, /absoluteUrl\(`\/\$\{locale\}`\)/);
+assert.match(sitemap, /absoluteUrl\(`\/\$\{locale\}\/docs`\)/);
+assert.match(sitemap, /absoluteUrl\(`\/\$\{locale\}\/docs\/\$\{slug\}`\)/);
 assert.match(sitemap, /changeFrequency: "weekly"/);
 
 assert.match(robots, /MetadataRoute\.Robots/);

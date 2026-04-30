@@ -21,6 +21,7 @@ function assertPath(relativePath) {
 
 const packageJson = readJson("package.json");
 const docsLib = read("lib/docs.ts");
+const docsContentShell = read("components/docs-content-shell.tsx");
 const docsPage = read("app/[locale]/docs/page.tsx");
 const mdxComponents = read("mdx-components.tsx");
 const tocComponent = read("components/docs-table-of-contents.tsx");
@@ -58,10 +59,11 @@ assert.match(docsLib, /child\.depth !== 2 && child\.depth !== 3/);
 assert.match(docsLib, /slugger\.slug\(title\)/);
 assert.match(docsLib, /resolveDocFilePath/);
 
-assert.match(docsPage, /DocsTableOfContents/);
 assert.match(docsPage, /getDocsTableOfContents\(locale\)/);
 assert.match(docsPage, /tocLabel/);
-assert.match(docsPage, /xl:grid-cols-\[minmax\(0,1fr\)_14rem\]/);
+assert.match(docsPage, /DocsContentShell/);
+assert.match(docsContentShell, /DocsTableOfContents/);
+assert.match(docsContentShell, /xl:grid-cols-\[minmax\(0,1fr\)_14rem\]/);
 
 assert.match(tocComponent, /"use client"/);
 assert.match(tocComponent, /IntersectionObserver/);

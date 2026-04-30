@@ -59,9 +59,8 @@ assert.match(docsLayout, /max-w-7xl/);
 assert.match(docsLayout, /lg:grid-cols-\[17rem_minmax\(0,1fr\)\]/);
 assert.match(docsLayout, /lg:sticky lg:top-24/);
 
-assert.match(docsPage, /content\/docs\/en\/index\.mdx/);
-assert.match(docsPage, /content\/docs\/zh\/index\.mdx/);
-assert.match(docsPage, /locale === "zh" \? ZhDocsIndex : EnDocsIndex/);
+assert.match(docsPage, /DocsContentShell/);
+assert.match(docsPage, /getDocsContent\(locale\)/);
 assert.match(docsPage, /<Content \/>/);
 
 for (const source of [enIndex, zhIndex]) {

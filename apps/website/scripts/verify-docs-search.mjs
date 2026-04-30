@@ -28,6 +28,7 @@ const packageJson = readJson("package.json");
 const eslintConfig = readRepo("eslint.config.mjs");
 const gitignore = readRepo(".gitignore");
 const buildScript = read("scripts/build-pagefind-index.mjs");
+const docsContentShell = read("components/docs-content-shell.tsx");
 const docsLayout = read("app/[locale]/docs/layout.tsx");
 const docsPage = read("app/[locale]/docs/page.tsx");
 const docsSearch = read("components/docs-search.tsx");
@@ -65,7 +66,8 @@ assert.match(eslintConfig, /apps\/website\/public\/_pagefind\/\*\*/);
 assert.match(docsLayout, /DocsSearch/);
 assert.match(docsLayout, /searchPlaceholder/);
 assert.match(docsLayout, /searchLabels/);
-assert.match(docsPage, /data-pagefind-body/);
+assert.match(docsPage, /DocsContentShell/);
+assert.match(docsContentShell, /data-pagefind-body/);
 
 assert.match(docsSearch, /"use client"/);
 assert.match(docsSearch, /\/_pagefind\/pagefind\.js/);
