@@ -17,8 +17,10 @@
     "website:build": "pnpm --filter @ccuse/website build",
     "website:test": "pnpm --filter @ccuse/website test",
     "website:typecheck": "pnpm --filter @ccuse/website typecheck",
+    "website:verify-lint": "node scripts/verify-phase-1-0-w-lint.mjs",
     "website:verify-workspace": "node scripts/verify-phase-1-0-w-workspace.mjs",
-    "lint": "pnpm -r lint",
+    "lint": "eslint apps/desktop apps/website packages/ui eslint.config.mjs",
+    "lint:fix": "eslint apps/desktop apps/website packages/ui eslint.config.mjs --fix",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
     "format": "prettier --write .",
@@ -26,17 +28,25 @@
     "prepare": "husky"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.4",
+    "eslint": "^9.39.4",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.26",
+    "globals": "^15.15.0",
     "husky": "^9.1.7",
     "lint-staged": "^15.5.2",
     "prettier": "^3.8.3",
-    "prettier-plugin-tailwindcss": "^0.6.14"
+    "prettier-plugin-tailwindcss": "^0.6.14",
+    "typescript-eslint": "^8.59.1"
   },
   "lint-staged": {
-    "apps/desktop/**/*.{ts,tsx}": [
-      "pnpm --filter @ccuse/desktop exec eslint --fix",
+    "{apps/desktop,apps/website,packages/ui}/**/*.{ts,tsx,js,mjs}": [
+      "pnpm exec eslint --fix",
       "prettier --write"
     ],
-    "apps/desktop/**/*.{css,json,md}": [
+    "{apps/desktop,apps/website,packages/ui}/**/*.{css,json,md}": [
       "prettier --write"
     ],
     "apps/desktop/src-tauri/**/*.rs": [

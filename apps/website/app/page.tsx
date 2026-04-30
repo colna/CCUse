@@ -9,19 +9,19 @@ const capabilities = [
 
 export default function HomePage() {
   return (
-    <main className="bg-background text-foreground min-h-screen">
+    <main className="min-h-screen bg-background text-foreground">
       <section
         aria-labelledby="hero-title"
         className="mx-auto flex min-h-screen max-w-5xl flex-col justify-center px-6 py-24"
       >
-        <p className="text-primary text-sm font-semibold">CCUse for desktop</p>
+        <p className="text-sm font-semibold text-primary">CCUse for desktop</p>
         <h1
           id="hero-title"
-          className="font-display leading-apple-headline tracking-apple-tighter mt-5 max-w-3xl text-5xl font-semibold"
+          className="mt-5 max-w-3xl font-display text-5xl font-semibold leading-apple-headline tracking-apple-tighter"
         >
           One local endpoint for resilient AI clients.
         </h1>
-        <p className="text-muted-foreground mt-6 max-w-2xl text-lg leading-8">
+        <p className="mt-6 max-w-2xl text-lg leading-8 text-muted-foreground">
           Connect Cursor, Claude Desktop, and OpenAI-compatible tools to a
           loopback API that can route across providers and keep working when an
           upstream fails.

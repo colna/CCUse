@@ -1,20 +1,22 @@
 import js from "@eslint/js";
-import tseslint from "typescript-eslint";
+import jsxA11y from "eslint-plugin-jsx-a11y";
 import reactPlugin from "eslint-plugin-react";
 import reactHooks from "eslint-plugin-react-hooks";
 import reactRefresh from "eslint-plugin-react-refresh";
-import jsxA11y from "eslint-plugin-jsx-a11y";
 import globals from "globals";
+import tseslint from "typescript-eslint";
 
 export default tseslint.config(
   {
     ignores: [
-      "dist/**",
-      "node_modules/**",
-      "test-results/**",
-      "playwright-report/**",
-      "src-tauri/target/**",
-      "src-tauri/gen/**",
+      "**/.next/**",
+      "**/coverage/**",
+      "**/dist/**",
+      "**/node_modules/**",
+      "**/playwright-report/**",
+      "**/src-tauri/gen/**",
+      "**/src-tauri/target/**",
+      "**/test-results/**",
     ],
   },
   js.configs.recommended,
@@ -26,10 +28,10 @@ export default tseslint.config(
       globals: { ...globals.browser },
     },
     plugins: {
+      "jsx-a11y": jsxA11y,
       react: reactPlugin,
       "react-hooks": reactHooks,
       "react-refresh": reactRefresh,
-      "jsx-a11y": jsxA11y,
     },
     settings: {
       react: { version: "18.3" },
@@ -39,18 +41,17 @@ export default tseslint.config(
       ...reactPlugin.configs["jsx-runtime"].rules,
       ...reactHooks.configs.recommended.rules,
       ...jsxA11y.configs.recommended.rules,
-      "react-refresh/only-export-components": [
-        "warn",
-        { allowConstantExport: true },
-      ],
       "@typescript-eslint/no-unused-vars": [
         "error",
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
       ],
+      "react-refresh/only-export-components": [
+        "warn",
+        { allowConstantExport: true },
+      ],
     },
   },
   {
-    // tests can use node + describe/it/expect globals from vitest
     files: ["**/*.{test,spec}.{ts,tsx}", "**/setupTests.ts"],
     languageOptions: {
       globals: { ...globals.node },
@@ -60,8 +61,22 @@ export default tseslint.config(
     },
   },
   {
-    // config files run in node context
-    files: ["*.config.{ts,js,mjs}", "*.config.*.{ts,js,mjs}"],
+    files: [
+      "apps/desktop/src/components/ui/**/*.{ts,tsx}",
+      "apps/website/app/**/*.{ts,tsx}",
+      "packages/ui/src/components/**/*.{ts,tsx}",
+    ],
+    rules: {
+      "react-refresh/only-export-components": "off",
+    },
+  },
+  {
+    files: [
+      "**/*.config.{ts,js,mjs}",
+      "**/*.config.*.{ts,js,mjs}",
+      "**/scripts/**/*.{ts,js,mjs}",
+      "eslint.config.mjs",
+    ],
     languageOptions: {
       globals: { ...globals.node },
     },

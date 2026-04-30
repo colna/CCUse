@@ -15,6 +15,18 @@
       "options": {
         "tailwindConfig": "./apps/desktop/tailwind.config.ts"
       }
+    },
+    {
+      "files": ["apps/website/**/*.{ts,tsx,js,jsx,css,json,md}"],
+      "options": {
+        "tailwindConfig": "./apps/website/tailwind.config.ts"
+      }
+    },
+    {
+      "files": ["packages/ui/**/*.{ts,tsx,js,jsx,css,json,md}"],
+      "options": {
+        "tailwindConfig": "./apps/website/tailwind.config.ts"
+      }
     }
   ]
 }

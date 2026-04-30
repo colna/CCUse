@@ -6,6 +6,8 @@
   "types": "./index.ts",
   "scripts": {
     "test": "node scripts/verify-shadcn-layer.mjs",
+    "lint": "pnpm --dir ../.. exec eslint packages/ui",
+    "lint:fix": "pnpm --dir ../.. exec eslint packages/ui --fix",
     "typecheck": "tsc --noEmit"
   },
   "exports": {
