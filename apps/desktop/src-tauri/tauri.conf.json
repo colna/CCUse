@@ -28,8 +28,8 @@
       "csp": "default-src 'self'; connect-src 'self' http://127.0.0.1:* https://api.openai.com https://api.anthropic.com https://generativelanguage.googleapis.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:"
     },
     "trayIcon": {
-      "iconPath": "icons/tray-template.png",
-      "iconAsTemplate": true
+      "iconPath": "icons/tray-icon.png",
+      "iconAsTemplate": false
     }
   },
   "bundle": {

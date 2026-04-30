@@ -17,7 +17,7 @@ const ID_SHOW_WINDOW: &str = "tray_show_window";
 const ID_COPY_API_KEY: &str = "tray_copy_api_key";
 const ID_RESTART_PROXY: &str = "tray_restart_proxy";
 const ID_QUIT: &str = "tray_quit";
-const TRAY_TEMPLATE_ICON: &[u8] = include_bytes!("../icons/tray-template.png");
+const TRAY_ICON: &[u8] = include_bytes!("../icons/tray-icon.png");
 
 /// Build and register the system tray. Called from `lib.rs` setup.
 ///
@@ -41,11 +41,11 @@ pub fn setup(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         .build()?;
 
     let app_handle = app.clone();
-    let icon = Image::from_bytes(TRAY_TEMPLATE_ICON)?;
+    let icon = Image::from_bytes(TRAY_ICON)?;
 
     TrayIconBuilder::new()
         .icon(icon)
-        .icon_as_template(true)
+        .icon_as_template(false)
         .menu(&menu)
         .on_menu_event(move |_tray, event| {
             handle_menu_event(&app_handle, event.id().as_ref());

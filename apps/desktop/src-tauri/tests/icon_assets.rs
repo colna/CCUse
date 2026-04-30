@@ -1,8 +1,8 @@
 //! T1.0.6.31 — icon asset contract tests.
 //!
 //! The app and tray icons are release artifacts, not decoration. These
-//! tests keep placeholder PNGs and single-layer Windows ICO files from
-//! slipping back into the bundle.
+//! tests keep placeholder PNGs, mismatched source icons, and single-layer
+//! Windows ICO files from slipping back into the bundle.
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -10,6 +10,13 @@ use std::path::{Path, PathBuf};
 
 fn icons_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("icons")
+}
+
+fn repo_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../..")
+        .canonicalize()
+        .expect("repo root should resolve")
 }
 
 fn png_dimensions(path: &Path) -> (u32, u32, u8, u8) {
@@ -32,16 +39,29 @@ fn png_dimensions(path: &Path) -> (u32, u32, u8, u8) {
 fn png_icon_assets_have_real_dimensions_and_alpha() {
     let icons = icons_dir();
     for (name, expected) in [
+        ("icon.png", (801, 801)),
         ("32x32.png", (32, 32)),
         ("128x128.png", (128, 128)),
         ("128x128@2x.png", (256, 256)),
-        ("tray-template.png", (64, 64)),
+        ("tray-icon.png", (64, 64)),
     ] {
         let (width, height, bit_depth, color_type) = png_dimensions(&icons.join(name));
         assert_eq!((width, height), expected, "{name} dimensions drifted");
         assert_eq!(bit_depth, 8, "{name} must be 8-bit per channel");
         assert_eq!(color_type, 6, "{name} must be RGBA");
     }
+}
+
+#[test]
+fn full_size_app_icon_matches_project_master() {
+    let master = fs::read(repo_root().join("docs/icon.png")).expect("docs/icon.png should exist");
+    let desktop_icon =
+        fs::read(icons_dir().join("icon.png")).expect("desktop icon.png should be readable");
+
+    assert_eq!(
+        desktop_icon, master,
+        "desktop full-size icon must be copied from docs/icon.png"
+    );
 }
 
 #[test]

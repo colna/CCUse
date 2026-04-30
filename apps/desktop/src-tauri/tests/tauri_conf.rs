@@ -44,13 +44,13 @@ fn bundle_targets_locked_to_dmg_and_nsis_only() {
 }
 
 #[test]
-fn icon_config_uses_template_tray_icon_and_platform_icons() {
+fn icon_config_uses_color_tray_icon_and_platform_icons() {
     let conf = load_conf();
     assert_eq!(
-        conf["app"]["trayIcon"]["iconPath"], "icons/tray-template.png",
-        "tray icon should use the monochrome template asset"
+        conf["app"]["trayIcon"]["iconPath"], "icons/tray-icon.png",
+        "tray icon should use the shared CCUse app icon asset"
     );
-    assert_eq!(conf["app"]["trayIcon"]["iconAsTemplate"], true);
+    assert_eq!(conf["app"]["trayIcon"]["iconAsTemplate"], false);
 
     let icons = conf["bundle"]["icon"]
         .as_array()
