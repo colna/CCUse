@@ -168,12 +168,18 @@ importers:
       '@next/mdx':
         specifier: ^14.2.35
         version: 14.2.35(@mdx-js/loader@3.1.1)(@mdx-js/react@3.1.1(@types/react@18.3.12)(react@18.3.1))
+      github-slugger:
+        specifier: ^2.0.0
+        version: 2.0.0
       gray-matter:
         specifier: ^4.0.3
         version: 4.0.3
       lucide-react:
         specifier: ^0.453.0
         version: 0.453.0(react@18.3.1)
+      mdast-util-to-string:
+        specifier: ^4.0.0
+        version: 4.0.0
       next:
         specifier: ^14.2.35
         version: 14.2.35(@playwright/test@1.59.1)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -204,9 +210,15 @@ importers:
       remark-gfm:
         specifier: ^4.0.1
         version: 4.0.1
+      remark-parse:
+        specifier: ^11.0.0
+        version: 11.0.0
       shiki:
         specifier: ^4.0.2
         version: 4.0.2
+      unified:
+        specifier: ^11.0.5
+        version: 11.0.5
     devDependencies:
       '@ccuse/ui':
         specifier: workspace:*

@@ -55,7 +55,8 @@ assert.match(docsLayout, /<details[\s\S]*open/);
 assert.match(docsLayout, /<summary/);
 assert.match(docsLayout, /sidebarLabel/);
 assert.match(docsLayout, /sidebarTitle/);
-assert.match(docsLayout, /lg:grid-cols-\[17rem_1fr\]/);
+assert.match(docsLayout, /max-w-7xl/);
+assert.match(docsLayout, /lg:grid-cols-\[17rem_minmax\(0,1fr\)\]/);
 assert.match(docsLayout, /lg:sticky lg:top-24/);
 
 assert.match(docsPage, /content\/docs\/en\/index\.mdx/);
@@ -73,10 +74,12 @@ for (const source of [enIndex, zhIndex]) {
 assert.deepEqual(Object.keys(enMessages.Docs), [
   "sidebarLabel",
   "sidebarTitle",
+  "tocLabel",
 ]);
 assert.deepEqual(Object.keys(zhMessages.Docs), [
   "sidebarLabel",
   "sidebarTitle",
+  "tocLabel",
 ]);
 
 console.log("Docs sidebar contract passed");

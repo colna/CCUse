@@ -16,14 +16,17 @@ export function useMDXComponents(components: MDXComponents): MDXComponents {
     ),
     h2: ({ children, ...props }: ElementProps<"h2">) => (
       <h2
-        className="mt-10 font-display text-2xl font-semibold leading-apple-tile"
+        className="mt-10 scroll-mt-28 font-display text-2xl font-semibold leading-apple-tile"
         {...props}
       >
         {children}
       </h2>
     ),
     h3: ({ children, ...props }: ElementProps<"h3">) => (
-      <h3 className="mt-8 text-xl font-semibold leading-7" {...props}>
+      <h3
+        className="mt-8 scroll-mt-28 text-xl font-semibold leading-7"
+        {...props}
+      >
         {children}
       </h3>
     ),

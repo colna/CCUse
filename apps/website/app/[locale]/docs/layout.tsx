@@ -27,7 +27,7 @@ export default async function DocsLayout({
 
   return (
     <main className="bg-background text-foreground">
-      <div className="mx-auto grid max-w-6xl gap-8 px-6 py-12 lg:grid-cols-[17rem_1fr]">
+      <div className="mx-auto grid max-w-7xl gap-8 px-6 py-12 lg:grid-cols-[17rem_minmax(0,1fr)]">
         <aside
           aria-label={t("sidebarLabel")}
           className="lg:sticky lg:top-24 lg:self-start"

@@ -132,7 +132,8 @@
   },
   "Docs": {
     "sidebarLabel": "Documentation navigation",
-    "sidebarTitle": "Documentation"
+    "sidebarTitle": "Documentation",
+    "tocLabel": "On this page"
   },
   "Navigation": {
     "brandLabel": "CCUse home",

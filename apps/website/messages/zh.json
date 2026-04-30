@@ -132,7 +132,8 @@
   },
   "Docs": {
     "sidebarLabel": "文档导航",
-    "sidebarTitle": "文档目录"
+    "sidebarTitle": "文档目录",
+    "tocLabel": "本页目录"
   },
   "Navigation": {
     "brandLabel": "CCUse 首页",
