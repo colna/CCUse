@@ -41,8 +41,27 @@ fn release_workflow_recovers_when_tag_exists_but_release_is_missing() {
         "gh release view \"$TAG\"",
         "tag_exists: ${{ steps.check.outputs.tag_exists }}",
         "release_exists: ${{ steps.check.outputs.release_exists }}",
+        "missing_macos_aarch64: ${{ steps.check.outputs.missing_macos_aarch64 }}",
+        "missing_macos_x64: ${{ steps.check.outputs.missing_macos_x64 }}",
+        "missing_windows_x64: ${{ steps.check.outputs.missing_windows_x64 }}",
         "needs.check-version.outputs.tag_exists != 'true'",
         "needs.create-tag.result == 'success' || needs.create-tag.result == 'skipped'",
+    ] {
+        assert_workflow_contains(needle);
+    }
+}
+
+#[test]
+fn release_workflow_only_builds_missing_required_assets() {
+    for needle in [
+        "CCUse_${VERSION}_aarch64.dmg",
+        "CCUse_${VERSION}_x64.dmg",
+        "CCUse_${VERSION}_x64-setup.exe",
+        "asset_key: macos_aarch64",
+        "asset_key: macos_x64",
+        "asset_key: windows_x64",
+        "matrix.asset_key == 'macos_aarch64'",
+        "needs.check-version.outputs.missing_macos_aarch64 == 'true'",
     ] {
         assert_workflow_contains(needle);
     }
