@@ -20,6 +20,7 @@ const card = read("src/components/card.tsx");
 const dialog = read("src/components/dialog.tsx");
 const desktopButton = readRepo("apps/desktop/src/components/ui/button.tsx");
 const websitePage = readRepo("apps/website/app/[locale]/page.tsx");
+const websiteHeader = readRepo("apps/website/components/site-header.tsx");
 const websiteNextConfig = readRepo("apps/website/next.config.mjs");
 
 for (const subpath of ["./button", "./card", "./dialog"]) {
@@ -38,6 +39,7 @@ assert.match(dialog, /lucide-react/);
 assert.match(desktopButton, /@ccuse\/ui\/button/);
 assert.match(websitePage, /@ccuse\/ui\/button/);
 assert.match(websitePage, /@ccuse\/ui\/card/);
+assert.match(websiteHeader, /\/icon\.png/);
 assert.match(websiteNextConfig, /transpilePackages:\s*\["@ccuse\/ui"\]/);
 
 console.log("Shared shadcn UI contract passed");

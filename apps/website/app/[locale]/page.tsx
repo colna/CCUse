@@ -50,6 +50,7 @@ export default async function HomePage({ params }: HomePageProps) {
       </section>
       <section
         aria-labelledby="capabilities-title"
+        id="features"
         className="mx-auto grid max-w-5xl gap-6 px-6 pb-24 sm:grid-cols-3"
       >
         <h2 id="capabilities-title" className="sr-only">

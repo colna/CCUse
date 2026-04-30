@@ -16,5 +16,32 @@
   },
   "Metadata": {
     "description": "Local API proxy for multi-provider AI routing, health checks, and automatic failover."
+  },
+  "Navigation": {
+    "brandLabel": "CCUse home",
+    "primaryLabel": "Primary navigation",
+    "languageLabel": "Language",
+    "items": {
+      "home": "Home",
+      "features": "Features",
+      "docs": "Docs",
+      "download": "Download"
+    },
+    "languages": {
+      "zh": "中文",
+      "en": "EN"
+    }
+  },
+  "Footer": {
+    "brandLabel": "CCUse home",
+    "secondaryLabel": "Footer navigation",
+    "tagline": "A local API proxy for resilient multi-provider AI clients.",
+    "links": {
+      "home": "Home",
+      "docs": "Docs",
+      "download": "Download",
+      "github": "GitHub"
+    },
+    "copyright": "© 2026 CCUse. All rights reserved."
   }
 }

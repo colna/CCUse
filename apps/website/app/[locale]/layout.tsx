@@ -9,6 +9,8 @@ import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 
 import "../globals.css";
+import { SiteFooter } from "../../components/site-footer";
+import { SiteHeader } from "../../components/site-header";
 import { defaultLocale, isLocale, locales } from "../../i18n/routing";
 
 type LocaleLayoutProps = {
@@ -59,9 +61,11 @@ export default async function LocaleLayout({
 
   return (
     <html lang={locale}>
-      <body className="min-h-screen">
+      <body className="min-h-screen bg-background text-foreground">
         <NextIntlClientProvider messages={messages}>
+          <SiteHeader locale={locale} />
           {children}
+          <SiteFooter locale={locale} />
         </NextIntlClientProvider>
       </body>
     </html>

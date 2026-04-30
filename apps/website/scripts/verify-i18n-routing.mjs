@@ -60,6 +60,8 @@ const requestConfig = read("i18n/request.ts");
 const middleware = read("middleware.ts");
 const layout = read("app/[locale]/layout.tsx");
 const page = read("app/[locale]/page.tsx");
+const header = read("components/site-header.tsx");
+const footer = read("components/site-footer.tsx");
 const en = readJson("messages/en.json");
 const zh = readJson("messages/zh.json");
 
@@ -84,7 +86,18 @@ assert.match(layout, /generateStaticParams/);
 assert.match(layout, /setRequestLocale\(locale\)/);
 assert.match(layout, /<html lang=\{locale\}>/);
 assert.match(layout, /NextIntlClientProvider/);
+assert.match(layout, /SiteHeader/);
+assert.match(layout, /SiteFooter/);
 assert.match(page, /getTranslations\(\{ locale, namespace: "HomePage" \}\)/);
+assert.match(page, /id="features"/);
+assert.match(
+  header,
+  /getTranslations\(\{ locale, namespace: "Navigation" \}\)/,
+);
+assert.match(header, /href=\{`\/\$\{item\}`\}/);
+assert.match(header, /src="\/icon\.png"/);
+assert.match(footer, /getTranslations\(\{ locale, namespace: "Footer" \}\)/);
+assert.match(footer, /src="\/icon\.png"/);
 
 assert.equal(en.HomePage.actions.download, "Download");
 assert.equal(zh.HomePage.actions.download, "下载");
@@ -97,6 +110,23 @@ assert.deepEqual(
   Object.keys(en.HomePage.capabilities),
   Object.keys(zh.HomePage.capabilities),
 );
+assert.deepEqual(Object.keys(en.Navigation.items), [
+  "home",
+  "features",
+  "docs",
+  "download",
+]);
+assert.deepEqual(
+  Object.keys(en.Navigation.items),
+  Object.keys(zh.Navigation.items),
+);
+assert.deepEqual(Object.keys(en.Footer.links), [
+  "home",
+  "docs",
+  "download",
+  "github",
+]);
+assert.deepEqual(Object.keys(en.Footer.links), Object.keys(zh.Footer.links));
 
 assert.equal(expectedRedirectPath("/", "zh-CN,zh;q=0.9,en;q=0.8"), "/zh");
 assert.equal(expectedRedirectPath("/", "en-US,en;q=0.9"), "/en");

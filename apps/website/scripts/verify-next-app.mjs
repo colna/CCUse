@@ -30,6 +30,8 @@ function assertPath(relativePath) {
 const packageJson = readJson("package.json");
 const layout = read("app/[locale]/layout.tsx");
 const page = read("app/[locale]/page.tsx");
+const header = read("components/site-header.tsx");
+const footer = read("components/site-footer.tsx");
 const config = read("next.config.mjs");
 
 function pngInfo(relativePath) {
@@ -79,6 +81,8 @@ assert.match(packageJson.dependencies?.["react-dom"] ?? "", /^\^?18\./);
 for (const requiredPath of [
   "app/[locale]/layout.tsx",
   "app/[locale]/page.tsx",
+  "components/site-header.tsx",
+  "components/site-footer.tsx",
   "app/icon.png",
   "app/apple-icon.png",
   "app/favicon.ico",
@@ -113,6 +117,25 @@ assert.doesNotMatch(
   page,
   /use client/,
   "home page must stay a Server Component",
+);
+assert.doesNotMatch(
+  header,
+  /use client/,
+  "site header must stay a Server Component",
+);
+assert.doesNotMatch(
+  footer,
+  /use client/,
+  "site footer must stay a Server Component",
+);
+assert.match(layout, /<SiteHeader locale=\{locale\} \/>/);
+assert.match(layout, /<SiteFooter locale=\{locale\} \/>/);
+assert.match(header, /src="\/icon\.png"/, "header logo must use app icon");
+assert.match(footer, /src="\/icon\.png"/, "footer logo must use app icon");
+assert.match(
+  header,
+  /languages\.\$\{item\}/,
+  "header must expose language switch",
 );
 assert.match(
   page,

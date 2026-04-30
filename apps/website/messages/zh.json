@@ -16,5 +16,32 @@
   },
   "Metadata": {
     "description": "面向多供应商 AI 路由、健康检查与自动故障切换的本地 API 代理。"
+  },
+  "Navigation": {
+    "brandLabel": "CCUse 首页",
+    "primaryLabel": "主导航",
+    "languageLabel": "语言",
+    "items": {
+      "home": "首页",
+      "features": "功能",
+      "docs": "文档",
+      "download": "下载"
+    },
+    "languages": {
+      "zh": "中文",
+      "en": "EN"
+    }
+  },
+  "Footer": {
+    "brandLabel": "CCUse 首页",
+    "secondaryLabel": "页脚导航",
+    "tagline": "面向高可用多供应商 AI 客户端的本地 API 代理。",
+    "links": {
+      "home": "首页",
+      "docs": "文档",
+      "download": "下载",
+      "github": "GitHub"
+    },
+    "copyright": "© 2026 CCUse. 保留所有权利。"
   }
 }
