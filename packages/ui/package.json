@@ -1,0 +1,20 @@
+{
+  "name": "@ccuse/ui",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "types": "./index.ts",
+  "exports": {
+    ".": "./index.ts",
+    "./tailwind-preset": {
+      "types": "./tailwind-preset.d.ts",
+      "default": "./tailwind-preset.js"
+    }
+  },
+  "peerDependencies": {
+    "tailwindcss": "^3.4.19"
+  },
+  "dependencies": {
+    "tailwindcss-animate": "^1.0.7"
+  }
+}

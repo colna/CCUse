@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test": "node scripts/verify-next-app.mjs"
+    "test": "node scripts/verify-next-app.mjs && node scripts/verify-tailwind.mjs"
   },
   "dependencies": {
     "next": "^14.2.35",
@@ -16,9 +16,14 @@
     "react-dom": "18.3.1"
   },
   "devDependencies": {
+    "@ccuse/ui": "workspace:*",
     "@types/node": "22.7.4",
     "@types/react": "18.3.12",
     "@types/react-dom": "18.3.1",
+    "autoprefixer": "10.5.0",
+    "postcss": "8.5.12",
+    "tailwindcss": "3.4.19",
+    "tailwindcss-animate": "1.0.7",
     "typescript": "5.6.3"
   }
 }
