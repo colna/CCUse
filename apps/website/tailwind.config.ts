@@ -6,7 +6,8 @@ const config: Config = {
   content: [
     "./app/**/*.{ts,tsx}",
     "./components/**/*.{ts,tsx}",
-    "../../packages/ui/**/*.{ts,tsx,js}",
+    "../../packages/ui/src/**/*.{ts,tsx}",
+    "../../packages/ui/tailwind-preset.js",
   ],
 };
 

@@ -1,3 +1,6 @@
+import { Button } from "@ccuse/ui/button";
+import { Card, CardContent } from "@ccuse/ui/card";
+
 const capabilities = [
   "Local OpenAI-compatible proxy",
   "Multi-provider routing",
@@ -24,18 +27,12 @@ export default function HomePage() {
           upstream fails.
         </p>
         <nav aria-label="Primary actions" className="mt-8 flex gap-3">
-          <a
-            className="bg-primary text-primary-foreground rounded-lg px-4 py-2 text-sm font-medium"
-            href="/download"
-          >
-            Download
-          </a>
-          <a
-            className="bg-secondary text-secondary-foreground rounded-lg px-4 py-2 text-sm font-medium"
-            href="https://github.com/colna/CCUse"
-          >
-            GitHub
-          </a>
+          <Button asChild>
+            <a href="/download">Download</a>
+          </Button>
+          <Button asChild variant="secondary">
+            <a href="https://github.com/colna/CCUse">GitHub</a>
+          </Button>
         </nav>
       </section>
       <section
@@ -47,11 +44,12 @@ export default function HomePage() {
         </h2>
         <ul className="contents">
           {capabilities.map((item) => (
-            <li
-              className="bg-card text-card-foreground shadow-apple-card rounded-lg p-5 text-sm font-medium"
-              key={item}
-            >
-              {item}
+            <li key={item}>
+              <Card className="shadow-apple-card">
+                <CardContent className="p-5 text-sm font-medium">
+                  {item}
+                </CardContent>
+              </Card>
             </li>
           ))}
         </ul>

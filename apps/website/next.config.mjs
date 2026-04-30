@@ -2,6 +2,7 @@
 const nextConfig = {
   poweredByHeader: false,
   reactStrictMode: true,
+  transpilePackages: ["@ccuse/ui"],
 };
 
 export default nextConfig;
