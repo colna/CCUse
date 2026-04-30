@@ -2,9 +2,11 @@ import type { ComponentType } from "react";
 
 import EnGettingStarted from "../content/docs/en/getting-started.mdx";
 import EnIndex from "../content/docs/en/index.mdx";
+import EnMonitoringAlerts from "../content/docs/en/monitoring-alerts.mdx";
 import EnSwitchingStrategies from "../content/docs/en/switching-strategies.mdx";
 import ZhGettingStarted from "../content/docs/zh/getting-started.mdx";
 import ZhIndex from "../content/docs/zh/index.mdx";
+import ZhMonitoringAlerts from "../content/docs/zh/monitoring-alerts.mdx";
 import ZhSwitchingStrategies from "../content/docs/zh/switching-strategies.mdx";
 import type { Locale } from "../i18n/routing";
 
@@ -14,11 +16,13 @@ const docsContent: Record<Locale, Record<string, DocsContentComponent>> = {
   en: {
     "getting-started": EnGettingStarted,
     index: EnIndex,
+    "monitoring-alerts": EnMonitoringAlerts,
     "switching-strategies": EnSwitchingStrategies,
   },
   zh: {
     "getting-started": ZhGettingStarted,
     index: ZhIndex,
+    "monitoring-alerts": ZhMonitoringAlerts,
     "switching-strategies": ZhSwitchingStrategies,
   },
 };

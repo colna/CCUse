@@ -1,0 +1,102 @@
+---
+title: Monitoring and Alerts
+description: Read the dashboard, understand provider health, and inspect recent switch history.
+section: Operations
+order: 4
+---
+
+# Monitoring and Alerts
+
+The dashboard is the operational view for the local proxy. Use it to confirm that requests are flowing, providers remain healthy, and failover events match the strategy you selected.
+
+## Status Cards
+
+The top cards refresh every few seconds and summarize the current 24-hour window:
+
+| Card              | Meaning                                                   |
+| ----------------- | --------------------------------------------------------- |
+| Current Provider  | The first healthy provider in the current health snapshot |
+| Today's Requests  | Total requests counted from 24-hour metrics buckets       |
+| Success Rate      | Weighted success ratio across recent request buckets      |
+| Avg Response Time | Weighted average latency across recent request buckets    |
+
+Treat a success rate below `95%` as a warning. It usually means one provider is failing, rate-limited, or returning intermittent upstream errors.
+
+## Success Rate
+
+The Success Rate chart shows the last 24 hours in 5-minute buckets. Each point is calculated from request logs:
+
+```txt
+success_rate = successful_requests / total_requests
+```
+
+Use it to spot:
+
+- A sudden drop after changing strategy or provider configuration.
+- Recurring failures around the same time of day.
+- Recovery after disabling a bad provider.
+
+If the chart is empty, there are no request logs in the current 24-hour window.
+
+## Response Time
+
+The Response Time chart shows average latency and P95 latency for each 5-minute bucket.
+
+Read it this way:
+
+- Avg shows normal request speed.
+- P95 shows the slower tail of requests.
+- A rising P95 with a stable average usually means occasional upstream stalls.
+- Both lines rising together usually means the selected provider or network path is slower.
+
+For interactive clients such as Cursor, watch P95 first. A small number of slow requests can hurt the typing loop even when the average looks acceptable.
+
+## Cost by Provider
+
+The cost chart groups 24-hour token usage by provider and multiplies tokens by each provider's configured `cost_per_1k_tokens`.
+
+Use it to confirm:
+
+- Whether a cost-first or smart strategy is actually moving spend toward cheaper providers.
+- Whether one provider is carrying more traffic than expected.
+- Whether a missing cost value is making spend appear as `0`.
+
+Fill in cost metadata for every comparable provider before relying on cost reports.
+
+## Switch Timeline
+
+The Switch Timeline is the recent switch-history query. It reads the newest 50 rows from `switch_history`, ordered by timestamp descending.
+
+Each row includes:
+
+| Field         | Meaning                                          |
+| ------------- | ------------------------------------------------ |
+| Time          | When the switch was recorded                     |
+| From Provider | The provider that failed or was replaced         |
+| To Provider   | The provider selected for the successful attempt |
+| Strategy      | The strategy snapshot used for that request      |
+| Reason        | A machine-readable reason such as `upstream_502` |
+| ID            | The database row id for support or debugging     |
+
+Expand a row to inspect the reason and ID. When debugging a user report, match the row timestamp with the client request time and the provider shown in the dashboard.
+
+## Alert Signals
+
+CCUse surfaces alert signals in two places:
+
+- Provider health changes emit `provider-status-changed` so the UI can refresh provider status immediately.
+- Desktop notifications use the native OS notification center for failure, quota, and switch prompts when notification actions are triggered.
+
+If alerts look quiet, check the dashboard first. A healthy provider list, stable success rate, and empty switch timeline usually mean there is nothing to notify.
+
+## Troubleshooting Checklist
+
+When requests fail or latency jumps:
+
+1. Check Current Provider and provider status.
+2. Open Switch Timeline and inspect the newest reason.
+3. Compare Success Rate and Response Time for the same timestamp.
+4. Check Cost by Provider if traffic moved to an unexpected provider.
+5. Verify the local client still uses the copied Base URL and `sk-local-...` key.
+
+For repeated `rate_limited` or `upstream_5xx` reasons, add another enabled provider or switch to `load_balance` or `smart` so traffic is spread across more capacity.
