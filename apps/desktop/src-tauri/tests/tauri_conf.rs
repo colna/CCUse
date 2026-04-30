@@ -44,7 +44,7 @@ fn bundle_targets_locked_to_dmg_and_nsis_only() {
 }
 
 #[test]
-fn icon_config_uses_template_tray_icon_and_windows_ico() {
+fn icon_config_uses_template_tray_icon_and_platform_icons() {
     let conf = load_conf();
     assert_eq!(
         conf["app"]["trayIcon"]["iconPath"], "icons/tray-template.png",
@@ -59,6 +59,10 @@ fn icon_config_uses_template_tray_icon_and_windows_ico() {
     assert!(
         icon_paths.contains(&"icons/icon.ico"),
         "Windows bundle icon must include icons/icon.ico, found {icon_paths:?}"
+    );
+    assert!(
+        icon_paths.contains(&"icons/icon.icns"),
+        "macOS bundle icon must include icons/icon.icns, found {icon_paths:?}"
     );
 }
 
