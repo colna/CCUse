@@ -10,9 +10,9 @@
 
 | Platform            | Required asset              | State    |            Size |
 | ------------------- | --------------------------- | -------- | --------------: |
-| macOS Apple Silicon | `CCUse_1.0.1_aarch64.dmg`   | uploaded | 5,300,702 bytes |
+| macOS Apple Silicon | `CCUse_1.0.1_aarch64.dmg`   | uploaded | 5,300,703 bytes |
 | macOS Intel         | `CCUse_1.0.1_x64.dmg`       | uploaded | 5,435,013 bytes |
-| Windows x64         | `CCUse_1.0.1_x64-setup.exe` | uploaded | 2,759,509 bytes |
+| Windows x64         | `CCUse_1.0.1_x64-setup.exe` | uploaded | 2,756,327 bytes |
 
 The GitHub Release is not draft and not prerelease.
 
@@ -21,10 +21,12 @@ The GitHub Release is not draft and not prerelease.
 | Check                                    | Result | Evidence                                                                                                                                  |
 | ---------------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | Release workflow                         | PASS   | Run `25146771380`: https://github.com/colna/CCUse/actions/runs/25146771380                                                                |
+| Existing-asset release guard             | PASS   | Run `25147438764`: https://github.com/colna/CCUse/actions/runs/25147438764 skipped tag/build jobs after detecting all required assets.    |
 | macOS Apple Silicon package build/upload | PASS   | Job `Build macOS (Apple Silicon)` completed successfully and uploaded `CCUse_1.0.1_aarch64.dmg`.                                          |
 | macOS Intel package build/upload         | PASS   | Job `Build macOS (Intel)` completed successfully and uploaded `CCUse_1.0.1_x64.dmg`.                                                      |
 | Windows x64 asset presence               | PASS   | Existing `CCUse_1.0.1_x64-setup.exe` was detected and retained.                                                                           |
 | Desktop Tauri E2E                        | PASS   | Run `25146771404`: https://github.com/colna/CCUse/actions/runs/25146771404                                                                |
+| Latest Desktop Tauri E2E                 | PASS   | Run `25147438754`: https://github.com/colna/CCUse/actions/runs/25147438754 completed successfully on Ubuntu and Windows.                  |
 | Linux real Tauri shell E2E               | PASS   | Ubuntu job started the real app with `tauri-driver`, added a mock provider, sent `/v1/chat/completions`, and verified dashboard metrics.  |
 | Windows real Tauri shell E2E             | PASS   | Windows job started the real app with `tauri-driver`, added a mock provider, sent `/v1/chat/completions`, and verified dashboard metrics. |
 
