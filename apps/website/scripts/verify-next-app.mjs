@@ -32,6 +32,8 @@ const layout = read("app/[locale]/layout.tsx");
 const page = read("app/[locale]/page.tsx");
 const header = read("components/site-header.tsx");
 const footer = read("components/site-footer.tsx");
+const themeProvider = read("components/theme-provider.tsx");
+const themeToggle = read("components/theme-toggle.tsx");
 const config = read("next.config.mjs");
 
 function pngInfo(relativePath) {
@@ -83,6 +85,8 @@ for (const requiredPath of [
   "app/[locale]/page.tsx",
   "components/site-header.tsx",
   "components/site-footer.tsx",
+  "components/theme-provider.tsx",
+  "components/theme-toggle.tsx",
   "app/icon.png",
   "app/apple-icon.png",
   "app/favicon.ico",
@@ -128,8 +132,12 @@ assert.doesNotMatch(
   /use client/,
   "site footer must stay a Server Component",
 );
+assert.match(themeProvider, /use client/);
+assert.match(themeToggle, /use client/);
 assert.match(layout, /<SiteHeader locale=\{locale\} \/>/);
 assert.match(layout, /<SiteFooter locale=\{locale\} \/>/);
+assert.match(layout, /<ThemeProvider>/);
+assert.match(header, /<ThemeToggle/);
 assert.match(header, /src="\/icon\.png"/, "header logo must use app icon");
 assert.match(footer, /src="\/icon\.png"/, "footer logo must use app icon");
 assert.match(

@@ -84,7 +84,7 @@ assert.match(middleware, /\.\*\\\\\.\.\*/);
 
 assert.match(layout, /generateStaticParams/);
 assert.match(layout, /setRequestLocale\(locale\)/);
-assert.match(layout, /<html lang=\{locale\}>/);
+assert.match(layout, /<html lang=\{locale\}/);
 assert.match(layout, /NextIntlClientProvider/);
 assert.match(layout, /SiteHeader/);
 assert.match(layout, /SiteFooter/);
@@ -96,6 +96,7 @@ assert.match(
 );
 assert.match(header, /href=\{`\/\$\{item\}`\}/);
 assert.match(header, /src="\/icon\.png"/);
+assert.match(header, /themeLabel/);
 assert.match(footer, /getTranslations\(\{ locale, namespace: "Footer" \}\)/);
 assert.match(footer, /src="\/icon\.png"/);
 

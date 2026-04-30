@@ -21,6 +21,7 @@
     "brandLabel": "CCUse home",
     "primaryLabel": "Primary navigation",
     "languageLabel": "Language",
+    "themeLabel": "Theme",
     "items": {
       "home": "Home",
       "features": "Features",
@@ -30,6 +31,11 @@
     "languages": {
       "zh": "中文",
       "en": "EN"
+    },
+    "themes": {
+      "system": "Auto",
+      "light": "Light",
+      "dark": "Dark"
     }
   },
   "Footer": {

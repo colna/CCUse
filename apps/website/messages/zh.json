@@ -21,6 +21,7 @@
     "brandLabel": "CCUse 首页",
     "primaryLabel": "主导航",
     "languageLabel": "语言",
+    "themeLabel": "主题",
     "items": {
       "home": "首页",
       "features": "功能",
@@ -30,6 +31,11 @@
     "languages": {
       "zh": "中文",
       "en": "EN"
+    },
+    "themes": {
+      "system": "自动",
+      "light": "浅色",
+      "dark": "深色"
     }
   },
   "Footer": {

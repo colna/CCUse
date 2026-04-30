@@ -2,6 +2,7 @@ import Image from "next/image";
 import { getTranslations } from "next-intl/server";
 
 import { locales, type Locale } from "../i18n/routing";
+import { ThemeToggle } from "./theme-toggle";
 
 type SiteHeaderProps = {
   locale: Locale;
@@ -51,7 +52,16 @@ export async function SiteHeader({ locale }: SiteHeaderProps) {
           ))}
         </nav>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          <ThemeToggle
+            ariaLabel={t("themeLabel")}
+            labels={{
+              system: t("themes.system"),
+              light: t("themes.light"),
+              dark: t("themes.dark"),
+            }}
+          />
+
           <div
             aria-label={t("languageLabel")}
             className="flex rounded-md border border-border bg-muted/50 p-0.5 text-xs font-medium"

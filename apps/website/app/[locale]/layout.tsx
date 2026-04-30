@@ -11,6 +11,7 @@ import type { ReactNode } from "react";
 import "../globals.css";
 import { SiteFooter } from "../../components/site-footer";
 import { SiteHeader } from "../../components/site-header";
+import { ThemeProvider } from "../../components/theme-provider";
 import { defaultLocale, isLocale, locales } from "../../i18n/routing";
 
 type LocaleLayoutProps = {
@@ -60,12 +61,14 @@ export default async function LocaleLayout({
   const messages = await getMessages();
 
   return (
-    <html lang={locale}>
+    <html lang={locale} suppressHydrationWarning>
       <body className="min-h-screen bg-background text-foreground">
         <NextIntlClientProvider messages={messages}>
-          <SiteHeader locale={locale} />
-          {children}
-          <SiteFooter locale={locale} />
+          <ThemeProvider>
+            <SiteHeader locale={locale} />
+            {children}
+            <SiteFooter locale={locale} />
+          </ThemeProvider>
         </NextIntlClientProvider>
       </body>
     </html>
