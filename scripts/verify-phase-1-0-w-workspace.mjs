@@ -40,8 +40,8 @@ assert.equal(
 for (const requiredPath of [
   "apps/desktop/package.json",
   "apps/desktop/src-tauri/tauri.conf.json",
-  "apps/website/.gitkeep",
-  "packages/ui/.gitkeep",
+  "apps/website",
+  "packages/ui",
 ]) {
   assertPath(requiredPath);
 }
