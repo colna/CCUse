@@ -1,0 +1,20 @@
+{
+  "HomePage": {
+    "eyebrow": "CCUse 桌面端",
+    "title": "一个本地端点，连接高可用 AI 客户端。",
+    "description": "将 Cursor、Claude Desktop 与 OpenAI 兼容工具连接到本地回环 API，在多个供应商之间自动路由，并在上游故障时继续可用。",
+    "actions": {
+      "download": "下载",
+      "github": "GitHub"
+    },
+    "capabilitiesTitle": "核心能力",
+    "capabilities": {
+      "proxy": "本地 OpenAI 兼容代理",
+      "routing": "多供应商路由",
+      "failover": "自动故障切换"
+    }
+  },
+  "Metadata": {
+    "description": "面向多供应商 AI 路由、健康检查与自动故障切换的本地 API 代理。"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "HomePage": {
+    "eyebrow": "CCUse for desktop",
+    "title": "One local endpoint for resilient AI clients.",
+    "description": "Connect Cursor, Claude Desktop, and OpenAI-compatible tools to a loopback API that can route across providers and keep working when an upstream fails.",
+    "actions": {
+      "download": "Download",
+      "github": "GitHub"
+    },
+    "capabilitiesTitle": "Core capabilities",
+    "capabilities": {
+      "proxy": "Local OpenAI-compatible proxy",
+      "routing": "Multi-provider routing",
+      "failover": "Automatic failover"
+    }
+  },
+  "Metadata": {
+    "description": "Local API proxy for multi-provider AI routing, health checks, and automatic failover."
+  }
+}

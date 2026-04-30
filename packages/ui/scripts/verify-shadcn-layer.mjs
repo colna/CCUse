@@ -19,7 +19,7 @@ const button = read("src/components/button.tsx");
 const card = read("src/components/card.tsx");
 const dialog = read("src/components/dialog.tsx");
 const desktopButton = readRepo("apps/desktop/src/components/ui/button.tsx");
-const websitePage = readRepo("apps/website/app/page.tsx");
+const websitePage = readRepo("apps/website/app/[locale]/page.tsx");
 const websiteNextConfig = readRepo("apps/website/next.config.mjs");
 
 for (const subpath of ["./button", "./card", "./dialog"]) {

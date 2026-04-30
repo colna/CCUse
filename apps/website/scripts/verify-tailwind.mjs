@@ -11,7 +11,7 @@ function read(relativePath) {
 const packageJson = JSON.parse(read("package.json"));
 const tailwindConfig = read("tailwind.config.ts");
 const postcssConfig = read("postcss.config.mjs");
-const layout = read("app/layout.tsx");
+const layout = read("app/[locale]/layout.tsx");
 const globals = read("app/globals.css");
 const uiPackage = JSON.parse(
   readFileSync(path.join(root, "../../packages/ui/package.json"), "utf8"),
@@ -34,7 +34,7 @@ assert.match(tailwindConfig, /@ccuse\/ui\/tailwind-preset/);
 assert.match(tailwindConfig, /\.\.\/\.\.\/packages\/ui/);
 assert.match(postcssConfig, /tailwindcss/);
 assert.match(postcssConfig, /autoprefixer/);
-assert.match(layout, /import "\.\/globals\.css"/);
+assert.match(layout, /import "\.\.\/globals\.css"/);
 assert.match(globals, /@tailwind base/);
 assert.match(globals, /--primary:\s*212 100% 45%/);
 assert.match(uiPreset, /apple-headline/);

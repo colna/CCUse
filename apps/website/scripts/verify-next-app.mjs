@@ -28,8 +28,8 @@ function assertPath(relativePath) {
 }
 
 const packageJson = readJson("package.json");
-const layout = read("app/layout.tsx");
-const page = read("app/page.tsx");
+const layout = read("app/[locale]/layout.tsx");
+const page = read("app/[locale]/page.tsx");
 const config = read("next.config.mjs");
 
 function pngInfo(relativePath) {
@@ -72,15 +72,21 @@ assert.equal(packageJson.private, true);
 assert.equal(packageJson.scripts.build, "next build");
 assert.equal(packageJson.scripts.typecheck, "tsc --noEmit");
 assert.match(packageJson.dependencies?.next ?? "", /^\^?14\./);
+assert.match(packageJson.dependencies?.["next-intl"] ?? "", /^\^?4\./);
 assert.match(packageJson.dependencies?.react ?? "", /^\^?18\./);
 assert.match(packageJson.dependencies?.["react-dom"] ?? "", /^\^?18\./);
 
 for (const requiredPath of [
-  "app/layout.tsx",
-  "app/page.tsx",
+  "app/[locale]/layout.tsx",
+  "app/[locale]/page.tsx",
   "app/icon.png",
   "app/apple-icon.png",
   "app/favicon.ico",
+  "i18n/request.ts",
+  "i18n/routing.ts",
+  "messages/en.json",
+  "messages/zh.json",
+  "middleware.ts",
   "next.config.mjs",
   "next-env.d.ts",
   "tsconfig.json",
@@ -90,8 +96,8 @@ for (const requiredPath of [
 
 assert.match(
   layout,
-  /export const metadata/,
-  "root layout must export Metadata API config",
+  /export async function generateMetadata/,
+  "localized root layout must export Metadata API config",
 );
 assert.match(
   layout,
@@ -110,13 +116,18 @@ assert.doesNotMatch(
 );
 assert.match(
   page,
-  /href="\/download"/,
-  "home page must expose the download CTA",
+  /href=\{`\/\$\{locale\}\/download`\}/,
+  "home page must expose a locale-aware download CTA",
 );
 assert.match(
   config,
   /reactStrictMode:\s*true/,
   "Next config must keep React strict mode",
+);
+assert.match(
+  config,
+  /next-intl\/plugin/,
+  "Next config must install the next-intl plugin",
 );
 
 const websiteIcon = readBytes("app/icon.png");
