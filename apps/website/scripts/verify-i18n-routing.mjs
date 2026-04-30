@@ -100,8 +100,8 @@ assert.match(header, /themeLabel/);
 assert.match(footer, /getTranslations\(\{ locale, namespace: "Footer" \}\)/);
 assert.match(footer, /src="\/icon\.png"/);
 
-assert.equal(en.HomePage.actions.download, "Download");
-assert.equal(zh.HomePage.actions.download, "下载");
+assert.equal(en.HomePage.actions.download, "Download desktop");
+assert.equal(zh.HomePage.actions.download, "下载桌面端");
 assert.deepEqual(Object.keys(en.HomePage.capabilities), [
   "proxy",
   "routing",

@@ -1,11 +1,57 @@
 {
   "HomePage": {
-    "eyebrow": "CCUse for desktop",
-    "title": "One local endpoint for resilient AI clients.",
-    "description": "Connect Cursor, Claude Desktop, and OpenAI-compatible tools to a loopback API that can route across providers and keep working when an upstream fails.",
+    "eyebrow": "Local API proxy",
+    "title": "CCUse",
+    "slogan": "One local endpoint that takes over multi-provider failover.",
+    "description": "Point Cursor, Claude Desktop, and OpenAI-compatible tools at a loopback API. CCUse chooses a healthy provider when each request arrives and switches to a backup route when the primary chain fails.",
     "actions": {
-      "download": "Download",
-      "github": "GitHub"
+      "label": "Primary actions",
+      "download": "Download desktop",
+      "github": "View on GitHub"
+    },
+    "heroMetrics": {
+      "endpoint": {
+        "label": "Base URL",
+        "value": "http://127.0.0.1:8787"
+      },
+      "providers": {
+        "label": "Providers",
+        "value": "OpenAI / Claude / Gemini"
+      },
+      "failover": {
+        "label": "Failover",
+        "value": "Automatic retry per request"
+      }
+    },
+    "heroPreview": {
+      "label": "CCUse product preview",
+      "caption": "A CCUse local proxy monitor window showing the local endpoint, request path, and provider status.",
+      "windowTitle": "CCUse Proxy Monitor",
+      "endpointLabel": "Local endpoint",
+      "live": "Live",
+      "trafficLabel": "Request path",
+      "traffic": {
+        "client": "Client request",
+        "proxy": "Local policy engine",
+        "provider": "Healthy provider response"
+      },
+      "providersLabel": "Provider status",
+      "providers": {
+        "anthropic": {
+          "name": "Claude",
+          "status": "Healthy"
+        },
+        "openai": {
+          "name": "OpenAI",
+          "status": "Degraded"
+        },
+        "gemini": {
+          "name": "Gemini",
+          "status": "Standby"
+        }
+      },
+      "failoverLead": "Failover triggered.",
+      "failoverText": "When the primary provider slows down or fails, the request moves to the next available route."
     },
     "capabilitiesTitle": "Core capabilities",
     "capabilities": {

@@ -1,11 +1,57 @@
 {
   "HomePage": {
-    "eyebrow": "CCUse 桌面端",
-    "title": "一个本地端点，连接高可用 AI 客户端。",
-    "description": "将 Cursor、Claude Desktop 与 OpenAI 兼容工具连接到本地回环 API，在多个供应商之间自动路由，并在上游故障时继续可用。",
+    "eyebrow": "本地 API 代理",
+    "title": "CCUse",
+    "slogan": "一个本地端点，自动接管多供应商故障切换。",
+    "description": "把 Cursor、Claude Desktop 与 OpenAI 兼容工具连接到本地回环 API。CCUse 在请求进入时选择健康供应商，主链路故障时自动切到备用链路。",
     "actions": {
-      "download": "下载",
-      "github": "GitHub"
+      "label": "主要操作",
+      "download": "下载桌面端",
+      "github": "查看 GitHub"
+    },
+    "heroMetrics": {
+      "endpoint": {
+        "label": "Base URL",
+        "value": "http://127.0.0.1:8787"
+      },
+      "providers": {
+        "label": "供应商",
+        "value": "OpenAI / Claude / Gemini"
+      },
+      "failover": {
+        "label": "切换",
+        "value": "请求内自动重试"
+      }
+    },
+    "heroPreview": {
+      "label": "CCUse 产品预览",
+      "caption": "CCUse 本地代理监控窗口，展示本地端点、请求流和供应商状态。",
+      "windowTitle": "CCUse Proxy Monitor",
+      "endpointLabel": "本地端点",
+      "live": "运行中",
+      "trafficLabel": "请求路径",
+      "traffic": {
+        "client": "客户端请求",
+        "proxy": "本地策略引擎",
+        "provider": "健康供应商响应"
+      },
+      "providersLabel": "供应商状态",
+      "providers": {
+        "anthropic": {
+          "name": "Claude",
+          "status": "健康"
+        },
+        "openai": {
+          "name": "OpenAI",
+          "status": "降级"
+        },
+        "gemini": {
+          "name": "Gemini",
+          "status": "备用"
+        }
+      },
+      "failoverLead": "自动切换已触发。",
+      "failoverText": "主供应商变慢或失败时，请求会切换到下一条可用链路。"
     },
     "capabilitiesTitle": "核心能力",
     "capabilities": {
