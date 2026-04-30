@@ -1,0 +1,26 @@
+---
+title: CCUse Docs
+description: MDX rendering baseline for CCUse website documentation.
+---
+
+# CCUse Docs
+
+This page verifies the documentation pipeline before the full guide content lands.
+
+## Local Proxy Quick Start
+
+Point any OpenAI-compatible client at the local endpoint:
+
+```ts
+const baseUrl = "http://127.0.0.1:8787";
+const apiKey = "sk-local-example";
+```
+
+Then add providers in CCUse and keep your client configuration unchanged.
+
+## Baseline Coverage
+
+- GitHub-flavored Markdown
+- YAML frontmatter parsing
+- Heading slugs and anchor links
+- Shiki-powered code highlighting
