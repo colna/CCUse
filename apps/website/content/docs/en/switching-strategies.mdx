@@ -1,0 +1,104 @@
+---
+title: Switching Strategies
+description: Understand the five provider switching strategies and when to use each one.
+section: Routing
+order: 3
+---
+
+# Switching Strategies
+
+CCUse chooses a provider at the start of each request. If the selected provider fails with a retryable network, upstream, rate-limit, or decode error, the switch engine excludes that provider for the current retry chain and tries the next candidate.
+
+Streaming responses are different: once a stream has started, CCUse does not switch in the middle of the stream. The client should retry the request, and the next attempt can use another provider.
+
+## Quick Choice
+
+Use `smart` for most setups. It balances availability, latency, price, and your manual priority settings without requiring constant tuning.
+
+Use a narrower strategy when you have a clear operating goal:
+
+| Strategy     | Best for                                      | Main tradeoff                                 |
+| ------------ | --------------------------------------------- | --------------------------------------------- |
+| Priority     | Stable primary/backup routing                 | Backups may sit idle until the primary fails  |
+| Fastest      | Interactive coding, chat, and low-latency UX  | Can pick a more expensive provider            |
+| Cost First   | Batch jobs, background tasks, budget control  | May choose a slower provider                  |
+| Load Balance | Spreading traffic across several good keys    | Behavior depends on accurate priority weights |
+| Smart        | Default production use with mixed constraints | Requires reasonable latency and cost metadata |
+
+## Priority
+
+`priority` selects the enabled provider with the lowest priority number. A provider with priority `10` is preferred over one with priority `50`.
+
+Choose it when:
+
+- You have one trusted primary provider and one or more backups.
+- You want predictable routing for audit or billing.
+- You are testing a new provider and want it to receive traffic only after the primary fails.
+
+Keep priority numbers spaced apart, such as `10`, `20`, and `30`, so you can insert another provider later without renumbering everything.
+
+## Fastest
+
+`fastest` selects the provider with the lowest rolling response time. CCUse records response latency during normal traffic and uses that moving signal for later requests.
+
+Choose it when:
+
+- The user experience depends on quick first responses.
+- You have several providers with similar quality and cost.
+- You are routing Cursor or Claude Desktop traffic where perceived latency matters.
+
+If there is no latency history yet, CCUse falls back to the enabled provider order, which is sorted by priority.
+
+## Cost First
+
+`cost` selects the provider with the lowest configured per-token cost. Providers without cost metadata are skipped for cost comparison; if no provider has cost data, CCUse falls back to priority order.
+
+Choose it when:
+
+- You run large background prompts or batch workflows.
+- Output quality is similar across providers.
+- You want a simple budget-control default without writing custom routing rules.
+
+Fill in `cost_per_1k_tokens` for every comparable provider. Leaving the field empty makes cost routing less useful.
+
+## Load Balance
+
+`load_balance` uses weighted round-robin across enabled providers. The weight is derived from priority: lower priority numbers receive more request slots.
+
+Choose it when:
+
+- You have multiple healthy keys for the same model family.
+- You want to reduce rate-limit pressure on a single upstream account.
+- You want traffic distribution while still nudging more requests to preferred providers.
+
+Use close priorities for near-even traffic, such as `10`, `10`, and `20`. Use larger gaps when one provider should carry most of the load.
+
+## Smart
+
+`smart` assigns each provider a weighted score across four dimensions:
+
+| Dimension     | Default weight | Meaning                                    |
+| ------------- | -------------- | ------------------------------------------ |
+| Health        | `40`           | Prefer providers that are currently usable |
+| Response time | `30`           | Prefer lower rolling latency               |
+| Cost          | `20`           | Prefer lower configured per-token cost     |
+| Priority      | `10`           | Respect your manual provider preference    |
+
+Choose it when:
+
+- You want the safest default for day-to-day work.
+- Providers differ across reliability, speed, and cost.
+- You want automatic switching without constantly reordering providers.
+
+Increase the response-time weight for interactive use. Increase the cost weight for budget-sensitive workloads. Keep some priority weight if you still want manual control to influence the score.
+
+## Failure Behavior
+
+All strategies share the same retry behavior:
+
+- Disabled providers are not selected.
+- Retryable provider failures mark the provider as degraded for the current flow.
+- CCUse tries another enabled provider until the retry limit is reached.
+- Non-retryable errors, such as invalid request shape, are returned to the client.
+
+For the most predictable setup, configure at least two enabled providers, give them explicit priorities, fill in cost metadata when you use cost-aware strategies, and verify the local endpoint with a short request after changing strategy.
