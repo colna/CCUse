@@ -56,6 +56,7 @@
     "featuresEyebrow": "Core features",
     "featuresTitle": "Turn many AI providers into one reliable entry point.",
     "featuresDescription": "From local auth and health checks to strategy selection, CCUse keeps resilience inside the proxy layer while clients keep using familiar OpenAI-compatible requests.",
+    "featuresCta": "Explore details",
     "features": {
       "failover": {
         "title": "Seamless failover",
@@ -124,6 +125,547 @@
         "request": "Clients keep sending OpenAI-compatible requests to the local Base URL.",
         "selection": "The proxy validates the local key, parses the request, and chooses a healthy provider by the active strategy.",
         "recovery": "Failed responses trigger automatic switching while the health checker keeps provider state fresh."
+      }
+    }
+  },
+  "FeaturesPage": {
+    "metadata": {
+      "title": "Features",
+      "description": "A detailed look at CCUse multi-provider routing, health checks, smart strategies, monitoring, and desktop delivery."
+    },
+    "hero": {
+      "eyebrow": "Feature walkthrough",
+      "title": "The local proxy layer for resilient AI clients.",
+      "description": "CCUse gives every OpenAI-compatible client one loopback Base URL and local API Key, then handles provider selection, retries, health state, and monitoring inside the desktop app.",
+      "actionsLabel": "Feature page actions",
+      "primaryAction": "Download desktop",
+      "secondaryAction": "Start guide",
+      "preview": {
+        "label": "CCUse feature routing preview",
+        "caption": "A screenshot-style preview of CCUse routing requests from local clients to healthy providers.",
+        "windowTitle": "CCUse Feature Console",
+        "endpointLabel": "Client Base URL",
+        "status": "Ready",
+        "flowLabel": "Runtime flow",
+        "flow": {
+          "client": "Cursor / Claude Desktop sends an OpenAI-compatible request",
+          "proxy": "CCUse validates sk-local key and selects the active route",
+          "provider": "Healthy provider receives the converted request"
+        },
+        "metrics": {
+          "providers": {
+            "label": "Configured",
+            "value": "OpenAI, Claude, Gemini, relays"
+          },
+          "latency": {
+            "label": "Routing input",
+            "value": "health, latency, cost, priority"
+          },
+          "switch": {
+            "label": "Failover",
+            "value": "automatic retry before response"
+          }
+        }
+      }
+    },
+    "overview": {
+      "eyebrow": "Six core workflows",
+      "title": "Each feature owns a visible piece of the proxy runtime.",
+      "navLabel": "Feature sections"
+    },
+    "screenshotsLabel": "Screenshot-style product states",
+    "features": {
+      "failover": {
+        "eyebrow": "Request resilience",
+        "title": "Seamless failover",
+        "summary": "Move a failed request to the next viable provider without changing the client.",
+        "description": "The proxy treats provider errors, timeouts, rate limits, and quota exhaustion as routing signals. A request starts with the active strategy, then moves to a backup provider when the current route cannot complete safely.",
+        "details": {
+          "first": {
+            "label": "Triggers",
+            "value": "Timeouts, 429, 5xx, exhausted quota, and degraded health"
+          },
+          "second": {
+            "label": "Boundary",
+            "value": "Switches before a final response; streaming responses stay on one route"
+          },
+          "third": {
+            "label": "Client impact",
+            "value": "Cursor, Claude Desktop, and CLI tools keep one Base URL"
+          }
+        },
+        "shots": {
+          "setup": {
+            "status": "Detect",
+            "title": "Primary provider stalls",
+            "caption": "The request enters through the local endpoint and the active provider crosses the timeout or error threshold.",
+            "rows": {
+              "first": {
+                "label": "Route",
+                "value": "Claude priority 1"
+              },
+              "second": {
+                "label": "Signal",
+                "value": "Request timeout"
+              },
+              "third": {
+                "label": "Action",
+                "value": "Mark degraded"
+              }
+            },
+            "footer": "The failure is recorded with the provider id, status, and request context for the switch history."
+          },
+          "routing": {
+            "status": "Switch",
+            "title": "Backup route selected",
+            "caption": "The engine filters unhealthy providers and selects the next eligible route using the configured strategy.",
+            "rows": {
+              "first": {
+                "label": "Candidate",
+                "value": "OpenAI priority 2"
+              },
+              "second": {
+                "label": "Health",
+                "value": "Healthy"
+              },
+              "third": {
+                "label": "Retry",
+                "value": "Same payload"
+              }
+            },
+            "footer": "Provider-specific converters keep the upstream request shape correct while the client still speaks OpenAI-compatible HTTP."
+          },
+          "result": {
+            "status": "Recover",
+            "title": "Client receives a normal response",
+            "caption": "The response returns through the same local endpoint, so the calling app does not need provider-specific fallback logic.",
+            "rows": {
+              "first": {
+                "label": "Response",
+                "value": "200 OK"
+              },
+              "second": {
+                "label": "History",
+                "value": "Claude to OpenAI"
+              },
+              "third": {
+                "label": "Notice",
+                "value": "Desktop alert"
+              }
+            },
+            "footer": "The switch event stays visible in monitoring so the operator can fix the failed provider later."
+          }
+        }
+      },
+      "multiProvider": {
+        "eyebrow": "Provider control",
+        "title": "Multi-provider",
+        "summary": "Put OpenAI, Claude, Gemini, relay services, and custom endpoints behind one local API.",
+        "description": "CCUse stores provider credentials locally, lets each route define its own Base URL and priority, and exposes one local key to downstream tools. The client stays stable while the upstream provider set changes.",
+        "details": {
+          "first": {
+            "label": "Provider types",
+            "value": "OpenAI, Anthropic, Gemini, domestic relays, and custom endpoints"
+          },
+          "second": {
+            "label": "Credential model",
+            "value": "Upstream API keys stay encrypted in the desktop app"
+          },
+          "third": {
+            "label": "Client contract",
+            "value": "One local Base URL and one sk-local key"
+          }
+        },
+        "shots": {
+          "setup": {
+            "status": "Add",
+            "title": "Register every upstream",
+            "caption": "Each provider card keeps its API Key, Base URL, model family, priority, and optional limits together.",
+            "rows": {
+              "first": {
+                "label": "Claude",
+                "value": "priority 1"
+              },
+              "second": {
+                "label": "OpenAI",
+                "value": "priority 2"
+              },
+              "third": {
+                "label": "Relay",
+                "value": "custom URL"
+              }
+            },
+            "footer": "Operators can add or disable providers without asking every client to update configuration."
+          },
+          "routing": {
+            "status": "Normalize",
+            "title": "Convert provider formats",
+            "caption": "Requests arrive as a unified shape, then provider adapters translate them for each upstream API.",
+            "rows": {
+              "first": {
+                "label": "Input",
+                "value": "OpenAI-compatible"
+              },
+              "second": {
+                "label": "Adapter",
+                "value": "Anthropic / Gemini"
+              },
+              "third": {
+                "label": "Output",
+                "value": "Unified response"
+              }
+            },
+            "footer": "The conversion layer is what lets one local endpoint safely front providers with different native protocols."
+          },
+          "result": {
+            "status": "Serve",
+            "title": "One endpoint for all tools",
+            "caption": "Cursor, Claude Desktop, Continue, and scripts all point at the same loopback server.",
+            "rows": {
+              "first": {
+                "label": "Base URL",
+                "value": "127.0.0.1:8787"
+              },
+              "second": {
+                "label": "Key",
+                "value": "sk-local"
+              },
+              "third": {
+                "label": "Clients",
+                "value": "No provider swap"
+              }
+            },
+            "footer": "Client configuration becomes durable even when upstream vendors, relays, or priorities change."
+          }
+        }
+      },
+      "healthCheck": {
+        "eyebrow": "Runtime signal",
+        "title": "Health checks",
+        "summary": "Continuously score provider availability before a user request needs a route.",
+        "description": "Background probes keep provider status fresh using model-list checks or low-cost requests. The switch engine can avoid routes already marked Degraded or Down instead of discovering failure only on live traffic.",
+        "details": {
+          "first": {
+            "label": "States",
+            "value": "Healthy, Degraded, and Down"
+          },
+          "second": {
+            "label": "Signals",
+            "value": "Latency, status code, rate limit, and recovery events"
+          },
+          "third": {
+            "label": "Usage",
+            "value": "Cached status feeds routing, dashboard cards, and notifications"
+          }
+        },
+        "shots": {
+          "setup": {
+            "status": "Probe",
+            "title": "Low-cost checks run in the background",
+            "caption": "The health checker periodically verifies whether each configured provider can accept traffic.",
+            "rows": {
+              "first": {
+                "label": "Interval",
+                "value": "60 seconds"
+              },
+              "second": {
+                "label": "Probe",
+                "value": "Models / ping"
+              },
+              "third": {
+                "label": "Budget",
+                "value": "Low-cost"
+              }
+            },
+            "footer": "Checks are designed to be cheap enough to run continuously without becoming the main source of cost."
+          },
+          "routing": {
+            "status": "Classify",
+            "title": "Provider state is cached",
+            "caption": "The latest probe result is normalized into a small set of states the routing layer can read quickly.",
+            "rows": {
+              "first": {
+                "label": "Claude",
+                "value": "Healthy"
+              },
+              "second": {
+                "label": "OpenAI",
+                "value": "Degraded"
+              },
+              "third": {
+                "label": "Relay",
+                "value": "Down"
+              }
+            },
+            "footer": "A stale or failing provider can be bypassed before it slows down the next user request."
+          },
+          "result": {
+            "status": "Notify",
+            "title": "State changes surface immediately",
+            "caption": "When a provider changes status, the app emits an event that can update the dashboard and desktop notifications.",
+            "rows": {
+              "first": {
+                "label": "Event",
+                "value": "provider-status-changed"
+              },
+              "second": {
+                "label": "Dashboard",
+                "value": "Live status"
+              },
+              "third": {
+                "label": "Operator",
+                "value": "Actionable alert"
+              }
+            },
+            "footer": "Health changes are visible without tailing logs or waiting for user-facing failures."
+          }
+        }
+      },
+      "smartStrategy": {
+        "eyebrow": "Routing policy",
+        "title": "Smart strategy",
+        "summary": "Choose routes by priority, latency, cost, load balancing, or weighted scoring.",
+        "description": "Routing can be simple and predictable or tuned for speed and cost. Smart mode combines availability, latency, cost, and priority so the best route can change as provider conditions change.",
+        "details": {
+          "first": {
+            "label": "Modes",
+            "value": "priority, fastest, cost, load_balance, and smart"
+          },
+          "second": {
+            "label": "Smart weights",
+            "value": "40% availability, 30% latency, 20% cost, 10% priority"
+          },
+          "third": {
+            "label": "Control",
+            "value": "Operators can trade stability, speed, and budget explicitly"
+          }
+        },
+        "shots": {
+          "setup": {
+            "status": "Select",
+            "title": "Pick the routing mode",
+            "caption": "Use priority for deterministic order, fastest for latency, cost for budget, load balance for distribution, or smart for mixed goals.",
+            "rows": {
+              "first": {
+                "label": "Default",
+                "value": "Smart"
+              },
+              "second": {
+                "label": "Timeout",
+                "value": "30 seconds"
+              },
+              "third": {
+                "label": "Retries",
+                "value": "3 attempts"
+              }
+            },
+            "footer": "Strategy is a runtime policy, not a client setting, so it can change without reconfiguring downstream tools."
+          },
+          "routing": {
+            "status": "Score",
+            "title": "Score healthy candidates",
+            "caption": "Smart mode weighs availability first, then latency, cost, and priority to rank eligible providers.",
+            "rows": {
+              "first": {
+                "label": "Availability",
+                "value": "40%"
+              },
+              "second": {
+                "label": "Latency",
+                "value": "30%"
+              },
+              "third": {
+                "label": "Cost + priority",
+                "value": "30%"
+              }
+            },
+            "footer": "The engine skips providers that fail health gates before comparing scores."
+          },
+          "result": {
+            "status": "Route",
+            "title": "Best candidate wins this request",
+            "caption": "The selected provider can differ from the previous request when latency, health, or cost metadata changes.",
+            "rows": {
+              "first": {
+                "label": "Winner",
+                "value": "Claude"
+              },
+              "second": {
+                "label": "Reason",
+                "value": "Healthy + fast"
+              },
+              "third": {
+                "label": "Fallback",
+                "value": "OpenAI"
+              }
+            },
+            "footer": "Switch history records why routing moved, which keeps policy behavior explainable."
+          }
+        }
+      },
+      "monitoring": {
+        "eyebrow": "Operations view",
+        "title": "Live monitoring",
+        "summary": "See provider status, latency, success rate, cost, and switch history in one dashboard.",
+        "description": "The monitoring surface turns proxy behavior into readable operations data: current provider, request totals, 24-hour success rate, latency, cost, and recent switches.",
+        "details": {
+          "first": {
+            "label": "Dashboard",
+            "value": "Provider cards, request volume, success rate, and latency"
+          },
+          "second": {
+            "label": "History",
+            "value": "Newest 50 switch events with reason and provider ids"
+          },
+          "third": {
+            "label": "Alerts",
+            "value": "Desktop notifications for failures, quota, and recovery"
+          }
+        },
+        "shots": {
+          "setup": {
+            "status": "Observe",
+            "title": "Status cards stay current",
+            "caption": "The dashboard highlights the active provider and the latest health state for every route.",
+            "rows": {
+              "first": {
+                "label": "Current",
+                "value": "Claude"
+              },
+              "second": {
+                "label": "Success",
+                "value": "99.2%"
+              },
+              "third": {
+                "label": "Average",
+                "value": "1.2s"
+              }
+            },
+            "footer": "The first screen answers whether traffic is healthy before the operator opens raw logs."
+          },
+          "routing": {
+            "status": "Trace",
+            "title": "Switch history explains movement",
+            "caption": "Recent switch events show where traffic moved and which failure condition caused the reroute.",
+            "rows": {
+              "first": {
+                "label": "From",
+                "value": "Claude"
+              },
+              "second": {
+                "label": "To",
+                "value": "OpenAI"
+              },
+              "third": {
+                "label": "Reason",
+                "value": "Timeout"
+              }
+            },
+            "footer": "The timeline is intentionally bounded to the newest events so diagnosis stays fast."
+          },
+          "result": {
+            "status": "Measure",
+            "title": "Cost and latency trends stay visible",
+            "caption": "Aggregate cards show whether the current strategy is meeting reliability and budget goals.",
+            "rows": {
+              "first": {
+                "label": "P95",
+                "value": "2.4s"
+              },
+              "second": {
+                "label": "Cost",
+                "value": "$12.40"
+              },
+              "third": {
+                "label": "Requests",
+                "value": "1,234"
+              }
+            },
+            "footer": "Operators can tune routing strategy from observed behavior instead of guessing."
+          }
+        }
+      },
+      "crossPlatform": {
+        "eyebrow": "Desktop delivery",
+        "title": "Cross-platform",
+        "summary": "Ship the same local proxy experience to macOS Apple Silicon, macOS Intel, and Windows x64.",
+        "description": "CCUse is a Tauri 2 desktop app: Rust owns the local proxy runtime while React renders the control surface. The release pipeline produces the three supported installer targets only.",
+        "details": {
+          "first": {
+            "label": "macOS",
+            "value": "Apple Silicon and Intel DMG packages"
+          },
+          "second": {
+            "label": "Windows",
+            "value": "x64 setup installer with WebView2 guidance"
+          },
+          "third": {
+            "label": "Runtime",
+            "value": "Native tray, local HTTP server, and encrypted config"
+          }
+        },
+        "shots": {
+          "setup": {
+            "status": "Install",
+            "title": "Download the matching package",
+            "caption": "The website and release flow keep the supported platform artifacts explicit.",
+            "rows": {
+              "first": {
+                "label": "macOS ARM",
+                "value": "aarch64.dmg"
+              },
+              "second": {
+                "label": "macOS Intel",
+                "value": "x64.dmg"
+              },
+              "third": {
+                "label": "Windows",
+                "value": "x64-setup.exe"
+              }
+            },
+            "footer": "Unsupported bundle targets stay out of the release surface to keep downloads unambiguous."
+          },
+          "routing": {
+            "status": "Run",
+            "title": "Native app owns the proxy",
+            "caption": "The desktop shell starts the local server, exposes tray actions, and keeps the proxy available while clients run.",
+            "rows": {
+              "first": {
+                "label": "Server",
+                "value": "localhost:8787"
+              },
+              "second": {
+                "label": "Tray",
+                "value": "copy key / restart"
+              },
+              "third": {
+                "label": "Storage",
+                "value": "encrypted SQLite"
+              }
+            },
+            "footer": "The proxy stays local to the machine, which keeps client setup simple and provider secrets off remote dashboards."
+          },
+          "result": {
+            "status": "Operate",
+            "title": "Same workflow across machines",
+            "caption": "Operators get the same provider setup, switching controls, monitoring, and local key model on every supported platform.",
+            "rows": {
+              "first": {
+                "label": "UI",
+                "value": "React"
+              },
+              "second": {
+                "label": "Core",
+                "value": "Rust"
+              },
+              "third": {
+                "label": "Shell",
+                "value": "Tauri 2"
+              }
+            },
+            "footer": "Cross-platform delivery does not change the client contract: one local Base URL and one local API key."
+          }
+        }
       }
     }
   },

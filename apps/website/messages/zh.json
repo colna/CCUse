@@ -56,6 +56,7 @@
     "featuresEyebrow": "核心特性",
     "featuresTitle": "把多个 AI 供应商收拢成一个稳定入口。",
     "featuresDescription": "从本地认证、健康检查到策略选择，CCUse 把高可用链路封装在代理层，让客户端继续使用熟悉的 OpenAI 兼容请求方式。",
+    "featuresCta": "查看详情",
     "features": {
       "failover": {
         "title": "无感切换",
@@ -124,6 +125,547 @@
         "request": "客户端继续发送 OpenAI 兼容请求到本地 Base URL。",
         "selection": "代理验证本地 Key，解析请求，然后按当前策略选择健康供应商。",
         "recovery": "响应失败会触发自动切换；健康检查器持续更新供应商状态。"
+      }
+    }
+  },
+  "FeaturesPage": {
+    "metadata": {
+      "title": "功能",
+      "description": "详细了解 CCUse 的多供应商路由、健康检查、智能策略、监控与桌面端交付能力。"
+    },
+    "hero": {
+      "eyebrow": "功能详解",
+      "title": "面向高可用 AI 客户端的本地代理层。",
+      "description": "CCUse 为每个 OpenAI 兼容客户端提供一个本地回环 Base URL 和本地 API Key，然后在桌面端内部处理供应商选择、重试、健康状态和监控。",
+      "actionsLabel": "功能页操作",
+      "primaryAction": "下载桌面端",
+      "secondaryAction": "入门指南",
+      "preview": {
+        "label": "CCUse 功能路由预览",
+        "caption": "CCUse 将本地客户端请求路由到健康供应商的截图式预览。",
+        "windowTitle": "CCUse Feature Console",
+        "endpointLabel": "客户端 Base URL",
+        "status": "就绪",
+        "flowLabel": "运行时流程",
+        "flow": {
+          "client": "Cursor / Claude Desktop 发起 OpenAI 兼容请求",
+          "proxy": "CCUse 校验 sk-local key 并选择当前路由",
+          "provider": "健康供应商收到转换后的请求"
+        },
+        "metrics": {
+          "providers": {
+            "label": "已配置",
+            "value": "OpenAI、Claude、Gemini、中转商"
+          },
+          "latency": {
+            "label": "路由输入",
+            "value": "健康、延迟、成本、优先级"
+          },
+          "switch": {
+            "label": "故障切换",
+            "value": "响应前自动重试"
+          }
+        }
+      }
+    },
+    "overview": {
+      "eyebrow": "六个核心工作流",
+      "title": "每个功能都对应代理运行时的一段可观察能力。",
+      "navLabel": "功能章节"
+    },
+    "screenshotsLabel": "截图式产品状态",
+    "features": {
+      "failover": {
+        "eyebrow": "请求韧性",
+        "title": "无感切换",
+        "summary": "在客户端无需改动的前提下，把失败请求移动到下一条可用供应商链路。",
+        "description": "代理会把供应商错误、超时、限流和配额耗尽视为路由信号。请求先按当前策略进入首选链路，当该链路无法安全完成时，再切到备用供应商。",
+        "details": {
+          "first": {
+            "label": "触发条件",
+            "value": "超时、429、5xx、配额耗尽和健康状态降级"
+          },
+          "second": {
+            "label": "切换边界",
+            "value": "最终响应前切换；streaming 响应中途不换路由"
+          },
+          "third": {
+            "label": "客户端影响",
+            "value": "Cursor、Claude Desktop 与 CLI 工具继续使用同一个 Base URL"
+          }
+        },
+        "shots": {
+          "setup": {
+            "status": "检测",
+            "title": "主供应商响应停滞",
+            "caption": "请求从本地端点进入，当前供应商触发超时或错误阈值。",
+            "rows": {
+              "first": {
+                "label": "路由",
+                "value": "Claude 优先级 1"
+              },
+              "second": {
+                "label": "信号",
+                "value": "请求超时"
+              },
+              "third": {
+                "label": "动作",
+                "value": "标记降级"
+              }
+            },
+            "footer": "失败会带着供应商 id、状态和请求上下文写入切换历史。"
+          },
+          "routing": {
+            "status": "切换",
+            "title": "选择备用链路",
+            "caption": "引擎过滤不健康供应商，并按当前策略选择下一条可用路由。",
+            "rows": {
+              "first": {
+                "label": "候选",
+                "value": "OpenAI 优先级 2"
+              },
+              "second": {
+                "label": "健康",
+                "value": "Healthy"
+              },
+              "third": {
+                "label": "重试",
+                "value": "同一请求体"
+              }
+            },
+            "footer": "供应商转换器会保持上游请求格式正确，而客户端仍然只发 OpenAI 兼容 HTTP。"
+          },
+          "result": {
+            "status": "恢复",
+            "title": "客户端收到正常响应",
+            "caption": "响应从同一个本地端点返回，调用方无需实现供应商级 fallback。",
+            "rows": {
+              "first": {
+                "label": "响应",
+                "value": "200 OK"
+              },
+              "second": {
+                "label": "历史",
+                "value": "Claude 到 OpenAI"
+              },
+              "third": {
+                "label": "提示",
+                "value": "桌面通知"
+              }
+            },
+            "footer": "切换事件会留在监控里，方便稍后修复失败供应商。"
+          }
+        }
+      },
+      "multiProvider": {
+        "eyebrow": "供应商控制",
+        "title": "多供应商",
+        "summary": "把 OpenAI、Claude、Gemini、中转商和自定义端点放在同一个本地 API 后面。",
+        "description": "CCUse 在本地保存供应商凭据，让每条路由声明自己的 Base URL 和优先级，并只向下游工具暴露一个本地 Key。上游供应商集合变化时，客户端配置仍保持稳定。",
+        "details": {
+          "first": {
+            "label": "供应商类型",
+            "value": "OpenAI、Anthropic、Gemini、国内中转商和自定义端点"
+          },
+          "second": {
+            "label": "凭据模型",
+            "value": "上游 API Key 加密保存在桌面端"
+          },
+          "third": {
+            "label": "客户端契约",
+            "value": "一个本地 Base URL 和一个 sk-local key"
+          }
+        },
+        "shots": {
+          "setup": {
+            "status": "添加",
+            "title": "注册所有上游供应商",
+            "caption": "每张供应商卡片收拢 API Key、Base URL、模型族、优先级和可选限流配置。",
+            "rows": {
+              "first": {
+                "label": "Claude",
+                "value": "优先级 1"
+              },
+              "second": {
+                "label": "OpenAI",
+                "value": "优先级 2"
+              },
+              "third": {
+                "label": "中转商",
+                "value": "自定义 URL"
+              }
+            },
+            "footer": "运维者可以增删或停用供应商，不需要要求每个客户端重新配置。"
+          },
+          "routing": {
+            "status": "归一",
+            "title": "转换供应商格式",
+            "caption": "请求先进入统一结构，再由供应商适配器转换到对应上游 API。",
+            "rows": {
+              "first": {
+                "label": "输入",
+                "value": "OpenAI 兼容"
+              },
+              "second": {
+                "label": "适配器",
+                "value": "Anthropic / Gemini"
+              },
+              "third": {
+                "label": "输出",
+                "value": "统一响应"
+              }
+            },
+            "footer": "转换层让一个本地端点能够安全代理不同原生协议的供应商。"
+          },
+          "result": {
+            "status": "服务",
+            "title": "所有工具共用一个端点",
+            "caption": "Cursor、Claude Desktop、Continue 和脚本都指向同一个回环服务。",
+            "rows": {
+              "first": {
+                "label": "Base URL",
+                "value": "127.0.0.1:8787"
+              },
+              "second": {
+                "label": "Key",
+                "value": "sk-local"
+              },
+              "third": {
+                "label": "客户端",
+                "value": "无需切换供应商"
+              }
+            },
+            "footer": "即使上游供应商、中转商或优先级变化，客户端配置也能保持长期稳定。"
+          }
+        }
+      },
+      "healthCheck": {
+        "eyebrow": "运行时信号",
+        "title": "健康检查",
+        "summary": "在用户请求需要路由之前，持续评估供应商可用性。",
+        "description": "后台探测会通过模型列表或低成本请求刷新供应商状态。切换引擎可以避开已经被标记为 Degraded 或 Down 的路由，而不是等真实流量踩中失败。",
+        "details": {
+          "first": {
+            "label": "状态",
+            "value": "Healthy、Degraded、Down"
+          },
+          "second": {
+            "label": "信号",
+            "value": "延迟、状态码、限流和恢复事件"
+          },
+          "third": {
+            "label": "用途",
+            "value": "缓存状态用于路由、仪表盘卡片和通知"
+          }
+        },
+        "shots": {
+          "setup": {
+            "status": "探测",
+            "title": "低成本检查在后台运行",
+            "caption": "健康检查器定时确认每个已配置供应商是否能够接收流量。",
+            "rows": {
+              "first": {
+                "label": "间隔",
+                "value": "60 秒"
+              },
+              "second": {
+                "label": "探测",
+                "value": "Models / ping"
+              },
+              "third": {
+                "label": "预算",
+                "value": "低成本"
+              }
+            },
+            "footer": "检查设计得足够轻量，可以持续运行而不成为主要成本来源。"
+          },
+          "routing": {
+            "status": "分类",
+            "title": "供应商状态被缓存",
+            "caption": "最新探测结果会归一成少量状态，供路由层快速读取。",
+            "rows": {
+              "first": {
+                "label": "Claude",
+                "value": "Healthy"
+              },
+              "second": {
+                "label": "OpenAI",
+                "value": "Degraded"
+              },
+              "third": {
+                "label": "中转商",
+                "value": "Down"
+              }
+            },
+            "footer": "过期或失败的供应商会在拖慢下一次用户请求前被绕过。"
+          },
+          "result": {
+            "status": "通知",
+            "title": "状态变化立刻浮现",
+            "caption": "供应商状态变化时，应用会发出事件用于刷新仪表盘和桌面通知。",
+            "rows": {
+              "first": {
+                "label": "事件",
+                "value": "provider-status-changed"
+              },
+              "second": {
+                "label": "仪表盘",
+                "value": "实时状态"
+              },
+              "third": {
+                "label": "操作者",
+                "value": "可行动告警"
+              }
+            },
+            "footer": "无需翻日志或等到用户可见故障，健康变化就能被看到。"
+          }
+        }
+      },
+      "smartStrategy": {
+        "eyebrow": "路由策略",
+        "title": "智能策略",
+        "summary": "按优先级、延迟、成本、负载均衡或综合评分选择路由。",
+        "description": "路由可以简单可预测，也可以针对速度和成本调优。智能模式综合可用性、延迟、成本和优先级，让最佳路由随着供应商状态变化而变化。",
+        "details": {
+          "first": {
+            "label": "模式",
+            "value": "priority、fastest、cost、load_balance、smart"
+          },
+          "second": {
+            "label": "Smart 权重",
+            "value": "40% 可用性、30% 延迟、20% 成本、10% 优先级"
+          },
+          "third": {
+            "label": "控制",
+            "value": "稳定性、速度和预算目标可以显式取舍"
+          }
+        },
+        "shots": {
+          "setup": {
+            "status": "选择",
+            "title": "选择路由模式",
+            "caption": "优先级适合确定顺序，最快响应适合低延迟，成本优先适合预算，负载均衡适合分散流量，智能模式适合混合目标。",
+            "rows": {
+              "first": {
+                "label": "默认",
+                "value": "Smart"
+              },
+              "second": {
+                "label": "超时",
+                "value": "30 秒"
+              },
+              "third": {
+                "label": "重试",
+                "value": "3 次"
+              }
+            },
+            "footer": "策略属于运行时配置，不是客户端配置，因此可以调整而不影响下游工具。"
+          },
+          "routing": {
+            "status": "评分",
+            "title": "为健康候选项打分",
+            "caption": "智能模式先看可用性，再结合延迟、成本和优先级为候选供应商排序。",
+            "rows": {
+              "first": {
+                "label": "可用性",
+                "value": "40%"
+              },
+              "second": {
+                "label": "延迟",
+                "value": "30%"
+              },
+              "third": {
+                "label": "成本 + 优先级",
+                "value": "30%"
+              }
+            },
+            "footer": "引擎会先跳过未通过健康门槛的供应商，再比较分数。"
+          },
+          "result": {
+            "status": "路由",
+            "title": "最佳候选承接本次请求",
+            "caption": "当延迟、健康状态或成本元数据变化时，本次选择的供应商可能和上一次不同。",
+            "rows": {
+              "first": {
+                "label": "胜出",
+                "value": "Claude"
+              },
+              "second": {
+                "label": "原因",
+                "value": "健康 + 快速"
+              },
+              "third": {
+                "label": "备用",
+                "value": "OpenAI"
+              }
+            },
+            "footer": "切换历史会记录路由移动原因，让策略行为保持可解释。"
+          }
+        }
+      },
+      "monitoring": {
+        "eyebrow": "运维视图",
+        "title": "实时监控",
+        "summary": "在同一个仪表盘里查看供应商状态、延迟、成功率、成本和切换历史。",
+        "description": "监控界面把代理行为变成可读的运维数据：当前供应商、请求总量、24 小时成功率、延迟、成本和最近切换。",
+        "details": {
+          "first": {
+            "label": "仪表盘",
+            "value": "供应商卡片、请求量、成功率和延迟"
+          },
+          "second": {
+            "label": "历史",
+            "value": "最近 50 条切换事件，包含原因和供应商 id"
+          },
+          "third": {
+            "label": "告警",
+            "value": "面向故障、配额和恢复的桌面通知"
+          }
+        },
+        "shots": {
+          "setup": {
+            "status": "观察",
+            "title": "状态卡片保持实时",
+            "caption": "仪表盘突出当前供应商，并展示每条路由最新健康状态。",
+            "rows": {
+              "first": {
+                "label": "当前",
+                "value": "Claude"
+              },
+              "second": {
+                "label": "成功率",
+                "value": "99.2%"
+              },
+              "third": {
+                "label": "平均响应",
+                "value": "1.2s"
+              }
+            },
+            "footer": "第一屏能先回答流量是否健康，而不是要求操作者打开原始日志。"
+          },
+          "routing": {
+            "status": "追踪",
+            "title": "切换历史解释流量移动",
+            "caption": "最近切换事件展示流量从哪里移动到哪里，以及是什么失败条件触发了切换。",
+            "rows": {
+              "first": {
+                "label": "From",
+                "value": "Claude"
+              },
+              "second": {
+                "label": "To",
+                "value": "OpenAI"
+              },
+              "third": {
+                "label": "原因",
+                "value": "Timeout"
+              }
+            },
+            "footer": "时间线有意限制为最新事件，让诊断保持快速。"
+          },
+          "result": {
+            "status": "度量",
+            "title": "成本和延迟趋势持续可见",
+            "caption": "聚合卡片展示当前策略是否满足可靠性和预算目标。",
+            "rows": {
+              "first": {
+                "label": "P95",
+                "value": "2.4s"
+              },
+              "second": {
+                "label": "成本",
+                "value": "$12.40"
+              },
+              "third": {
+                "label": "请求",
+                "value": "1,234"
+              }
+            },
+            "footer": "运维者可以根据观测结果调策略，而不是凭感觉猜。"
+          }
+        }
+      },
+      "crossPlatform": {
+        "eyebrow": "桌面交付",
+        "title": "跨平台",
+        "summary": "把相同的本地代理体验交付到 macOS Apple Silicon、macOS Intel 和 Windows x64。",
+        "description": "CCUse 是 Tauri 2 桌面应用：Rust 负责本地代理运行时，React 渲染控制界面。发布流水线只产出三个受支持的安装包目标。",
+        "details": {
+          "first": {
+            "label": "macOS",
+            "value": "Apple Silicon 与 Intel DMG 安装包"
+          },
+          "second": {
+            "label": "Windows",
+            "value": "x64 setup 安装器，并提供 WebView2 指引"
+          },
+          "third": {
+            "label": "运行时",
+            "value": "原生托盘、本地 HTTP 服务和加密配置"
+          }
+        },
+        "shots": {
+          "setup": {
+            "status": "安装",
+            "title": "下载匹配平台的安装包",
+            "caption": "官网和发布流程会明确展示受支持的平台产物。",
+            "rows": {
+              "first": {
+                "label": "macOS ARM",
+                "value": "aarch64.dmg"
+              },
+              "second": {
+                "label": "macOS Intel",
+                "value": "x64.dmg"
+              },
+              "third": {
+                "label": "Windows",
+                "value": "x64-setup.exe"
+              }
+            },
+            "footer": "不支持的 bundle target 不出现在发布面，避免下载选择产生歧义。"
+          },
+          "routing": {
+            "status": "运行",
+            "title": "原生应用承载代理",
+            "caption": "桌面 shell 启动本地服务，提供托盘动作，并在客户端运行期间保持代理可用。",
+            "rows": {
+              "first": {
+                "label": "服务",
+                "value": "localhost:8787"
+              },
+              "second": {
+                "label": "托盘",
+                "value": "复制 key / 重启"
+              },
+              "third": {
+                "label": "存储",
+                "value": "加密 SQLite"
+              }
+            },
+            "footer": "代理保留在本机运行，让客户端配置简单，同时避免供应商密钥进入远端面板。"
+          },
+          "result": {
+            "status": "运维",
+            "title": "不同机器保持同一工作流",
+            "caption": "每个受支持平台都提供相同的供应商配置、切换控制、监控和本地 Key 模型。",
+            "rows": {
+              "first": {
+                "label": "UI",
+                "value": "React"
+              },
+              "second": {
+                "label": "核心",
+                "value": "Rust"
+              },
+              "third": {
+                "label": "Shell",
+                "value": "Tauri 2"
+              }
+            },
+            "footer": "跨平台交付不会改变客户端契约：一个本地 Base URL 和一个本地 API Key。"
+          }
+        }
       }
     }
   },

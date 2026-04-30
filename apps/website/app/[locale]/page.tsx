@@ -205,21 +205,33 @@ export default async function HomePage({ params }: HomePageProps) {
           <ul className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {featureItems.map(({ key, Icon, iconClassName }) => (
               <li key={key}>
-                <Card className="h-full border-border/70 bg-card shadow-none transition-colors hover:border-primary/50">
-                  <CardContent className="flex h-full flex-col p-6">
-                    <div
-                      className={`flex h-10 w-10 items-center justify-center rounded-lg ${iconClassName}`}
-                    >
-                      <Icon aria-hidden="true" className="h-5 w-5" />
-                    </div>
-                    <h3 className="mt-5 font-display text-xl font-semibold leading-7">
-                      {t(`features.${key}.title`)}
-                    </h3>
-                    <p className="mt-3 text-sm leading-6 text-muted-foreground">
-                      {t(`features.${key}.description`)}
-                    </p>
-                  </CardContent>
-                </Card>
+                <a
+                  className="group block h-full rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  href={`/${locale}/features#${key}`}
+                >
+                  <Card className="h-full border-border/70 bg-card shadow-none transition-colors group-hover:border-primary/50">
+                    <CardContent className="flex h-full flex-col p-6">
+                      <div
+                        className={`flex h-10 w-10 items-center justify-center rounded-lg ${iconClassName}`}
+                      >
+                        <Icon aria-hidden="true" className="h-5 w-5" />
+                      </div>
+                      <h3 className="mt-5 font-display text-xl font-semibold leading-7">
+                        {t(`features.${key}.title`)}
+                      </h3>
+                      <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                        {t(`features.${key}.description`)}
+                      </p>
+                      <span className="mt-auto flex items-center gap-2 pt-5 text-sm font-semibold text-primary">
+                        {t("featuresCta")}
+                        <ArrowRight
+                          aria-hidden="true"
+                          className="h-4 w-4 transition-transform group-hover:translate-x-0.5"
+                        />
+                      </span>
+                    </CardContent>
+                  </Card>
+                </a>
               </li>
             ))}
           </ul>

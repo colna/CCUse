@@ -38,6 +38,8 @@ assert.match(page, /id="features-title"/);
 assert.match(page, /featuresEyebrow/);
 assert.match(page, /featuresTitle/);
 assert.match(page, /featuresDescription/);
+assert.match(page, /featuresCta/);
+assert.match(page, /href=\{`\/\$\{locale\}\/features#\$\{key\}`\}/);
 assert.match(page, /sm:grid-cols-2 lg:grid-cols-3/);
 assert.match(page, /@ccuse\/ui\/card/);
 
@@ -64,6 +66,7 @@ for (const [locale, bundle] of Object.entries(messages)) {
   assert.ok(home.featuresEyebrow, `${locale} features eyebrow missing`);
   assert.ok(home.featuresTitle, `${locale} features title missing`);
   assert.ok(home.featuresDescription, `${locale} features description missing`);
+  assert.ok(home.featuresCta, `${locale} features cta missing`);
   assert.deepEqual(Object.keys(home.features), featureKeys);
 
   for (const key of featureKeys) {

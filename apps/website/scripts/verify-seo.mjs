@@ -60,6 +60,7 @@ assert.match(sitemap, /locales\.flatMap/);
 assert.match(sitemap, /getRegisteredDocsSlugs/);
 assert.match(sitemap, /absoluteUrl\(`\/\$\{locale\}`\)/);
 assert.match(sitemap, /absoluteUrl\(`\/\$\{locale\}\/docs`\)/);
+assert.match(sitemap, /absoluteUrl\(`\/\$\{locale\}\/features`\)/);
 assert.match(sitemap, /absoluteUrl\(`\/\$\{locale\}\/docs\/\$\{slug\}`\)/);
 assert.match(sitemap, /changeFrequency: "weekly"/);
 
