@@ -157,6 +157,12 @@ fn task_review_documents_completion_scope_and_remaining_exceptions() {
         "`T1.0.6.33`",
         "v1.0.0",
         "v1.0.1",
+        "Core Functionality Re-Verification",
+        "Generated URL and key",
+        "Multi-provider failover",
+        "chat_completions_retries_after_429_and_uses_next_provider",
+        "Authorization: Bearer ...",
+        "x-api-key",
         "not fully complete as written",
     ] {
         assert_task_review_contains(needle);
