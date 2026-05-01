@@ -40,6 +40,24 @@ export default function sitemap(): MetadataRoute.Sitemap {
         changeFrequency: "hourly" as const,
         priority: 0.9,
       },
+      {
+        url: absoluteUrl(`/${locale}/download/preview`),
+        lastModified,
+        changeFrequency: "hourly" as const,
+        priority: 0.5,
+      },
+      {
+        url: absoluteUrl(`/${locale}/legal/privacy`),
+        lastModified,
+        changeFrequency: "monthly" as const,
+        priority: 0.4,
+      },
+      {
+        url: absoluteUrl(`/${locale}/legal/terms`),
+        lastModified,
+        changeFrequency: "monthly" as const,
+        priority: 0.4,
+      },
       ...docsPages,
     ];
   });

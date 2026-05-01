@@ -62,6 +62,9 @@ assert.match(sitemap, /absoluteUrl\(`\/\$\{locale\}`\)/);
 assert.match(sitemap, /absoluteUrl\(`\/\$\{locale\}\/docs`\)/);
 assert.match(sitemap, /absoluteUrl\(`\/\$\{locale\}\/features`\)/);
 assert.match(sitemap, /absoluteUrl\(`\/\$\{locale\}\/download`\)/);
+assert.match(sitemap, /absoluteUrl\(`\/\$\{locale\}\/download\/preview`\)/);
+assert.match(sitemap, /absoluteUrl\(`\/\$\{locale\}\/legal\/privacy`\)/);
+assert.match(sitemap, /absoluteUrl\(`\/\$\{locale\}\/legal\/terms`\)/);
 assert.match(sitemap, /absoluteUrl\(`\/\$\{locale\}\/docs\/\$\{slug\}`\)/);
 assert.match(sitemap, /changeFrequency: "weekly"/);
 

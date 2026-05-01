@@ -46,6 +46,14 @@ describe("App shell", () => {
     expect(
       await screen.findByRole("heading", { level: 2, name: "设置" }),
     ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "官网" })).toHaveAttribute(
+      "href",
+      "https://ccuse.app",
+    );
+    expect(screen.getByRole("link", { name: "下载页" })).toHaveAttribute(
+      "href",
+      "https://ccuse.app/download",
+    );
   });
 });
 

@@ -680,7 +680,8 @@
       "description": "下载页会读取最新 GitHub Release，并以 60 秒 revalidation 窗口刷新缓存，然后列出发布流水线产出的资产。",
       "actionsLabel": "下载页操作",
       "primaryAction": "查看资产",
-      "secondaryAction": "GitHub Releases"
+      "secondaryAction": "GitHub Releases",
+      "previewAction": "预览版构建"
     },
     "release": {
       "latest": "最新 GitHub Release",
@@ -723,6 +724,8 @@
       "filenamePattern": "要求的文件名",
       "status": "状态",
       "size": "大小",
+      "sha256": "SHA-256",
+      "sha256Missing": "暂未发布校验值",
       "missing": "未找到",
       "missingDescription": "最新 Release 暂未包含这个必需安装包。",
       "download": "下载",
@@ -752,9 +755,52 @@
       "downloadAsset": "下载资产",
       "contentType": "Content type",
       "updated": "更新时间",
+      "sha256": "SHA-256",
+      "sha256Missing": "未找到校验资产",
       "empty": "最新 Release 暂未暴露可下载资产。",
       "unavailableTitle": "资产无法加载",
       "unavailableDescription": "GitHub API 请求失败，或返回了非预期响应。缓存刷新期间可先使用 GitHub releases 链接。"
+    }
+  },
+  "DownloadPreviewPage": {
+    "metadata": {
+      "title": "预览版下载",
+      "description": "将 CCUse pre-release 构建与稳定桌面端下载分开展示。"
+    },
+    "hero": {
+      "eyebrow": "预览通道",
+      "title": "在清楚风险边界的前提下试用下一版 CCUse。",
+      "description": "预览页只读取 GitHub pre-release 中的 0.x 版本，适合在功能进入稳定下载页前验证即将发布的路由、界面与打包变更。",
+      "actionsLabel": "预览版下载操作",
+      "stableAction": "稳定版下载",
+      "githubAction": "GitHub Releases"
+    },
+    "release": {
+      "latest": "最新预览版 Release",
+      "version": "版本",
+      "prerelease": "Pre-release",
+      "published": "发布时间",
+      "assets": "资产",
+      "assetCount": "{count} 个资产",
+      "viewRelease": "查看预览版 Release"
+    },
+    "risk": {
+      "title": "预览版不是默认推荐安装包。",
+      "description": "仅在需要验证即将发布的修复或功能时使用预览版。它可能在下一个稳定版之前调整配置行为。"
+    },
+    "assets": {
+      "eyebrow": "预览版资产",
+      "title": "来自最新 pre-release 的文件。",
+      "description": "稳定安装包保留在主下载页。此页面只展示最新的 0.x GitHub pre-release。",
+      "downloadAsset": "下载预览版资产",
+      "updated": "更新时间",
+      "sha256": "SHA-256",
+      "sha256Missing": "未找到校验资产",
+      "empty": "最新预览版 Release 暂未暴露可下载资产。"
+    },
+    "unavailable": {
+      "title": "暂无可用预览版",
+      "description": "GitHub API 没有返回 0.x pre-release。预览通道为空时请使用稳定下载页。"
     }
   },
   "Metadata": {
@@ -789,6 +835,10 @@
       "system": "自动",
       "light": "浅色",
       "dark": "深色"
+    },
+    "mobile": {
+      "open": "打开导航",
+      "close": "关闭导航"
     }
   },
   "Footer": {
@@ -799,8 +849,67 @@
       "home": "首页",
       "docs": "文档",
       "download": "下载",
+      "preview": "预览版",
+      "privacy": "隐私",
+      "terms": "条款",
       "github": "GitHub"
     },
     "copyright": "© 2026 CCUse. 保留所有权利。"
+  },
+  "LegalPage": {
+    "privacy": {
+      "metadata": {
+        "title": "隐私",
+        "description": "说明 CCUse 官网与桌面端如何处理本地配置、分析数据和 Release 下载。"
+      },
+      "eyebrow": "法律",
+      "title": "隐私",
+      "description": "CCUse 按本地优先的桌面代理设计。此页面记录官网与下载链路的隐私边界。",
+      "sections": {
+        "localData": {
+          "title": "本地桌面端数据",
+          "body": "供应商配置、本地 API Key、加密导出、请求元数据和健康状态保存在用户机器上。官网不会接收桌面端供应商 API Key 或本地代理流量。"
+        },
+        "websiteAnalytics": {
+          "title": "官网分析",
+          "body": "生产环境分析是可选项，只有配置 Plausible 域名后才会加载。预期配置不采集个人身份信息，仅用于理解聚合页面健康状态。"
+        },
+        "releaseDownloads": {
+          "title": "Release 下载",
+          "body": "下载页读取公开 GitHub Release 元数据，并直接链接到 GitHub 托管资产。访客下载 Release 文件时，GitHub 可能接收标准请求元数据。"
+        },
+        "contact": {
+          "title": "联系",
+          "body": "在正式支持渠道发布前，隐私问题和删除请求请通过 CCUse 仓库的 GitHub issues 提交。"
+        }
+      }
+    },
+    "terms": {
+      "metadata": {
+        "title": "服务条款",
+        "description": "CCUse 官网、下载、预览版构建和本地代理行为的使用条款。"
+      },
+      "eyebrow": "法律",
+      "title": "服务条款",
+      "description": "这些条款用于说明通过 GitHub Releases 分发期间，使用 CCUse 下载与文档时的基本预期。",
+      "sections": {
+        "license": {
+          "title": "项目许可",
+          "body": "CCUse 从公开仓库分发。源码使用和再分发以仓库中的许可证为准。"
+        },
+        "providers": {
+          "title": "第三方供应商",
+          "body": "用户需要自行遵守在桌面端配置的上游 AI 供应商或中转端点的条款、限流和计费政策。"
+        },
+        "previews": {
+          "title": "预览版构建",
+          "body": "Pre-release 构建用于测试，可能在稳定版发布前改变行为。它们不应作为默认生产推荐版本。"
+        },
+        "liability": {
+          "title": "无服务保证",
+          "body": "CCUse 是本地代理工具。可用性取决于本地机器、已配置供应商、网络条件以及通过 GitHub 发布的安装资产。"
+        }
+      }
+    }
   }
 }

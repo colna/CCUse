@@ -9,6 +9,7 @@ import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 
 import "../globals.css";
+import { SiteAnalytics } from "../../components/site-analytics";
 import { SiteFooter } from "../../components/site-footer";
 import { SiteHeader } from "../../components/site-header";
 import { ThemeProvider } from "../../components/theme-provider";
@@ -106,6 +107,7 @@ export default async function LocaleLayout({
             <SiteHeader locale={locale} />
             {children}
             <SiteFooter locale={locale} />
+            <SiteAnalytics />
           </ThemeProvider>
         </NextIntlClientProvider>
       </body>

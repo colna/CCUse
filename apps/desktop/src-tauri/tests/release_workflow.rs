@@ -57,10 +57,15 @@ fn release_workflow_only_builds_missing_required_assets() {
         "CCUse_${VERSION}_aarch64.dmg",
         "CCUse_${VERSION}_x64.dmg",
         "CCUse_${VERSION}_x64-setup.exe",
+        "$MACOS_AARCH64_ASSET.sha256",
+        "$MACOS_X64_ASSET.sha256",
+        "$WINDOWS_X64_ASSET.sha256",
         ".assets | any(.name == $asset)",
         "asset_key: macos_aarch64",
         "asset_key: macos_x64",
         "asset_key: windows_x64",
+        "asset_name: CCUse_${{ needs.check-version.outputs.version }}_aarch64.dmg",
+        "checksum_missing=${{ needs.check-version.outputs.missing_macos_aarch64_checksum }}",
         "matrix.asset_key == 'macos_aarch64'",
         "should_build=${{ needs.check-version.outputs.missing_macos_aarch64 }}",
     ] {
@@ -77,9 +82,13 @@ fn release_workflow_preserves_official_release_and_artifact_contract() {
         "CCUse_<version>_aarch64.dmg",
         "CCUse_<version>_x64.dmg",
         "CCUse_<version>_x64-setup.exe",
+        "每个安装包旁边发布同名 `.sha256` 校验文件",
         "`*_aarch64.dmg`",
         "`*_x64.dmg`",
         "`*_x64-setup.exe`",
+        "Upload SHA-256 checksum",
+        "gh release download \"$TAG\" --pattern \"$ASSET_NAME\"",
+        "gh release upload \"$TAG\" \"$CHECKSUM_DIR/$ASSET_NAME.sha256\" --clobber",
     ] {
         assert_workflow_contains(needle);
     }

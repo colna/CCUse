@@ -22,12 +22,16 @@ import {
   type DownloadAssetCandidate,
   type PlatformRecommendationId,
 } from "../../../lib/download-platform";
+import {
+  getLatestStableRelease,
+  type GitHubRelease,
+  type ReleaseAsset,
+  type ReleaseState,
+} from "../../../lib/github-release";
 import { absoluteUrl, siteName } from "../../../site";
 
 export const revalidate = 60;
 
-const latestReleaseApiUrl =
-  "https://api.github.com/repos/colna/CCUse/releases/latest";
 const downloadTargets = [
   {
     key: "macosAarch64",
@@ -51,34 +55,6 @@ type DownloadPageProps = {
     locale: string;
   };
 };
-
-type ReleaseAsset = {
-  id: number;
-  name: string;
-  size: number;
-  contentType: string;
-  downloadUrl: string;
-  updatedAt: string;
-};
-
-type LatestRelease = {
-  tagName: string;
-  name: string;
-  htmlUrl: string;
-  publishedAt: string;
-  prerelease: boolean;
-  assets: ReleaseAsset[];
-};
-
-type ReleaseState =
-  | {
-      status: "ready";
-      release: LatestRelease;
-    }
-  | {
-      status: "unavailable";
-      reason: string;
-    };
 
 type DownloadTranslator = Awaited<ReturnType<typeof getTranslations>>;
 type DownloadTarget = (typeof downloadTargets)[number];
@@ -138,7 +114,7 @@ export default async function DownloadPage({ params }: DownloadPageProps) {
 
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: "DownloadPage" });
-  const releaseState = await getLatestRelease();
+  const releaseState = await getLatestStableRelease();
   const assetCandidates =
     releaseState.status === "ready"
       ? releaseState.release.assets.map(toAssetCandidate)
@@ -178,6 +154,12 @@ export default async function DownloadPage({ params }: DownloadPageProps) {
                 <a href="https://github.com/colna/CCUse/releases">
                   <Github aria-hidden="true" />
                   {t("hero.secondaryAction")}
+                </a>
+              </Button>
+              <Button asChild size="lg" variant="outline">
+                <a href={`/${locale}/download/preview`}>
+                  <PackageCheck aria-hidden="true" />
+                  {t("hero.previewAction")}
                 </a>
               </Button>
             </nav>
@@ -249,7 +231,7 @@ function DownloadPackagesSection({
   release,
   t,
 }: {
-  release: LatestRelease | null;
+  release: GitHubRelease | null;
   t: DownloadTranslator;
 }) {
   return (
@@ -330,6 +312,16 @@ function DownloadPackageCard({
               {asset ? formatBytes(asset.size) : t("packages.missing")}
             </dd>
           </div>
+          {asset ? (
+            <div className="rounded-lg border border-border bg-background p-3">
+              <dt className="text-xs font-medium text-muted-foreground">
+                {t("packages.sha256")}
+              </dt>
+              <dd className="mt-1 break-all font-mono text-xs font-semibold leading-5">
+                {asset.sha256 ?? t("packages.sha256Missing")}
+              </dd>
+            </div>
+          ) : null}
         </dl>
 
         {asset ? (
@@ -352,7 +344,7 @@ function DownloadPackageCard({
 }
 
 function findTargetAsset(
-  release: LatestRelease | null,
+  release: GitHubRelease | null,
   platformId: Exclude<PlatformRecommendationId, "unknown">,
 ) {
   return release?.assets.find((asset) =>
@@ -391,102 +383,6 @@ function getPlatformLabels(t: DownloadTranslator) {
     title: t("platform.title"),
     unknownDescription: t("platform.unknownDescription"),
     unknownTitle: t("platform.unknownTitle"),
-  };
-}
-
-async function getLatestRelease(): Promise<ReleaseState> {
-  try {
-    const response = await fetch(latestReleaseApiUrl, {
-      headers: {
-        Accept: "application/vnd.github+json",
-        "User-Agent": "CCUse website",
-        "X-GitHub-Api-Version": "2022-11-28",
-      },
-      next: { revalidate },
-    });
-
-    if (!response.ok) {
-      return {
-        status: "unavailable",
-        reason: `GitHub API returned ${response.status}`,
-      };
-    }
-
-    const release = normalizeRelease(await response.json());
-
-    if (!release) {
-      return {
-        status: "unavailable",
-        reason: "GitHub API response was missing release fields",
-      };
-    }
-
-    return { status: "ready", release };
-  } catch (error) {
-    return {
-      status: "unavailable",
-      reason: error instanceof Error ? error.message : "Unknown fetch error",
-    };
-  }
-}
-
-function normalizeRelease(value: unknown): LatestRelease | null {
-  if (!isRecord(value)) {
-    return null;
-  }
-
-  const tagName = readString(value, "tag_name");
-  const htmlUrl = readString(value, "html_url");
-  const publishedAt = readString(value, "published_at");
-
-  if (!tagName || !htmlUrl || !publishedAt) {
-    return null;
-  }
-
-  const assets = Array.isArray(value.assets)
-    ? value.assets.flatMap((asset) => {
-        if (!isRecord(asset)) {
-          return [];
-        }
-
-        const id = readNumber(asset, "id");
-        const name = readString(asset, "name");
-        const size = readNumber(asset, "size");
-        const contentType = readString(asset, "content_type");
-        const downloadUrl = readString(asset, "browser_download_url");
-        const updatedAt = readString(asset, "updated_at");
-
-        if (
-          id === null ||
-          !name ||
-          size === null ||
-          !contentType ||
-          !downloadUrl ||
-          !updatedAt
-        ) {
-          return [];
-        }
-
-        return [
-          {
-            id,
-            name,
-            size,
-            contentType,
-            downloadUrl,
-            updatedAt,
-          },
-        ];
-      })
-    : [];
-
-  return {
-    tagName,
-    name: readString(value, "name") || tagName,
-    htmlUrl,
-    publishedAt,
-    prerelease: readBoolean(value, "prerelease"),
-    assets,
   };
 }
 
@@ -549,7 +445,7 @@ function ReleaseSummary({
             Icon={Download}
             label={t("release.assets")}
             value={t("release.assetCount", {
-              count: release.assets.length,
+              count: release.assetCount,
             })}
           />
           <ReleaseMetric
@@ -589,7 +485,7 @@ function AssetList({
   t,
 }: {
   locale: string;
-  release: LatestRelease;
+  release: GitHubRelease;
   t: DownloadTranslator;
 }) {
   if (release.assets.length === 0) {
@@ -634,6 +530,14 @@ function AssetList({
                   </dt>
                   <dd className="mt-1 font-medium">
                     {formatDate(asset.updatedAt, locale)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-medium text-muted-foreground">
+                    {t("assets.sha256")}
+                  </dt>
+                  <dd className="mt-1 break-all font-mono text-xs font-medium leading-5">
+                    {asset.sha256 ?? t("assets.sha256Missing")}
                   </dd>
                 </div>
               </dl>
@@ -699,23 +603,4 @@ function formatBytes(value: number) {
   }
 
   return `${(value / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function readString(record: Record<string, unknown>, key: string) {
-  const value = record[key];
-  return typeof value === "string" ? value : "";
-}
-
-function readNumber(record: Record<string, unknown>, key: string) {
-  const value = record[key];
-  return typeof value === "number" ? value : null;
-}
-
-function readBoolean(record: Record<string, unknown>, key: string) {
-  const value = record[key];
-  return typeof value === "boolean" ? value : false;
 }

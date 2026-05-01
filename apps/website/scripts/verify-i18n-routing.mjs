@@ -128,6 +128,9 @@ assert.deepEqual(Object.keys(en.Footer.links), [
   "home",
   "docs",
   "download",
+  "preview",
+  "privacy",
+  "terms",
   "github",
 ]);
 assert.deepEqual(Object.keys(en.Footer.links), Object.keys(zh.Footer.links));

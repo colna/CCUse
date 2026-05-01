@@ -680,7 +680,8 @@
       "description": "The download page reads the latest GitHub Release with a 60 second revalidation window, then lists the assets published by the release workflow.",
       "actionsLabel": "Download page actions",
       "primaryAction": "View assets",
-      "secondaryAction": "GitHub releases"
+      "secondaryAction": "GitHub releases",
+      "previewAction": "Preview builds"
     },
     "release": {
       "latest": "Latest GitHub Release",
@@ -723,6 +724,8 @@
       "filenamePattern": "Required filename",
       "status": "Status",
       "size": "Size",
+      "sha256": "SHA-256",
+      "sha256Missing": "Checksum not published",
       "missing": "Not found",
       "missingDescription": "The latest release does not include this required package yet.",
       "download": "Download",
@@ -752,9 +755,52 @@
       "downloadAsset": "Download asset",
       "contentType": "Content type",
       "updated": "Updated",
+      "sha256": "SHA-256",
+      "sha256Missing": "Checksum asset not found",
       "empty": "The latest release does not expose downloadable assets yet.",
       "unavailableTitle": "Assets cannot be loaded",
       "unavailableDescription": "The GitHub API request failed or returned an unexpected response. Use the GitHub releases link while the cache refreshes."
+    }
+  },
+  "DownloadPreviewPage": {
+    "metadata": {
+      "title": "Preview downloads",
+      "description": "Download CCUse pre-release builds separately from the stable desktop release."
+    },
+    "hero": {
+      "eyebrow": "Preview channel",
+      "title": "Try the next CCUse build with clear risk boundaries.",
+      "description": "Preview releases are pulled from GitHub pre-releases with 0.x version tags. They are useful for testing upcoming routing, UI, and packaging changes before they move to the stable download page.",
+      "actionsLabel": "Preview download actions",
+      "stableAction": "Stable downloads",
+      "githubAction": "GitHub releases"
+    },
+    "release": {
+      "latest": "Latest preview release",
+      "version": "Version",
+      "prerelease": "Pre-release",
+      "published": "Published",
+      "assets": "Assets",
+      "assetCount": "{count} assets",
+      "viewRelease": "View preview release"
+    },
+    "risk": {
+      "title": "Preview builds are not the default recommendation.",
+      "description": "Use previews only when you need to validate an upcoming fix or feature. They may change configuration behavior before the next stable release."
+    },
+    "assets": {
+      "eyebrow": "Preview assets",
+      "title": "Files from the latest pre-release.",
+      "description": "Stable packages stay on the main download page. This page intentionally lists only the newest 0.x GitHub pre-release.",
+      "downloadAsset": "Download preview asset",
+      "updated": "Updated",
+      "sha256": "SHA-256",
+      "sha256Missing": "Checksum asset not found",
+      "empty": "The latest preview release does not expose downloadable assets yet."
+    },
+    "unavailable": {
+      "title": "No preview release is available",
+      "description": "The GitHub API did not return a 0.x pre-release. Use the stable download page while the preview channel is empty."
     }
   },
   "Metadata": {
@@ -789,6 +835,10 @@
       "system": "Auto",
       "light": "Light",
       "dark": "Dark"
+    },
+    "mobile": {
+      "open": "Open navigation",
+      "close": "Close navigation"
     }
   },
   "Footer": {
@@ -799,8 +849,67 @@
       "home": "Home",
       "docs": "Docs",
       "download": "Download",
+      "preview": "Preview builds",
+      "privacy": "Privacy",
+      "terms": "Terms",
       "github": "GitHub"
     },
     "copyright": "© 2026 CCUse. All rights reserved."
+  },
+  "LegalPage": {
+    "privacy": {
+      "metadata": {
+        "title": "Privacy",
+        "description": "How the CCUse website and desktop app handle local configuration, analytics, and release downloads."
+      },
+      "eyebrow": "Legal",
+      "title": "Privacy",
+      "description": "CCUse is designed as a local-first desktop proxy. This page documents the website and release-download privacy boundaries.",
+      "sections": {
+        "localData": {
+          "title": "Local desktop data",
+          "body": "Provider configuration, local API keys, encrypted exports, request metadata, and health state live on the user's machine. The website does not receive desktop provider API keys or local proxy traffic."
+        },
+        "websiteAnalytics": {
+          "title": "Website analytics",
+          "body": "Production analytics are optional and are loaded only when a Plausible domain is configured. The intended setup avoids personally identifiable tracking and is used to understand aggregate page health."
+        },
+        "releaseDownloads": {
+          "title": "Release downloads",
+          "body": "The download page reads public GitHub Release metadata and links directly to GitHub-hosted assets. GitHub may receive standard request metadata when a visitor downloads a release file."
+        },
+        "contact": {
+          "title": "Contact",
+          "body": "Privacy questions and removal requests should be opened as GitHub issues in the CCUse repository until a dedicated support channel is published."
+        }
+      }
+    },
+    "terms": {
+      "metadata": {
+        "title": "Terms",
+        "description": "Terms for using CCUse website, downloads, preview builds, and local proxy behavior."
+      },
+      "eyebrow": "Legal",
+      "title": "Terms",
+      "description": "These terms set expectations for using CCUse downloads and documentation while the project is distributed through GitHub releases.",
+      "sections": {
+        "license": {
+          "title": "Project license",
+          "body": "CCUse is distributed from the public repository. The repository license remains the controlling license for source code use and redistribution."
+        },
+        "providers": {
+          "title": "Third-party providers",
+          "body": "Users are responsible for complying with the terms, rate limits, and billing policies of any upstream AI provider or relay endpoint configured inside the desktop app."
+        },
+        "previews": {
+          "title": "Preview builds",
+          "body": "Pre-release builds are provided for testing and may change behavior before a stable release. They should not be treated as the default production recommendation."
+        },
+        "liability": {
+          "title": "No service guarantee",
+          "body": "CCUse is a local proxy tool. Availability depends on the local machine, configured providers, network conditions, and release artifacts published through GitHub."
+        }
+      }
+    }
   }
 }

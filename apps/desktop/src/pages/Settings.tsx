@@ -48,6 +48,33 @@ export function SettingsPage() {
         </select>
       </div>
 
+      <div className="space-y-3 rounded-lg border border-border bg-card p-4">
+        <h3 className="text-sm font-medium text-foreground">
+          {t("about_title")}
+        </h3>
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          {t("about_desc")}
+        </p>
+        <div className="flex flex-wrap gap-3">
+          <a
+            className="inline-flex h-9 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            href="https://ccuse.app"
+            rel="noreferrer"
+            target="_blank"
+          >
+            {t("about_website")}
+          </a>
+          <a
+            className="inline-flex h-9 items-center rounded-md border border-border px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            href="https://ccuse.app/download"
+            rel="noreferrer"
+            target="_blank"
+          >
+            {t("about_download")}
+          </a>
+        </div>
+      </div>
+
       <ModelMappingTable />
 
       <hr className="border-border" />

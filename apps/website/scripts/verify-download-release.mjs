@@ -18,6 +18,7 @@ assert.ok(
 );
 
 const page = read("app/[locale]/download/page.tsx");
+const releaseLib = read("lib/github-release.ts");
 const sitemap = read("app/sitemap.ts");
 const messages = {
   en: readJson("messages/en.json"),
@@ -30,24 +31,24 @@ assert.doesNotMatch(
   "download page must stay a Server Component",
 );
 assert.match(page, /export const revalidate = 60/);
-assert.match(
-  page,
-  /https:\/\/api\.github\.com\/repos\/colna\/CCUse\/releases\/latest/,
-);
-assert.match(page, /fetch\(latestReleaseApiUrl/);
-assert.match(page, /next: \{ revalidate \}/);
-assert.match(page, /application\/vnd\.github\+json/);
-assert.match(page, /X-GitHub-Api-Version/);
-assert.match(page, /normalizeRelease/);
-assert.match(page, /browser_download_url/);
-assert.match(page, /content_type/);
-assert.match(page, /assets\.map/);
+assert.match(page, /getLatestStableRelease/);
 assert.match(page, /generateMetadata/);
 assert.match(page, /setRequestLocale\(locale\)/);
 assert.match(
   page,
   /getTranslations\(\{ locale, namespace: "DownloadPage" \}\)/,
 );
+
+assert.match(releaseLib, /https:\/\/api\.github\.com\/repos\/colna\/CCUse/);
+assert.match(releaseLib, /\/releases\/latest/);
+assert.match(releaseLib, /fetch\(url/);
+assert.match(releaseLib, /next: \{ revalidate: releaseRevalidate \}/);
+assert.match(releaseLib, /application\/vnd\.github\+json/);
+assert.match(releaseLib, /X-GitHub-Api-Version/);
+assert.match(releaseLib, /normalizeRelease/);
+assert.match(releaseLib, /browser_download_url/);
+assert.match(releaseLib, /content_type/);
+assert.match(page, /assets\.map/);
 
 assert.match(sitemap, /absoluteUrl\(`\/\$\{locale\}\/download`\)/);
 assert.match(sitemap, /changeFrequency: "hourly"/);

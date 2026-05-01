@@ -2,6 +2,7 @@ import Image from "next/image";
 import { getTranslations } from "next-intl/server";
 
 import { locales, type Locale } from "../i18n/routing";
+import { MobileNavigation } from "./mobile-navigation";
 import { ThemeToggle } from "./theme-toggle";
 
 type SiteHeaderProps = {
@@ -17,10 +18,14 @@ const navItems = [
 
 export async function SiteHeader({ locale }: SiteHeaderProps) {
   const t = await getTranslations({ locale, namespace: "Navigation" });
+  const mobileItems = navItems.map((item) => ({
+    href: `/${locale}${item.href}`,
+    label: t(`items.${item.key}`),
+  }));
 
   return (
     <header className="sticky top-0 z-50 border-b border-border/60 bg-background/90 backdrop-blur-xl">
-      <div className="mx-auto flex min-h-16 max-w-5xl flex-wrap items-center justify-between gap-x-6 gap-y-3 px-6 py-3">
+      <div className="relative mx-auto flex min-h-16 max-w-5xl flex-wrap items-center justify-between gap-x-6 gap-y-3 px-6 py-3">
         <a
           aria-label={t("brandLabel")}
           className="flex items-center gap-3 text-sm font-semibold text-foreground"
@@ -39,7 +44,7 @@ export async function SiteHeader({ locale }: SiteHeaderProps) {
 
         <nav
           aria-label={t("primaryLabel")}
-          className="order-3 flex w-full items-center gap-4 text-sm text-muted-foreground sm:order-none sm:w-auto"
+          className="hidden items-center gap-4 text-sm text-muted-foreground sm:flex"
         >
           {navItems.map((item) => (
             <a
@@ -89,11 +94,18 @@ export async function SiteHeader({ locale }: SiteHeaderProps) {
           </div>
 
           <a
-            className="text-sm font-medium text-primary transition-colors hover:text-primary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            className="hidden text-sm font-medium text-primary transition-colors hover:text-primary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:inline-flex"
             href="https://github.com/colna/CCUse"
           >
             GitHub
           </a>
+          <MobileNavigation
+            closeLabel={t("mobile.close")}
+            items={mobileItems}
+            label={t("primaryLabel")}
+            menuId="site-mobile-navigation"
+            openLabel={t("mobile.open")}
+          />
         </div>
       </div>
     </header>
