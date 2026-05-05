@@ -8,6 +8,7 @@ vi.mock("@/lib/tauri", () => ({
   getHealthSnapshot: vi.fn(),
   listProviders: vi.fn(),
   onProviderStatusChanged: vi.fn(),
+  refreshHealthSnapshot: vi.fn(),
   testProviderConnection: vi.fn(),
   updateProvider: vi.fn(),
 }));
@@ -17,6 +18,7 @@ import {
   getHealthSnapshot,
   listProviders,
   onProviderStatusChanged,
+  refreshHealthSnapshot,
   type ProviderStatusChangedEvent,
   type Provider,
 } from "@/lib/tauri";
@@ -52,6 +54,8 @@ describe("ProvidersPage", () => {
     });
     vi.mocked(getHealthSnapshot).mockReset();
     vi.mocked(getHealthSnapshot).mockResolvedValue({ providers: [] });
+    vi.mocked(refreshHealthSnapshot).mockReset();
+    vi.mocked(refreshHealthSnapshot).mockResolvedValue({ providers: [] });
     vi.mocked(onProviderStatusChanged).mockReset();
     vi.mocked(onProviderStatusChanged).mockImplementation(async (callback) => {
       statusChangedCallback = callback;
@@ -121,5 +125,34 @@ describe("ProvidersPage", () => {
     });
 
     expect(await screen.findByTitle("down")).toBeInTheDocument();
+  });
+
+  it("checks a single provider health from the list", async () => {
+    providers = [ADDED_PROVIDER];
+    vi.mocked(refreshHealthSnapshot).mockResolvedValueOnce({
+      providers: [
+        {
+          provider_id: ADDED_PROVIDER.id,
+          provider_name: ADDED_PROVIDER.name,
+          status: "degraded",
+          success_rate: 0.5,
+          response_time_us: 88_000,
+        },
+      ],
+    });
+
+    render(<ProvidersPage />);
+    const user = userEvent.setup();
+
+    expect(await screen.findByText("Work OpenAI")).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", {
+        name: "检查 Work OpenAI 健康状态",
+      }),
+    );
+
+    await waitFor(() => expect(refreshHealthSnapshot).toHaveBeenCalledTimes(1));
+    expect(await screen.findByTitle("degraded")).toBeInTheDocument();
+    expect(screen.getByText("状态：降级")).toBeInTheDocument();
   });
 });

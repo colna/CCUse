@@ -1014,6 +1014,62 @@ async fn chat_completions_writes_request_log_for_monitoring() {
 }
 
 #[tokio::test]
+async fn chat_completions_writes_error_log_for_upstream_unauthorized() {
+    let upstream = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(401).set_body_string(
+            r#"{"error":{"code":"API_KEY_REQUIRED","message":"API key is required"}}"#,
+        ))
+        .expect(1)
+        .mount(&upstream)
+        .await;
+    let (_dir, db) = request_log_database_with_provider("auth-provider");
+    let proxy = start_proxy_with_providers_mapping_timeout_and_request_log(
+        &[ProviderSpec {
+            id: "auth-provider",
+            name: "Auth Provider",
+            priority: 1,
+            server: &upstream,
+        }],
+        ModelMapping::new(),
+        None,
+        Some(db.clone()),
+    )
+    .await;
+
+    let response = reqwest::Client::new()
+        .post(format!("{}/v1/chat/completions", proxy.base_url))
+        .json(&chat_request(false))
+        .send()
+        .await
+        .expect("proxy request");
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    let body: Value = response.json().await.expect("response json");
+    let message = body["error"]["message"]
+        .as_str()
+        .expect("error message string");
+    assert_eq!(body["error"]["type"], "unauthorized");
+    assert!(message.contains("Auth Provider (auth-provider)"));
+    assert!(message.contains("upstream rejected the api key"));
+    assert!(message.contains("API_KEY_REQUIRED"));
+
+    let logs = RequestLogRepository::new(db)
+        .list_recent(1)
+        .expect("request logs");
+    assert_eq!(logs.len(), 1);
+    assert_eq!(logs[0].provider_id, "auth-provider");
+    assert_eq!(logs[0].model, "gpt-4o");
+    assert_eq!(logs[0].status, "error");
+    assert_eq!(logs[0].error_kind.as_deref(), Some("unauthorized"));
+    assert!(logs[0].total_tokens.is_none());
+    assert!(!logs[0].stream);
+
+    proxy.shutdown().await;
+}
+
+#[tokio::test]
 async fn chat_completions_forwards_tool_definitions_to_upstream() {
     let upstream = MockServer::start().await;
     Mock::given(method("POST"))
@@ -1155,6 +1211,156 @@ async fn chat_completions_retries_after_429_and_uses_next_provider() {
         .await
         .expect("primary provider");
     assert_eq!(first.state.health().await, HealthStatus::Degraded);
+
+    proxy.shutdown().await;
+}
+
+#[tokio::test]
+async fn chat_completions_retries_after_upstream_401_and_uses_next_provider() {
+    let primary = MockServer::start().await;
+    let backup = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(401).set_body_string("invalid upstream key"))
+        .expect(1)
+        .mount(&primary)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(openai_text_response("backup")))
+        .expect(1)
+        .mount(&backup)
+        .await;
+    let (_dir, db) = monitoring_database_with_providers(&["primary-401", "backup-after-401"]);
+    let proxy = start_proxy_with_providers_mapping_timeout_and_request_log(
+        &[
+            ProviderSpec {
+                id: "primary-401",
+                name: "Primary 401",
+                priority: 1,
+                server: &primary,
+            },
+            ProviderSpec {
+                id: "backup-after-401",
+                name: "Backup After 401",
+                priority: 2,
+                server: &backup,
+            },
+        ],
+        ModelMapping::new(),
+        None,
+        Some(db.clone()),
+    )
+    .await;
+
+    let response = reqwest::Client::new()
+        .post(format!("{}/v1/chat/completions", proxy.base_url))
+        .json(&chat_request(false))
+        .send()
+        .await
+        .expect("proxy request");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = response.json().await.expect("response json");
+    assert_eq!(body["choices"][0]["message"]["content"], "backup");
+
+    let first = proxy
+        .manager
+        .get("primary-401")
+        .await
+        .expect("primary provider");
+    assert_eq!(first.state.health().await, HealthStatus::Down);
+    let logs = RequestLogRepository::new(db.clone())
+        .list_recent(10)
+        .expect("request logs");
+    assert!(logs.iter().any(|log| {
+        log.provider_id == "primary-401"
+            && log.status == "error"
+            && log.error_kind.as_deref() == Some("unauthorized")
+    }));
+    assert!(logs
+        .iter()
+        .any(|log| log.provider_id == "backup-after-401" && log.status == "ok"));
+
+    let events = SwitchHistoryRepository::new(db)
+        .list_recent(1)
+        .expect("switch events");
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].from_provider.as_deref(), Some("primary-401"));
+    assert_eq!(events[0].to_provider, "backup-after-401");
+    assert_eq!(events[0].reason, "unauthorized");
+
+    proxy.shutdown().await;
+}
+
+#[tokio::test]
+async fn chat_completions_records_each_failed_attempt_when_all_providers_fail() {
+    let primary = MockServer::start().await;
+    let backup = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(401).set_body_string("primary invalid key"))
+        .expect(1)
+        .mount(&primary)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(401).set_body_string("backup invalid key"))
+        .expect(1)
+        .mount(&backup)
+        .await;
+    let (_dir, db) = monitoring_database_with_providers(&["primary-fail", "backup-fail"]);
+    let proxy = start_proxy_with_providers_mapping_timeout_and_request_log(
+        &[
+            ProviderSpec {
+                id: "primary-fail",
+                name: "Primary Fail",
+                priority: 1,
+                server: &primary,
+            },
+            ProviderSpec {
+                id: "backup-fail",
+                name: "Backup Fail",
+                priority: 2,
+                server: &backup,
+            },
+        ],
+        ModelMapping::new(),
+        None,
+        Some(db.clone()),
+    )
+    .await;
+
+    let response = reqwest::Client::new()
+        .post(format!("{}/v1/chat/completions", proxy.base_url))
+        .json(&chat_request(false))
+        .send()
+        .await
+        .expect("proxy request");
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    let logs = RequestLogRepository::new(db.clone())
+        .list_recent(10)
+        .expect("request logs");
+    assert!(logs.iter().any(|log| {
+        log.provider_id == "primary-fail"
+            && log.status == "error"
+            && log.error_kind.as_deref() == Some("unauthorized")
+    }));
+    assert!(logs.iter().any(|log| {
+        log.provider_id == "backup-fail"
+            && log.status == "error"
+            && log.error_kind.as_deref() == Some("unauthorized")
+    }));
+
+    let events = SwitchHistoryRepository::new(db)
+        .list_recent(1)
+        .expect("switch events");
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].from_provider.as_deref(), Some("primary-fail"));
+    assert_eq!(events[0].to_provider, "backup-fail");
+    assert_eq!(events[0].reason, "unauthorized");
+    assert_eq!(events[0].attempts, 2);
 
     proxy.shutdown().await;
 }

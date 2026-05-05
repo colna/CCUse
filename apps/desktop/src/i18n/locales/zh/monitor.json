@@ -4,6 +4,8 @@
   "success_rate": "成功率",
   "avg_response_time": "平均响应时间",
   "none": "无",
+  "refresh_current_provider": "刷新",
+  "refresh_current_provider_aria": "刷新当前可用供应商信息",
   "success_rate_chart_title": "成功率（24h）",
   "latency_chart_title": "响应时间（24h）",
   "latency_avg": "平均",

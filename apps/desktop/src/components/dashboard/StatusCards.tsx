@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
-import { Activity, Clock, Server, TrendingUp } from "lucide-react";
+import { Activity, Clock, RefreshCw, Server, TrendingUp } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
+  getCurrentProvider,
   getHealthSnapshot,
   getMetricsTimeseries,
+  refreshHealthSnapshot,
+  type CurrentProviderSnapshot,
   type HealthSnapshot,
   type MetricsBucket,
 } from "@/lib/tauri";
@@ -28,16 +32,19 @@ export function StatusCards() {
     avgResponseTimeMs: null,
   });
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (forceProbe = false) => {
     try {
-      const [healthRes, metrics] = await Promise.all([
-        getHealthSnapshot(),
+      const [healthRes, metrics, current] = await Promise.all([
+        forceProbe ? refreshHealthSnapshot() : getHealthSnapshot(),
         getMetricsTimeseries(),
+        getCurrentProvider(),
       ]);
 
       const providers: HealthSnapshot[] = healthRes.providers;
+      const currentProvider: CurrentProviderSnapshot = current;
 
       const activeProvider =
         providers.find((p) => p.status === "healthy") ?? providers[0] ?? null;
@@ -69,7 +76,10 @@ export function StatusCards() {
       }
 
       setData({
-        currentProvider: activeProvider?.provider_name ?? null,
+        currentProvider:
+          currentProvider.provider_name ??
+          activeProvider?.provider_name ??
+          null,
         todayRequests: totalRequests,
         successRate: overallSuccessRate,
         avgResponseTimeMs: avgLatency,
@@ -82,12 +92,23 @@ export function StatusCards() {
     }
   }, []);
 
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await fetchData(true);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [fetchData]);
+
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
   useEffect(() => {
-    const id = setInterval(fetchData, REFRESH_INTERVAL);
+    const id = setInterval(() => {
+      void fetchData();
+    }, REFRESH_INTERVAL);
     return () => clearInterval(id);
   }, [fetchData]);
 
@@ -100,52 +121,70 @@ export function StatusCards() {
   }
 
   return (
-    <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-      <StatCard
-        testId="current-provider-card"
-        icon={<Server className="size-4" />}
-        label={t("current_provider")}
-        value={loading ? "--" : (data.currentProvider ?? t("none"))}
-        loading={loading}
-      />
-      <StatCard
-        testId="today-requests-card"
-        icon={<Activity className="size-4" />}
-        label={t("today_requests")}
-        value={loading ? "--" : String(data.todayRequests)}
-        loading={loading}
-      />
-      <StatCard
-        testId="success-rate-card"
-        icon={<TrendingUp className="size-4" />}
-        label={t("success_rate")}
-        value={
-          loading
-            ? "--"
-            : data.successRate != null
-              ? `${(data.successRate * 100).toFixed(1)}%`
-              : "--"
-        }
-        loading={loading}
-        highlight={
-          data.successRate != null && data.successRate < 0.95
-            ? "warning"
-            : undefined
-        }
-      />
-      <StatCard
-        testId="avg-response-time-card"
-        icon={<Clock className="size-4" />}
-        label={t("avg_response_time")}
-        value={
-          loading
-            ? "--"
-            : data.avgResponseTimeMs != null
-              ? `${Math.round(data.avgResponseTimeMs)}ms`
-              : "--"
-        }
-        loading={loading}
-      />
+    <div className="space-y-3">
+      <div className="flex justify-end">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleRefresh}
+          disabled={refreshing}
+          aria-label={t("refresh_current_provider_aria")}
+          title={t("refresh_current_provider_aria")}
+        >
+          <RefreshCw
+            className={cn("mr-1.5 size-3.5", refreshing && "animate-spin")}
+          />
+          {t("refresh_current_provider")}
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatCard
+          testId="current-provider-card"
+          icon={<Server className="size-4" />}
+          label={t("current_provider")}
+          value={loading ? "--" : (data.currentProvider ?? t("none"))}
+          loading={loading}
+        />
+        <StatCard
+          testId="today-requests-card"
+          icon={<Activity className="size-4" />}
+          label={t("today_requests")}
+          value={loading ? "--" : String(data.todayRequests)}
+          loading={loading}
+        />
+        <StatCard
+          testId="success-rate-card"
+          icon={<TrendingUp className="size-4" />}
+          label={t("success_rate")}
+          value={
+            loading
+              ? "--"
+              : data.successRate != null
+                ? `${(data.successRate * 100).toFixed(1)}%`
+                : "--"
+          }
+          loading={loading}
+          highlight={
+            data.successRate != null && data.successRate < 0.95
+              ? "warning"
+              : undefined
+          }
+        />
+        <StatCard
+          testId="avg-response-time-card"
+          icon={<Clock className="size-4" />}
+          label={t("avg_response_time")}
+          value={
+            loading
+              ? "--"
+              : data.avgResponseTimeMs != null
+                ? `${Math.round(data.avgResponseTimeMs)}ms`
+                : "--"
+          }
+          loading={loading}
+        />
+      </div>
     </div>
   );
 }

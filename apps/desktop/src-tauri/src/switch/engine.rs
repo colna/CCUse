@@ -1,7 +1,7 @@
 //! T1.0.2.15–16 — [`SwitchEngine`] retry chain + error classification.
 //!
 //! The engine wraps strategy selection with a retry loop: on a
-//! retriable failure it marks the provider `Degraded`, picks the next
+//! retriable failure it marks the provider unhealthy, picks the next
 //! candidate, and retries — up to `max_retries` times.
 
 use std::sync::Arc;
@@ -35,8 +35,61 @@ pub struct DispatchResult<T> {
     pub switched_from_provider_id: Option<String>,
     /// Machine-readable reason for the switch.
     pub switch_reason: Option<String>,
+    /// Failed provider attempts before this successful response.
+    pub failed_attempts: Vec<DispatchAttemptFailure>,
     /// The upstream response.
     pub response: T,
+}
+
+/// One failed provider attempt in a dispatch chain.
+#[derive(Debug, Clone)]
+pub struct DispatchAttemptFailure {
+    pub provider_id: String,
+    pub provider_name: String,
+    pub error_kind: String,
+}
+
+/// Failed dispatch with the provider that produced the terminal error.
+#[derive(Debug)]
+pub struct DispatchFailure {
+    /// Provider id that produced the terminal error. `None` means the
+    /// engine failed before selecting a provider.
+    pub provider_id: Option<String>,
+    /// Display name for the terminal provider, if one was selected.
+    pub provider_name: Option<String>,
+    /// Provider-layer error surfaced by the terminal attempt.
+    pub error: ProviderError,
+    /// Strategy snapshot used for this dispatch.
+    pub strategy: SwitchStrategy,
+    /// Every provider attempt that failed in order.
+    pub failed_attempts: Vec<DispatchAttemptFailure>,
+}
+
+impl DispatchFailure {
+    fn for_provider(
+        provider: &ProviderWrapper,
+        error: ProviderError,
+        strategy: SwitchStrategy,
+        failed_attempts: Vec<DispatchAttemptFailure>,
+    ) -> Self {
+        Self {
+            provider_id: Some(provider.id().to_owned()),
+            provider_name: Some(provider.name().to_owned()),
+            error,
+            strategy,
+            failed_attempts,
+        }
+    }
+
+    fn without_provider(error: ProviderError, strategy: SwitchStrategy) -> Self {
+        Self {
+            provider_id: None,
+            provider_name: None,
+            error,
+            strategy,
+            failed_attempts: Vec::new(),
+        }
+    }
 }
 
 /// Configuration for the switch engine.
@@ -113,7 +166,7 @@ impl SwitchEngine {
     pub async fn dispatch(
         &self,
         request: ApiRequest,
-    ) -> Result<DispatchResult<ApiResponse>, ProviderError> {
+    ) -> Result<DispatchResult<ApiResponse>, DispatchFailure> {
         self.dispatch_with_request_mapper(request, clone_request_for_provider)
             .await
     }
@@ -124,7 +177,7 @@ impl SwitchEngine {
         &self,
         request: ApiRequest,
         map_request: F,
-    ) -> Result<DispatchResult<ApiResponse>, ProviderError>
+    ) -> Result<DispatchResult<ApiResponse>, DispatchFailure>
     where
         F: Fn(&ApiRequest, &ProviderWrapper) -> ApiRequest + Send + Sync,
     {
@@ -132,13 +185,15 @@ impl SwitchEngine {
         let candidates = self.manager.enabled_by_priority().await;
 
         if candidates.is_empty() {
-            return Err(ProviderError::BadRequest(
-                "no enabled providers configured".into(),
+            return Err(DispatchFailure::without_provider(
+                ProviderError::BadRequest("no enabled providers configured".into()),
+                config.strategy,
             ));
         }
 
         let mut tried: Vec<String> = Vec::new();
-        let mut last_error: Option<ProviderError> = None;
+        let mut last_failure: Option<DispatchFailure> = None;
+        let mut failed_attempts: Vec<DispatchAttemptFailure> = Vec::new();
         let mut last_failed_provider_id: Option<String> = None;
         let mut last_failure_reason: Option<String> = None;
 
@@ -149,7 +204,8 @@ impl SwitchEngine {
                 &self.rr_state,
                 &config.smart_weights,
                 &tried,
-            );
+            )
+            .await;
 
             let Some(provider) = candidate else { break };
 
@@ -165,25 +221,42 @@ impl SwitchEngine {
                         strategy: config.strategy,
                         switched_from_provider_id: last_failed_provider_id,
                         switch_reason: last_failure_reason,
+                        failed_attempts,
                         response,
                     });
                 }
                 Err(err) => {
-                    if err.is_retriable() {
-                        provider.state.set_health(HealthStatus::Degraded).await;
+                    let error_kind = provider_error_kind(&err);
+                    let retryable = err.is_retriable();
+                    if retryable {
+                        provider.state.set_health(failure_health_status(&err)).await;
                         last_failed_provider_id = Some(provider.id().to_owned());
-                        last_failure_reason = Some(switch_reason_for_provider_error(&err));
+                        last_failure_reason = Some(error_kind.clone());
                     }
-                    last_error = Some(err);
-                    if !last_error.as_ref().is_some_and(ProviderError::is_retriable) {
+                    failed_attempts.push(DispatchAttemptFailure {
+                        provider_id: provider.id().to_owned(),
+                        provider_name: provider.name().to_owned(),
+                        error_kind,
+                    });
+                    last_failure = Some(DispatchFailure::for_provider(
+                        provider.as_ref(),
+                        err,
+                        config.strategy,
+                        failed_attempts.clone(),
+                    ));
+                    if !retryable {
                         break;
                     }
                 }
             }
         }
 
-        Err(last_error
-            .unwrap_or_else(|| ProviderError::BadRequest("all providers exhausted".into())))
+        Err(last_failure.unwrap_or_else(|| {
+            DispatchFailure::without_provider(
+                ProviderError::BadRequest("all providers exhausted".into()),
+                config.strategy,
+            )
+        }))
     }
 
     /// Dispatch a streaming request with failover. Retry only
@@ -192,7 +265,7 @@ impl SwitchEngine {
     pub async fn dispatch_stream(
         &self,
         request: ApiRequest,
-    ) -> Result<DispatchResult<StreamingResponse>, ProviderError> {
+    ) -> Result<DispatchResult<StreamingResponse>, DispatchFailure> {
         self.dispatch_stream_with_request_mapper(request, clone_request_for_provider)
             .await
     }
@@ -203,7 +276,7 @@ impl SwitchEngine {
         &self,
         request: ApiRequest,
         map_request: F,
-    ) -> Result<DispatchResult<StreamingResponse>, ProviderError>
+    ) -> Result<DispatchResult<StreamingResponse>, DispatchFailure>
     where
         F: Fn(&ApiRequest, &ProviderWrapper) -> ApiRequest + Send + Sync,
     {
@@ -211,13 +284,15 @@ impl SwitchEngine {
         let candidates = self.manager.enabled_by_priority().await;
 
         if candidates.is_empty() {
-            return Err(ProviderError::BadRequest(
-                "no enabled providers configured".into(),
+            return Err(DispatchFailure::without_provider(
+                ProviderError::BadRequest("no enabled providers configured".into()),
+                config.strategy,
             ));
         }
 
         let mut tried: Vec<String> = Vec::new();
-        let mut last_error: Option<ProviderError> = None;
+        let mut last_failure: Option<DispatchFailure> = None;
+        let mut failed_attempts: Vec<DispatchAttemptFailure> = Vec::new();
         let mut last_failed_provider_id: Option<String> = None;
         let mut last_failure_reason: Option<String> = None;
 
@@ -228,7 +303,8 @@ impl SwitchEngine {
                 &self.rr_state,
                 &config.smart_weights,
                 &tried,
-            );
+            )
+            .await;
 
             let Some(provider) = candidate else { break };
 
@@ -244,25 +320,42 @@ impl SwitchEngine {
                         strategy: config.strategy,
                         switched_from_provider_id: last_failed_provider_id,
                         switch_reason: last_failure_reason,
+                        failed_attempts,
                         response: stream,
                     });
                 }
                 Err(err) => {
-                    if err.is_retriable() {
-                        provider.state.set_health(HealthStatus::Degraded).await;
+                    let error_kind = provider_error_kind(&err);
+                    let retryable = err.is_retriable();
+                    if retryable {
+                        provider.state.set_health(failure_health_status(&err)).await;
                         last_failed_provider_id = Some(provider.id().to_owned());
-                        last_failure_reason = Some(switch_reason_for_provider_error(&err));
+                        last_failure_reason = Some(error_kind.clone());
                     }
-                    last_error = Some(err);
-                    if !last_error.as_ref().is_some_and(ProviderError::is_retriable) {
+                    failed_attempts.push(DispatchAttemptFailure {
+                        provider_id: provider.id().to_owned(),
+                        provider_name: provider.name().to_owned(),
+                        error_kind,
+                    });
+                    last_failure = Some(DispatchFailure::for_provider(
+                        provider.as_ref(),
+                        err,
+                        config.strategy,
+                        failed_attempts.clone(),
+                    ));
+                    if !retryable {
                         break;
                     }
                 }
             }
         }
 
-        Err(last_error
-            .unwrap_or_else(|| ProviderError::BadRequest("all providers exhausted".into())))
+        Err(last_failure.unwrap_or_else(|| {
+            DispatchFailure::without_provider(
+                ProviderError::BadRequest("all providers exhausted".into()),
+                config.strategy,
+            )
+        }))
     }
 }
 
@@ -270,7 +363,7 @@ fn clone_request_for_provider(request: &ApiRequest, _: &ProviderWrapper) -> ApiR
     request.clone()
 }
 
-fn switch_reason_for_provider_error(error: &ProviderError) -> String {
+pub fn provider_error_kind(error: &ProviderError) -> String {
     match error {
         ProviderError::Network(_) => "network".to_owned(),
         ProviderError::Upstream { status, .. } => format!("upstream_{status}"),
@@ -281,20 +374,57 @@ fn switch_reason_for_provider_error(error: &ProviderError) -> String {
     }
 }
 
-/// Select a provider, excluding those already tried.
-fn select_excluding(
+fn failure_health_status(error: &ProviderError) -> HealthStatus {
+    match error {
+        ProviderError::Unauthorized(_) => HealthStatus::Down,
+        ProviderError::Network(_)
+        | ProviderError::Upstream { .. }
+        | ProviderError::RateLimited(_)
+        | ProviderError::Decode(_)
+        | ProviderError::BadRequest(_) => HealthStatus::Degraded,
+    }
+}
+
+/// Select a provider, excluding those already tried. Healthy
+/// providers are preferred; degraded providers are only used as
+/// fallback, and down providers are last-resort fallback when every
+/// remaining provider is currently out of rotation.
+async fn select_excluding(
     strategy: SwitchStrategy,
     candidates: &[Arc<ProviderWrapper>],
     rr_state: &RoundRobinState,
     weights: &SmartWeights,
     exclude: &[String],
 ) -> Option<Arc<ProviderWrapper>> {
-    let filtered: Vec<_> = candidates
-        .iter()
-        .filter(|p| !exclude.contains(&p.id().to_owned()))
-        .cloned()
-        .collect();
-    select(strategy, &filtered, rr_state, weights)
+    let mut healthy = Vec::new();
+    let mut degraded = Vec::new();
+    let mut down = Vec::new();
+
+    for provider in candidates {
+        if exclude.iter().any(|id| id == provider.id()) {
+            continue;
+        }
+        match provider.state.health().await {
+            HealthStatus::Healthy => healthy.push(provider.clone()),
+            HealthStatus::Degraded => degraded.push(provider.clone()),
+            HealthStatus::Down => down.push(provider.clone()),
+        }
+    }
+
+    let selected = select(strategy, &healthy, rr_state, weights);
+    if selected.is_some() {
+        return selected;
+    }
+
+    let selected = select(strategy, &degraded, rr_state, weights);
+    if selected.is_some() {
+        return selected;
+    }
+
+    // If every remaining provider is currently marked Down, still try
+    // them in strategy order. Health probes can be stale or unsupported
+    // by OpenAI-compatible relays, while a real dispatch may succeed.
+    select(strategy, &down, rr_state, weights)
 }
 
 /// T1.0.2.16: error classification. `is_retriable` is already on
@@ -303,10 +433,10 @@ fn select_excluding(
 ///
 /// | HTTP status     | Error variant  | Retriable? |
 /// |-----------------|----------------|------------|
+/// | 401, 403         | Unauth         | Yes        |
 /// | 408, 429, 5xx   | Network/Rate/Up| Yes        |
 /// | Timeout         | Network        | Yes        |
-/// | 400, 401, 403   | BadReq/Unauth  | No         |
-/// | 404, 422        | `BadRequest`   | No         |
+/// | 400, 404, 422   | `BadRequest`   | No         |
 /// | Decode failures | Decode         | No         |
 ///
 /// The `SwitchEngine` uses `is_retriable` to decide whether to try
@@ -466,6 +596,7 @@ mod tests {
         let result = engine.dispatch(sample_request()).await.unwrap();
         assert_eq!(result.provider_id, "p1");
         assert_eq!(result.attempts, 1);
+        assert!(result.failed_attempts.is_empty());
         assert_eq!(counters[0].load(AtomicOrdering::Relaxed), 1);
     }
 
@@ -475,8 +606,55 @@ mod tests {
         let result = engine.dispatch(sample_request()).await.unwrap();
         assert_eq!(result.provider_id, "p2");
         assert_eq!(result.attempts, 2);
+        assert_eq!(result.failed_attempts.len(), 1);
+        assert_eq!(result.failed_attempts[0].provider_id, "p1");
+        assert_eq!(result.failed_attempts[0].error_kind, "upstream_500");
         assert_eq!(counters[0].load(AtomicOrdering::Relaxed), 1);
         assert_eq!(counters[1].load(AtomicOrdering::Relaxed), 1);
+    }
+
+    #[tokio::test]
+    async fn dispatch_skips_down_provider() {
+        let (engine, counters) = make_engine(vec![("p1".into(), true), ("p2".into(), true)]).await;
+        let p1 = engine.manager.get("p1").await.expect("p1 exists");
+        p1.state.set_health(HealthStatus::Down).await;
+
+        let result = engine.dispatch(sample_request()).await.unwrap();
+
+        assert_eq!(result.provider_id, "p2");
+        assert_eq!(result.attempts, 1);
+        assert_eq!(counters[0].load(AtomicOrdering::Relaxed), 0);
+        assert_eq!(counters[1].load(AtomicOrdering::Relaxed), 1);
+    }
+
+    #[tokio::test]
+    async fn dispatch_skips_degraded_provider_when_healthy_available() {
+        let (engine, counters) = make_engine(vec![("p1".into(), true), ("p2".into(), true)]).await;
+        let p1 = engine.manager.get("p1").await.expect("p1 exists");
+        p1.state.set_health(HealthStatus::Degraded).await;
+
+        let result = engine.dispatch(sample_request()).await.unwrap();
+
+        assert_eq!(result.provider_id, "p2");
+        assert_eq!(result.attempts, 1);
+        assert_eq!(counters[0].load(AtomicOrdering::Relaxed), 0);
+        assert_eq!(counters[1].load(AtomicOrdering::Relaxed), 1);
+    }
+
+    #[tokio::test]
+    async fn dispatch_falls_back_to_down_providers_when_all_are_down() {
+        let (engine, counters) = make_engine(vec![("p1".into(), true), ("p2".into(), true)]).await;
+        let p1 = engine.manager.get("p1").await.expect("p1 exists");
+        let p2 = engine.manager.get("p2").await.expect("p2 exists");
+        p1.state.set_health(HealthStatus::Down).await;
+        p2.state.set_health(HealthStatus::Down).await;
+
+        let result = engine.dispatch(sample_request()).await.unwrap();
+
+        assert_eq!(result.provider_id, "p1");
+        assert_eq!(result.attempts, 1);
+        assert_eq!(counters[0].load(AtomicOrdering::Relaxed), 1);
+        assert_eq!(counters[1].load(AtomicOrdering::Relaxed), 0);
     }
 
     #[tokio::test]
@@ -503,7 +681,11 @@ mod tests {
     async fn dispatch_all_fail_returns_last_error() {
         let (engine, _) = make_engine(vec![("p1".into(), false), ("p2".into(), false)]).await;
         let err = engine.dispatch(sample_request()).await.unwrap_err();
-        assert!(err.is_retriable());
+        assert_eq!(err.provider_id.as_deref(), Some("p2"));
+        assert!(err.error.is_retriable());
+        assert_eq!(err.failed_attempts.len(), 2);
+        assert_eq!(err.failed_attempts[0].provider_id, "p1");
+        assert_eq!(err.failed_attempts[1].provider_id, "p2");
     }
 
     #[tokio::test]
@@ -511,7 +693,8 @@ mod tests {
         let mgr = Arc::new(ProviderManager::new());
         let engine = SwitchEngine::new(mgr);
         let err = engine.dispatch(sample_request()).await.unwrap_err();
-        assert!(matches!(err, ProviderError::BadRequest(_)));
+        assert!(matches!(err.error, ProviderError::BadRequest(_)));
+        assert!(err.provider_id.is_none());
     }
 
     #[tokio::test]

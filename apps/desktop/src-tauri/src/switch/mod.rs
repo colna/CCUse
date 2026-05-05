@@ -11,7 +11,10 @@ pub mod history;
 pub mod request_log;
 pub mod strategy;
 
-pub use engine::{DispatchResult, SwitchConfig, SwitchEngine, DEFAULT_MAX_RETRIES};
+pub use engine::{
+    provider_error_kind, DispatchAttemptFailure, DispatchFailure, DispatchResult, SwitchConfig,
+    SwitchEngine, DEFAULT_MAX_RETRIES,
+};
 pub use history::{SwitchHistoryEntry, SwitchHistoryInput, SwitchHistoryRepository};
 pub use request_log::{RequestLogEntry, RequestLogInput, RequestLogRepository};
 pub use strategy::{RoundRobinState, SmartWeights, SwitchStrategy};

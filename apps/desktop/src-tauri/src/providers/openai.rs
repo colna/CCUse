@@ -10,7 +10,9 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use futures::stream::StreamExt;
-use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
+use reqwest::header::{
+    HeaderMap, HeaderValue, ACCEPT, ACCEPT_ENCODING, AUTHORIZATION, CONTENT_TYPE,
+};
 use reqwest::{Client, StatusCode};
 use serde::Deserialize;
 use serde_json::json;
@@ -22,6 +24,18 @@ use super::api::{
 /// Default timeout for non-streaming chat-completions calls. Keep
 /// short — `SwitchEngine` wants to fail-over rather than wait.
 pub const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+const HEALTH_CHECK_MODELS: &[&str] = &[
+    "claude-haiku-4-5-20251001",
+    "claude-opus-4-6",
+    "gpt-4o-mini",
+];
+const HEALTH_CHECK_MAX_TOKENS: u32 = 1;
+const HEALTH_CHECK_PROMPT: &str = "Who are you?";
+
+enum ChatHealthProbe {
+    Healthy,
+    Status(StatusCode),
+}
 
 /// `OpenAI` chat-completions provider.
 #[derive(Clone)]
@@ -106,6 +120,137 @@ impl OpenAIProvider {
         headers.insert(AUTHORIZATION, value);
         Ok(headers)
     }
+
+    fn stream_headers(&self) -> Result<HeaderMap, ProviderError> {
+        let mut headers = self.auth_headers()?;
+        headers.insert(ACCEPT, HeaderValue::from_static("text/event-stream"));
+        headers.insert(ACCEPT_ENCODING, HeaderValue::from_static("identity"));
+        Ok(headers)
+    }
+
+    async fn chat_health_probe(&self) -> Result<HealthStatus, ProviderError> {
+        let mut saw_model_rejection = false;
+        for model in HEALTH_CHECK_MODELS {
+            match self.send_stream_chat_health_probe(model).await? {
+                ChatHealthProbe::Healthy => return Ok(HealthStatus::Healthy),
+                ChatHealthProbe::Status(
+                    StatusCode::BAD_REQUEST
+                    | StatusCode::NOT_FOUND
+                    | StatusCode::UNPROCESSABLE_ENTITY,
+                ) => {
+                    saw_model_rejection = true;
+                }
+                ChatHealthProbe::Status(
+                    status @ (StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN),
+                ) => return Ok(status_to_health(status)),
+                ChatHealthProbe::Status(StatusCode::TOO_MANY_REQUESTS) => {
+                    return Ok(HealthStatus::Degraded);
+                }
+                ChatHealthProbe::Status(status) if status.is_server_error() => {
+                    return Ok(HealthStatus::Degraded);
+                }
+                ChatHealthProbe::Status(_) => return Ok(HealthStatus::Degraded),
+            }
+        }
+
+        Ok(if saw_model_rejection {
+            HealthStatus::Degraded
+        } else {
+            HealthStatus::Down
+        })
+    }
+
+    async fn legacy_models_health_probe(&self) -> Result<HealthStatus, ProviderError> {
+        let response = self
+            .client
+            .get(self.endpoint("/v1/models"))
+            .headers(self.auth_headers()?)
+            .send()
+            .await
+            .map_err(|e| ProviderError::Network(e.to_string()))?;
+
+        Ok(match response.status() {
+            s if s.is_success() => HealthStatus::Healthy,
+            status @ (StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) => status_to_health(status),
+            StatusCode::TOO_MANY_REQUESTS => HealthStatus::Degraded,
+            _ => HealthStatus::Degraded,
+        })
+    }
+
+    async fn send_stream_chat_health_probe(
+        &self,
+        model: &str,
+    ) -> Result<ChatHealthProbe, ProviderError> {
+        let body = json!({
+            "model": model,
+            "messages": [{"role": "user", "content": HEALTH_CHECK_PROMPT}],
+            "temperature": 0.0,
+            "max_tokens": HEALTH_CHECK_MAX_TOKENS,
+            "stream": true,
+        });
+        let response = self
+            .client
+            .post(self.endpoint("/v1/chat/completions"))
+            .headers(self.stream_headers()?)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| ProviderError::Network(e.to_string()))?;
+
+        let status = response.status();
+        if !status.is_success() {
+            return Ok(ChatHealthProbe::Status(status));
+        }
+
+        let mut stream = response.bytes_stream();
+        match stream.next().await {
+            Some(Ok(_)) => Ok(ChatHealthProbe::Healthy),
+            Some(Err(err)) => Err(ProviderError::Network(err.to_string())),
+            None => Ok(ChatHealthProbe::Status(StatusCode::NO_CONTENT)),
+        }
+    }
+
+    async fn send_chat_health_probe(&self, model: &str) -> Result<StatusCode, ProviderError> {
+        let body = json!({
+            "model": model,
+            "messages": [{"role": "user", "content": HEALTH_CHECK_PROMPT}],
+            "temperature": 0.0,
+            "max_tokens": HEALTH_CHECK_MAX_TOKENS,
+            "stream": false,
+        });
+        let response = self
+            .client
+            .post(self.endpoint("/v1/chat/completions"))
+            .headers(self.auth_headers()?)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| ProviderError::Network(e.to_string()))?;
+        Ok(response.status())
+    }
+
+    async fn non_streaming_chat_health_probe(&self) -> Result<HealthStatus, ProviderError> {
+        let mut saw_model_rejection = false;
+        for model in HEALTH_CHECK_MODELS {
+            let status = self.send_chat_health_probe(model).await?;
+            match status {
+                s if s.is_success() => return Ok(HealthStatus::Healthy),
+                StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => return Ok(HealthStatus::Down),
+                StatusCode::BAD_REQUEST
+                | StatusCode::NOT_FOUND
+                | StatusCode::UNPROCESSABLE_ENTITY => {
+                    saw_model_rejection = true;
+                }
+                _ => return Ok(HealthStatus::Degraded),
+            }
+        }
+
+        Ok(if saw_model_rejection {
+            HealthStatus::Degraded
+        } else {
+            HealthStatus::Down
+        })
+    }
 }
 
 #[async_trait]
@@ -133,22 +278,21 @@ impl Provider for OpenAIProvider {
         None
     }
 
-    /// Cheap probe: `GET /v1/models`. 200 ⇒ Healthy, 401/403 ⇒
-    /// Down (auth issue), 5xx / network ⇒ Down (treat as out of
-    /// rotation), 429 ⇒ Degraded (still up but throttled).
+    /// Probe health using a one-token streaming chat completion. This
+    /// mirrors `cc-switch`'s model check more closely than `/v1/models`:
+    /// verify that the provider can execute the request path users
+    /// actually depend on, and treat the first SSE chunk as success.
     async fn health_check(&self) -> Result<HealthStatus, ProviderError> {
-        let url = self.endpoint("/v1/models");
-        let response = self
-            .client
-            .get(url)
-            .headers(self.auth_headers()?)
-            .send()
-            .await
-            .map_err(|e| ProviderError::Network(e.to_string()))?;
-        match response.status() {
-            s if s.is_success() => Ok(HealthStatus::Healthy),
-            StatusCode::TOO_MANY_REQUESTS => Ok(HealthStatus::Degraded),
-            _ => Ok(HealthStatus::Down),
+        match self.chat_health_probe().await? {
+            HealthStatus::Degraded => match self.non_streaming_chat_health_probe().await {
+                Ok(HealthStatus::Healthy) => Ok(HealthStatus::Healthy),
+                Ok(status) => Ok(status),
+                Err(_) => self
+                    .legacy_models_health_probe()
+                    .await
+                    .map(|status| worst_non_down_health_status(HealthStatus::Degraded, status)),
+            },
+            status => Ok(status),
         }
     }
 
@@ -282,6 +426,24 @@ pub fn map_http_error(status: StatusCode, body: String) -> ProviderError {
     }
 }
 
+fn status_to_health(status: StatusCode) -> HealthStatus {
+    match status {
+        StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => HealthStatus::Down,
+        StatusCode::TOO_MANY_REQUESTS => HealthStatus::Degraded,
+        s if s.is_server_error() => HealthStatus::Degraded,
+        s if s.is_success() => HealthStatus::Healthy,
+        _ => HealthStatus::Degraded,
+    }
+}
+
+fn worst_non_down_health_status(a: HealthStatus, b: HealthStatus) -> HealthStatus {
+    if a == HealthStatus::Degraded || b == HealthStatus::Degraded {
+        HealthStatus::Degraded
+    } else {
+        HealthStatus::Healthy
+    }
+}
+
 fn add_tools_to_body(body: &mut serde_json::Value, tools: &[super::api::ApiToolDefinition]) {
     if tools.is_empty() {
         return;
@@ -313,7 +475,7 @@ mod tests {
     fn map_http_error_classifies_401_as_unauthorized() {
         let err = map_http_error(StatusCode::UNAUTHORIZED, "no key".into());
         assert!(matches!(err, ProviderError::Unauthorized(_)));
-        assert!(!err.is_retriable());
+        assert!(err.is_retriable());
     }
 
     #[test]

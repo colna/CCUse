@@ -18,6 +18,10 @@ fn load_cargo_toml() -> String {
     fs::read_to_string("Cargo.toml").expect("Cargo.toml should be readable from crate root")
 }
 
+fn load_lib_rs() -> String {
+    fs::read_to_string("src/lib.rs").expect("src/lib.rs should be readable from crate root")
+}
+
 #[test]
 fn product_identity_matches_brand() {
     let conf = load_conf();
@@ -168,5 +172,34 @@ fn cargo_package_version_matches_tauri_release_version() {
     assert!(
         cargo_toml.lines().any(|line| line == expected),
         "Cargo.toml package version must match tauri.conf.json version {version}"
+    );
+}
+
+#[test]
+fn single_instance_plugin_is_registered_before_other_plugins() {
+    let cargo_toml = load_cargo_toml();
+    assert!(
+        cargo_toml
+            .lines()
+            .any(|line| line == "tauri-plugin-single-instance = \"2\""),
+        "Cargo.toml must include tauri-plugin-single-instance"
+    );
+
+    let lib_rs = load_lib_rs();
+    let single_instance_pos = lib_rs
+        .find(".plugin(tauri_plugin_single_instance::init")
+        .expect("single-instance plugin must be registered");
+    let notification_pos = lib_rs
+        .find(".plugin(tauri_plugin_notification::init())")
+        .expect("notification plugin must be registered");
+    assert!(
+        single_instance_pos < notification_pos,
+        "single-instance plugin must be registered first so a second app launch exits before creating another tray icon"
+    );
+    assert!(
+        lib_rs.contains("window.show()")
+            && lib_rs.contains("window.unminimize()")
+            && lib_rs.contains("window.set_focus()"),
+        "single-instance callback must reveal and focus the existing main window"
     );
 }

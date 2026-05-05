@@ -29,6 +29,22 @@ use providers::ProviderManager;
 use proxy::ProxyRuntime;
 use switch::SwitchEngine;
 
+fn focus_main_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
+}
+
+fn register_plugins<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
+    builder
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            focus_main_window(app);
+        }))
+        .plugin(tauri_plugin_notification::init())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Shared provider manager for switch engine + health checker.
@@ -43,8 +59,7 @@ pub fn run() {
     let runtime_mapping = Arc::clone(&model_mapping);
     let runtime_manager = Arc::clone(&manager);
 
-    let builder = tauri::Builder::default()
-        .plugin(tauri_plugin_notification::init())
+    let builder = register_plugins(tauri::Builder::default())
         .manage(engine)
         .manage(Arc::clone(&checker))
         .manage(model_mapping)
@@ -66,11 +81,13 @@ pub fn run() {
             commands::switch::update_strategy_params,
             // Health (T1.0.2.21)
             commands::health::get_health_snapshot,
+            commands::health::refresh_health_snapshot,
             // Model mapping (T1.0.3.12)
             commands::model_mapping::get_model_mappings,
             commands::model_mapping::set_model_mapping,
             commands::model_mapping::remove_model_mapping,
             // Monitor (T1.0.4.14)
+            commands::monitor::get_current_provider,
             commands::monitor::get_metrics_timeseries,
             commands::monitor::get_switch_timeline,
             commands::monitor::get_provider_cost_summary,
@@ -94,8 +111,11 @@ pub fn run() {
             let database = db::open_database(&db_path).expect("failed to open database");
             db::run_migrations(&database).expect("failed to run migrations");
 
-            let keyring_fallback_path = app_dir.join("keyring_fallback.json");
-            let backend = crypto::FallbackKeyringBackend::new(keyring_fallback_path);
+            // Use an app-local key store instead of the OS keychain to
+            // avoid macOS login-keychain permission prompts during app
+            // startup. FileKeyringBackend writes with 0o600 permissions.
+            let keyring_path = app_dir.join("keyring_fallback.json");
+            let backend = crypto::FileKeyringBackend::new(keyring_path);
             let master_key = Arc::new(
                 crypto::load_or_create_master_key(&backend)
                     .expect("failed to initialise master key"),

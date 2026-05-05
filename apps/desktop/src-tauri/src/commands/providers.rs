@@ -9,7 +9,9 @@ use std::sync::Arc;
 
 use tauri::State;
 
+use crate::providers::api::{HealthStatus, Provider as _};
 use crate::providers::model::{Provider, ProviderInput};
+use crate::providers::openai::OpenAIProvider;
 use crate::providers::repository::ProviderRepository;
 use crate::providers::{ManagerError, ProviderManager, RepositoryError};
 
@@ -77,13 +79,20 @@ pub(crate) async fn update_provider_and_reload(
     id: &str,
     input: ProviderInput,
 ) -> Result<Provider, String> {
-    let previous = provider_input_for_existing_row(repo, id).map_err(|e| e.to_string())?;
+    let previous = decryptable_provider_input_for_existing_row(repo, id)?;
     let updated = repo.update(id, &input).map_err(|e| e.to_string())?;
     match manager.reload_from_repository(repo).await {
         Ok(_) => Ok(updated),
         Err(err) => {
-            let rollback = repo.update(id, &previous).map(|_| ());
-            Err(format_reload_failure("update_provider", &err, rollback))
+            if let Some(previous) = previous {
+                let rollback = repo.update(id, &previous).map(|_| ());
+                Err(format_reload_failure("update_provider", &err, rollback))
+            } else {
+                Err(format_reload_failure_without_rollback(
+                    "update_provider",
+                    &err,
+                ))
+            }
         }
     }
 }
@@ -93,14 +102,37 @@ pub(crate) async fn delete_provider_and_reload(
     manager: &ProviderManager,
     id: &str,
 ) -> Result<(), String> {
-    let previous = provider_input_for_existing_row(repo, id).map_err(|e| e.to_string())?;
+    let previous = decryptable_provider_input_for_existing_row(repo, id)?;
     repo.delete(id).map_err(|e| e.to_string())?;
     match manager.reload_from_repository(repo).await {
         Ok(_) => Ok(()),
         Err(err) => {
-            let rollback = repo.insert_with_id(id, &previous).map(|_| ());
-            Err(format_reload_failure("delete_provider", &err, rollback))
+            if let Some(previous) = previous {
+                let rollback = repo.insert_with_id(id, &previous).map(|_| ());
+                Err(format_reload_failure("delete_provider", &err, rollback))
+            } else {
+                Err(format_reload_failure_without_rollback(
+                    "delete_provider",
+                    &err,
+                ))
+            }
         }
+    }
+}
+
+fn decryptable_provider_input_for_existing_row(
+    repo: &ProviderRepository,
+    id: &str,
+) -> Result<Option<ProviderInput>, String> {
+    match provider_input_for_existing_row(repo, id) {
+        Ok(input) => Ok(Some(input)),
+        Err(RepositoryError::Crypto(err)) => {
+            eprintln!(
+                "CCUse: provider `{id}` API key cannot be decrypted; allowing overwrite/delete: {err}"
+            );
+            Ok(None)
+        }
+        Err(err) => Err(err.to_string()),
     }
 }
 
@@ -148,10 +180,17 @@ fn format_reload_failure(
     }
 }
 
+fn format_reload_failure_without_rollback(action: &str, reload_error: &ManagerError) -> String {
+    format!(
+        "{action} failed during provider reload: {reload_error}; database rollback skipped because the previous provider API key could not be decrypted"
+    )
+}
+
 /// Test connectivity to a provider's endpoint (T1.0.4.05).
 ///
-/// Makes a lightweight GET to the provider's models endpoint and
-/// returns the round-trip time in milliseconds.
+/// Makes the same lightweight health probe used by the runtime for
+/// OpenAI-compatible providers and returns the round-trip time in
+/// milliseconds.
 #[tauri::command]
 pub async fn test_provider_connection(
     repo: State<'_, ProviderRepoHandle>,
@@ -164,6 +203,24 @@ pub async fn test_provider_connection(
     let api_key = repo.get_decrypted_api_key(&id).map_err(|e| e.to_string())?;
 
     let start = std::time::Instant::now();
+
+    if matches!(
+        provider.kind,
+        crate::providers::model::ProviderKind::Openai
+            | crate::providers::model::ProviderKind::Relay
+            | crate::providers::model::ProviderKind::Custom
+    ) {
+        let runtime =
+            OpenAIProvider::new(&provider.id, &provider.name, &provider.base_url, &api_key)
+                .map_err(|e| e.to_string())?;
+        let status = runtime.health_check().await.map_err(|e| e.to_string())?;
+        if status == HealthStatus::Down {
+            return Err("health check reported provider down".to_owned());
+        }
+        #[allow(clippy::cast_possible_truncation)]
+        return Ok(start.elapsed().as_millis() as u64);
+    }
+
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
         .build()
@@ -195,8 +252,13 @@ pub async fn test_provider_connection(
     }
 
     let resp = req.send().await.map_err(|e| e.to_string())?;
-    if !resp.status().is_success() && resp.status().as_u16() != 401 {
-        return Err(format!("HTTP {}", resp.status()));
+    let status = resp.status();
+    if !status.is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        if status.as_u16() == 401 || status.as_u16() == 403 {
+            return Err(format!("authentication failed: HTTP {status} {body}"));
+        }
+        return Err(format!("HTTP {status} {body}"));
     }
     #[allow(clippy::cast_possible_truncation)]
     let ms = start.elapsed().as_millis() as u64;
@@ -208,7 +270,6 @@ mod tests {
     use super::*;
     use crate::crypto::MasterKey;
     use crate::db::{open_database, run_migrations, Database};
-    use crate::providers::api::Provider as _;
     use crate::providers::model::ProviderKind;
     use rusqlite::params;
     use tempfile::TempDir;
@@ -398,5 +459,47 @@ mod tests {
         assert!(err.contains("database rollback succeeded"));
         assert!(repo.get(&target.id).expect("get restored").is_some());
         assert!(manager.get(&target.id).await.is_some());
+    }
+
+    #[tokio::test]
+    async fn update_provider_and_reload_repairs_undecryptable_provider() {
+        let (_dir, repo, db) = make_repo();
+        let added = repo
+            .add(&sample_input("Old Key Provider", 10))
+            .expect("add with old key");
+        let new_key = Arc::new(MasterKey::generate().expect("new key"));
+        let new_repo = Arc::new(ProviderRepository::new(db.clone(), new_key));
+        let manager = ProviderManager::new();
+
+        let updated = update_provider_and_reload(
+            new_repo.as_ref(),
+            &manager,
+            &added.id,
+            sample_input("Repaired Provider", 5),
+        )
+        .await
+        .expect("update should overwrite undecryptable key");
+
+        assert_eq!(updated.name, "Repaired Provider");
+        let loaded = manager.get(&added.id).await.expect("runtime loaded");
+        assert_eq!(loaded.name(), "Repaired Provider");
+    }
+
+    #[tokio::test]
+    async fn delete_provider_and_reload_removes_undecryptable_provider() {
+        let (_dir, repo, db) = make_repo();
+        let added = repo
+            .add(&sample_input("Old Key Provider", 10))
+            .expect("add with old key");
+        let new_key = Arc::new(MasterKey::generate().expect("new key"));
+        let new_repo = Arc::new(ProviderRepository::new(db.clone(), new_key));
+        let manager = ProviderManager::new();
+
+        delete_provider_and_reload(new_repo.as_ref(), &manager, &added.id)
+            .await
+            .expect("delete should not require decrypting old key");
+
+        assert_eq!(provider_row_count(&db), 0);
+        assert!(manager.is_empty().await);
     }
 }

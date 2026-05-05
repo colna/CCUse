@@ -159,7 +159,8 @@ pub enum ProviderError {
     /// HTTP 5xx from upstream. Retriable.
     #[error("upstream returned {status}: {body}")]
     Upstream { status: u16, body: String },
-    /// HTTP 401/403. *Not* retriable — fail-over to next provider.
+    /// HTTP 401/403. Retriable across providers because the bad
+    /// credential belongs to one upstream, not to the client request.
     #[error("upstream rejected the api key: {0}")]
     Unauthorized(String),
     /// HTTP 429. Retriable but with backoff handled by `SwitchEngine`.
@@ -176,12 +177,15 @@ pub enum ProviderError {
 
 impl ProviderError {
     /// Whether the `SwitchEngine` should retry this error against
-    /// another provider. Auth / bad-request failures are terminal.
+    /// another provider. Bad request / decode failures are terminal.
     #[must_use]
     pub const fn is_retriable(&self) -> bool {
         match self {
-            Self::Network(_) | Self::Upstream { .. } | Self::RateLimited(_) => true,
-            Self::Unauthorized(_) | Self::BadRequest(_) | Self::Decode(_) => false,
+            Self::Network(_)
+            | Self::Upstream { .. }
+            | Self::RateLimited(_)
+            | Self::Unauthorized(_) => true,
+            Self::BadRequest(_) | Self::Decode(_) => false,
         }
     }
 }
@@ -222,7 +226,9 @@ pub trait Provider: Send + Sync + std::fmt::Debug {
     fn get_quota_remaining(&self) -> Option<u64>;
 
     /// Liveness probe. Implementations should be cheap: prefer
-    /// `/v1/models` or a lightweight `GET` over an actual completion.
+    /// `/v1/models` or a lightweight endpoint first, but `OpenAI`-
+    /// compatible relays may fall back to a one-token chat probe when
+    /// model listing is not implemented.
     async fn health_check(&self) -> Result<HealthStatus, ProviderError>;
 
     /// List models exposed by this provider. Default keeps legacy
@@ -259,7 +265,7 @@ mod tests {
         }
         .is_retriable());
         assert!(ProviderError::RateLimited("limit".into()).is_retriable());
-        assert!(!ProviderError::Unauthorized("401".into()).is_retriable());
+        assert!(ProviderError::Unauthorized("401".into()).is_retriable());
         assert!(!ProviderError::BadRequest("model".into()).is_retriable());
         assert!(!ProviderError::Decode("eof".into()).is_retriable());
     }

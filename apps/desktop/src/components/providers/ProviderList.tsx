@@ -16,7 +16,15 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, Pencil, Trash2, Check, X } from "lucide-react";
+import {
+  GripVertical,
+  Pencil,
+  Trash2,
+  Check,
+  X,
+  Loader2,
+  RefreshCw,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
@@ -26,11 +34,17 @@ import {
   deleteProvider,
   updateProvider,
   getHealthSnapshot,
+  refreshHealthSnapshot,
   onProviderStatusChanged,
   type Provider,
   type ProviderInput,
   type HealthSnapshot,
 } from "@/lib/tauri";
+
+interface HealthCheckResult {
+  kind: "success" | "warning" | "error";
+  message: string;
+}
 
 function statusColor(status?: string): string {
   switch (status) {
@@ -48,6 +62,24 @@ function statusColor(status?: string): string {
 function formatSuccessRate(rate?: number): string {
   if (rate == null) return "--";
   return `${(rate * 100).toFixed(1)}%`;
+}
+
+function healthSnapshotsToMap(
+  providers: HealthSnapshot[],
+): Record<string, HealthSnapshot> {
+  const map: Record<string, HealthSnapshot> = {};
+  for (const snapshot of providers) {
+    map[snapshot.provider_id] = snapshot;
+  }
+  return map;
+}
+
+function resultKindForStatus(
+  status: HealthSnapshot["status"],
+): HealthCheckResult["kind"] {
+  if (status === "healthy") return "success";
+  if (status === "degraded") return "warning";
+  return "error";
 }
 
 // ─── Delete Confirmation Dialog ──────────────────────────────
@@ -102,6 +134,9 @@ interface SortableProviderItemProps {
   onDelete: (id: string, name: string) => void;
   onToggleEnabled: (id: string, enabled: boolean) => void;
   onSaveEdit: (id: string, patch: Partial<EditState>) => Promise<void>;
+  onCheckHealth: (id: string) => void;
+  checkingHealth: boolean;
+  healthCheckResult?: HealthCheckResult;
 }
 
 function SortableProviderItem({
@@ -110,6 +145,9 @@ function SortableProviderItem({
   onDelete,
   onToggleEnabled,
   onSaveEdit,
+  onCheckHealth,
+  checkingHealth,
+  healthCheckResult,
 }: SortableProviderItemProps) {
   const { t } = useTranslation("providers");
   const { t: tc } = useTranslation("common");
@@ -308,6 +346,36 @@ function SortableProviderItem({
         </span>
       )}
 
+      {healthCheckResult && (
+        <span
+          className={cn(
+            "max-w-28 truncate text-xs",
+            healthCheckResult.kind === "success" && "text-green-600",
+            healthCheckResult.kind === "warning" && "text-yellow-600",
+            healthCheckResult.kind === "error" && "text-destructive",
+          )}
+          title={healthCheckResult.message}
+        >
+          {healthCheckResult.message}
+        </span>
+      )}
+
+      <Button
+        variant="ghost"
+        size="icon"
+        className="size-7 text-muted-foreground hover:text-foreground"
+        onClick={() => onCheckHealth(provider.id)}
+        disabled={checkingHealth}
+        aria-label={t("health_check_provider_aria", { name: provider.name })}
+        title={t("health_check_provider_aria", { name: provider.name })}
+      >
+        {checkingHealth ? (
+          <Loader2 className="size-3.5 animate-spin" />
+        ) : (
+          <RefreshCw className="size-3.5" />
+        )}
+      </Button>
+
       <label className="flex items-center gap-1 text-xs">
         <input
           type="checkbox"
@@ -357,6 +425,12 @@ export function ProviderList({ refreshKey }: ProviderListProps) {
   const [healthMap, setHealthMap] = useState<Record<string, HealthSnapshot>>(
     {},
   );
+  const [checkingProviderIds, setCheckingProviderIds] = useState<
+    Record<string, boolean>
+  >({});
+  const [healthCheckResults, setHealthCheckResults] = useState<
+    Record<string, HealthCheckResult>
+  >({});
   const [error, setError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{
     id: string;
@@ -376,15 +450,51 @@ export function ProviderList({ refreshKey }: ProviderListProps) {
   const fetchHealth = useCallback(async () => {
     try {
       const snap = await getHealthSnapshot();
-      const map: Record<string, HealthSnapshot> = {};
-      for (const s of snap.providers) {
-        map[s.provider_id] = s;
-      }
-      setHealthMap(map);
+      setHealthMap(healthSnapshotsToMap(snap.providers));
     } catch {
       // Health snapshot not critical
     }
   }, []);
+
+  const handleCheckHealth = useCallback(
+    async (id: string) => {
+      setCheckingProviderIds((prev) => ({ ...prev, [id]: true }));
+      try {
+        const snap = await refreshHealthSnapshot();
+        const map = healthSnapshotsToMap(snap.providers);
+        setHealthMap(map);
+
+        const checked = map[id];
+        setHealthCheckResults((prev) => ({
+          ...prev,
+          [id]: checked
+            ? {
+                kind: resultKindForStatus(checked.status),
+                message: t("health_checked_status", {
+                  status: t(`health_status_${checked.status}`),
+                }),
+              }
+            : {
+                kind: "error",
+                message: t("health_checked_missing"),
+              },
+        }));
+      } catch (err: unknown) {
+        setHealthCheckResults((prev) => ({
+          ...prev,
+          [id]: {
+            kind: "error",
+            message: t("health_check_failed", {
+              error: err instanceof Error ? err.message : String(err),
+            }),
+          },
+        }));
+      } finally {
+        setCheckingProviderIds((prev) => ({ ...prev, [id]: false }));
+      }
+    },
+    [t],
+  );
 
   useEffect(() => {
     fetchProviders();
@@ -558,6 +668,9 @@ export function ProviderList({ refreshKey }: ProviderListProps) {
                 onDelete={handleRequestDelete}
                 onToggleEnabled={handleToggleEnabled}
                 onSaveEdit={handleSaveEdit}
+                onCheckHealth={handleCheckHealth}
+                checkingHealth={Boolean(checkingProviderIds[provider.id])}
+                healthCheckResult={healthCheckResults[provider.id]}
               />
             ))}
           </div>

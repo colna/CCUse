@@ -19,6 +19,7 @@ use serde_json::json;
 
 use crate::converter::ConvertError;
 use crate::providers::api::ProviderError;
+use crate::switch::DispatchFailure;
 
 /// Wire error envelope to use for a request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -165,17 +166,35 @@ impl ApiError {
 
 impl From<ProviderError> for ApiError {
     fn from(err: ProviderError) -> Self {
+        let message = err.to_string();
         match err {
-            ProviderError::Network(msg) => Self::new(ApiErrorKind::UpstreamError, msg),
-            ProviderError::Upstream { status, body } => Self::new(
-                ApiErrorKind::UpstreamError,
-                format!("upstream returned {status}: {body}"),
-            ),
-            ProviderError::Unauthorized(msg) => Self::new(ApiErrorKind::Unauthorized, msg),
-            ProviderError::RateLimited(msg) => Self::new(ApiErrorKind::TooManyRequests, msg),
-            ProviderError::BadRequest(msg) => Self::new(ApiErrorKind::BadRequest, msg),
-            ProviderError::Decode(msg) => Self::new(ApiErrorKind::Internal, msg),
+            ProviderError::Network(_) | ProviderError::Upstream { .. } => {
+                Self::new(ApiErrorKind::UpstreamError, message)
+            }
+            ProviderError::Unauthorized(_) => Self::new(ApiErrorKind::Unauthorized, message),
+            ProviderError::RateLimited(_) => Self::new(ApiErrorKind::TooManyRequests, message),
+            ProviderError::BadRequest(_) => Self::new(ApiErrorKind::BadRequest, message),
+            ProviderError::Decode(_) => Self::new(ApiErrorKind::Internal, message),
         }
+    }
+}
+
+impl From<DispatchFailure> for ApiError {
+    fn from(failure: DispatchFailure) -> Self {
+        let provider_label = match (
+            failure.provider_name.as_deref(),
+            failure.provider_id.as_deref(),
+        ) {
+            (Some(name), Some(id)) if name != id => Some(format!("{name} ({id})")),
+            (Some(name), _) => Some(name.to_owned()),
+            (_, Some(id)) => Some(id.to_owned()),
+            _ => None,
+        };
+        let mut err = Self::from(failure.error);
+        if let Some(provider_label) = provider_label {
+            err.message = format!("provider {provider_label} failed: {}", err.message);
+        }
+        err
     }
 }
 
@@ -353,6 +372,7 @@ mod tests {
     fn from_provider_error_unauthorized_preserved() {
         let err: ApiError = ProviderError::Unauthorized("invalid key".into()).into();
         assert_eq!(err.kind, ApiErrorKind::Unauthorized);
+        assert!(err.message.contains("upstream rejected the api key"));
     }
 
     #[test]
@@ -371,6 +391,22 @@ mod tests {
     fn from_provider_error_decode_maps_to_internal() {
         let err: ApiError = ProviderError::Decode("unexpected eof".into()).into();
         assert_eq!(err.kind, ApiErrorKind::Internal);
+    }
+
+    #[test]
+    fn from_dispatch_failure_prefixes_provider_context() {
+        let err: ApiError = DispatchFailure {
+            provider_id: Some("sitin".into()),
+            provider_name: Some("Sitin".into()),
+            error: ProviderError::Unauthorized("API_KEY_REQUIRED".into()),
+            strategy: crate::switch::SwitchStrategy::Priority,
+            failed_attempts: Vec::new(),
+        }
+        .into();
+        assert_eq!(err.kind, ApiErrorKind::Unauthorized);
+        assert!(err.message.contains("Sitin (sitin)"));
+        assert!(err.message.contains("upstream rejected the api key"));
+        assert!(err.message.contains("API_KEY_REQUIRED"));
     }
 
     #[test]

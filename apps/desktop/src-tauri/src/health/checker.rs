@@ -165,7 +165,8 @@ async fn run_probe_cycle(inner: &Inner) {
 
     for provider in &providers {
         let probe_result = provider.health_check().await;
-        let probe_ok = probe_result.is_ok();
+        let reported_status = probe_result.ok();
+        let probe_ok = reported_status.is_some_and(|status| status != HealthStatus::Down);
 
         let mut states = inner.probe_states.write().await;
         let state = states
@@ -177,7 +178,10 @@ async fn run_probe_cycle(inner: &Inner) {
 
         state.window.push(probe_ok);
         let rate = state.window.success_rate();
-        let new_status = classify_health(rate);
+        let historical_status = classify_health(rate);
+        let new_status = reported_status.map_or(historical_status, |status| {
+            worst_health_status(status, historical_status)
+        });
 
         // T1.0.2.08: emit event on transition
         if new_status != state.last_status {
@@ -216,6 +220,14 @@ fn classify_health(success_rate: f64) -> HealthStatus {
         HealthStatus::Degraded
     } else {
         HealthStatus::Down
+    }
+}
+
+fn worst_health_status(reported: HealthStatus, historical: HealthStatus) -> HealthStatus {
+    match (reported, historical) {
+        (HealthStatus::Down, _) | (_, HealthStatus::Down) => HealthStatus::Down,
+        (HealthStatus::Degraded, _) | (_, HealthStatus::Degraded) => HealthStatus::Degraded,
+        (HealthStatus::Healthy, HealthStatus::Healthy) => HealthStatus::Healthy,
     }
 }
 

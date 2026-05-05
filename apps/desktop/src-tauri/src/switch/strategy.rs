@@ -72,15 +72,15 @@ pub struct RoundRobinState {
     counter: AtomicUsize,
 }
 
-/// Select the best provider from `candidates` using the given
-/// strategy. Returns `None` if no healthy + enabled candidate exists.
+/// Select the best provider from already eligible `candidates` using
+/// the given strategy. The switch engine removes disabled, down, and
+/// already-tried providers before calling this function.
 pub fn select(
     strategy: SwitchStrategy,
     candidates: &[Arc<ProviderWrapper>],
     rr_state: &RoundRobinState,
     smart_weights: &SmartWeights,
 ) -> Option<Arc<ProviderWrapper>> {
-    // Filter to only healthy or degraded (not Down) providers.
     let alive: Vec<_> = candidates
         .iter()
         .filter(|p| p.is_enabled())

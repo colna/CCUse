@@ -4,6 +4,8 @@
   "success_rate": "Success Rate",
   "avg_response_time": "Avg Response Time",
   "none": "None",
+  "refresh_current_provider": "Refresh",
+  "refresh_current_provider_aria": "Refresh current available provider information",
   "success_rate_chart_title": "Success Rate (24h)",
   "latency_chart_title": "Response Time (24h)",
   "latency_avg": "Avg",

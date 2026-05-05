@@ -5,14 +5,15 @@
 //! 2. `Authorization: Bearer <key>` is forwarded verbatim,
 //! 3. `stream` is forced to `false` even if the caller set `true`,
 //! 4. 401 / 429 / 500 / 400 land in the right `ProviderError` variant,
-//! 5. `health_check` and `list_models` read `GET /v1/models`.
+//! 5. `health_check` uses a tiny streaming chat-completions probe and
+//!    treats the first upstream SSE chunk as success.
 
 use ccuse_desktop_lib::providers::api::ProviderError;
 use ccuse_desktop_lib::providers::api::{ApiRequest, ChatMessage, HealthStatus, Provider};
 use ccuse_desktop_lib::providers::OpenAIProvider;
 use futures::StreamExt;
 use serde_json::Value;
-use wiremock::matchers::{header, method, path};
+use wiremock::matchers::{body_partial_json, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 fn sample_request(stream: bool) -> ApiRequest {
@@ -94,7 +95,7 @@ async fn send_request_forces_stream_false_on_the_wire() {
 }
 
 #[tokio::test]
-async fn upstream_401_maps_to_unauthorized_and_is_not_retriable() {
+async fn upstream_401_maps_to_unauthorized_and_is_retriable() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/v1/chat/completions"))
@@ -108,7 +109,7 @@ async fn upstream_401_maps_to_unauthorized_and_is_not_retriable() {
         .await
         .expect_err("must fail");
     assert!(matches!(err, ProviderError::Unauthorized(_)));
-    assert!(!err.is_retriable());
+    assert!(err.is_retriable());
 }
 
 #[tokio::test]
@@ -188,16 +189,117 @@ async fn malformed_success_body_yields_decode_error() {
 }
 
 #[tokio::test]
-async fn health_check_calls_v1_models_and_maps_status() {
+async fn health_check_uses_streaming_chat_probe_and_maps_first_chunk_to_healthy() {
     let server = MockServer::start().await;
-    Mock::given(method("GET"))
-        .and(path("/v1/models"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"data": []})))
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .and(header("authorization", "Bearer sk-test"))
+        .and(header("accept", "text/event-stream"))
+        .and(header("accept-encoding", "identity"))
+        .and(body_partial_json(serde_json::json!({
+            "model": "claude-haiku-4-5-20251001",
+            "stream": true,
+            "max_tokens": 1,
+        })))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string("data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\n")
+                .insert_header("content-type", "text/event-stream"),
+        )
+        .expect(1)
         .mount(&server)
         .await;
     let provider =
         OpenAIProvider::new("p1", "Mock", server.uri(), "sk-test").expect("build provider");
+
     let status = provider.health_check().await.expect("ok");
+
+    assert_eq!(status, HealthStatus::Healthy);
+}
+
+#[tokio::test]
+async fn health_check_falls_back_to_non_streaming_chat_when_stream_is_rejected() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .and(body_partial_json(serde_json::json!({"stream": true})))
+        .respond_with(ResponseTemplate::new(400).set_body_string("stream unsupported"))
+        .expect(3)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .and(body_partial_json(serde_json::json!({"stream": false})))
+        .respond_with(ResponseTemplate::new(200).set_body_json(fixture_response_body()))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let provider =
+        OpenAIProvider::new("p1", "Mock", server.uri(), "sk-test").expect("build provider");
+
+    let status = provider.health_check().await.expect("ok");
+
+    assert_eq!(status, HealthStatus::Healthy);
+}
+
+#[tokio::test]
+async fn health_check_reports_down_on_streaming_chat_auth_failure() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(401).set_body_string("invalid key"))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let provider =
+        OpenAIProvider::new("p1", "Mock", server.uri(), "sk-test").expect("build provider");
+
+    let status = provider.health_check().await.expect("ok");
+
+    assert_eq!(status, HealthStatus::Down);
+}
+
+#[tokio::test]
+async fn health_check_keeps_provider_degraded_when_probe_models_are_rejected() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(400).set_body_string("unknown model"))
+        .expect(6)
+        .mount(&server)
+        .await;
+    let provider =
+        OpenAIProvider::new("p1", "Mock", server.uri(), "sk-test").expect("build provider");
+
+    let status = provider.health_check().await.expect("ok");
+
+    assert_eq!(status, HealthStatus::Degraded);
+}
+
+#[tokio::test]
+async fn health_check_ignores_models_auth_failure_when_streaming_chat_succeeds() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/models"))
+        .respond_with(ResponseTemplate::new(401).set_body_string("models auth rejected"))
+        .expect(0)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string("data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\n")
+                .insert_header("content-type", "text/event-stream"),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    let provider =
+        OpenAIProvider::new("p1", "Mock", server.uri(), "sk-test").expect("build provider");
+
+    let status = provider.health_check().await.expect("ok");
+
     assert_eq!(status, HealthStatus::Healthy);
 }
 

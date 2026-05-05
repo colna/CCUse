@@ -41,6 +41,61 @@ pub struct SwitchEvent {
     pub attempts: i32,
 }
 
+/// Last provider that actually received proxied traffic.
+#[derive(Debug, Clone, Serialize)]
+pub struct CurrentProviderSnapshot {
+    pub provider_id: Option<String>,
+    pub provider_name: Option<String>,
+    pub model: Option<String>,
+    pub status: Option<String>,
+    pub last_request_at: Option<String>,
+}
+
+/// Return the latest routed provider, based on request logs rather than
+/// health probes. This mirrors the UI's "current provider" wording.
+#[tauri::command]
+pub async fn get_current_provider(
+    db: State<'_, Database>,
+) -> Result<CurrentProviderSnapshot, String> {
+    query_current_provider(&db)
+}
+
+pub fn query_current_provider(db: &Database) -> Result<CurrentProviderSnapshot, String> {
+    db.with_connection(|conn| {
+        conn.query_row(
+            "SELECT p.id, p.name, request_logs.model, request_logs.status, request_logs.timestamp \
+             FROM request_logs \
+             JOIN providers p ON p.id = request_logs.provider_id \
+             ORDER BY request_logs.timestamp DESC, request_logs.id DESC \
+             LIMIT 1",
+            [],
+            |row| {
+                Ok(CurrentProviderSnapshot {
+                    provider_id: Some(row.get(0)?),
+                    provider_name: Some(row.get(1)?),
+                    model: Some(row.get(2)?),
+                    status: Some(row.get(3)?),
+                    last_request_at: Some(row.get(4)?),
+                })
+            },
+        )
+        .or_else(|err| {
+            if matches!(err, rusqlite::Error::QueryReturnedNoRows) {
+                Ok(CurrentProviderSnapshot {
+                    provider_id: None,
+                    provider_name: None,
+                    model: None,
+                    status: None,
+                    last_request_at: None,
+                })
+            } else {
+                Err(err)
+            }
+        })
+    })
+    .map_err(|e| e.to_string())
+}
+
 /// Return 24h of metrics in 5-minute time buckets.
 #[tauri::command]
 pub async fn get_metrics_timeseries(db: State<'_, Database>) -> Result<Vec<MetricsBucket>, String> {
@@ -325,6 +380,44 @@ mod tests {
             .expect("query");
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].to_provider, "p2");
+    }
+
+    #[test]
+    fn current_provider_returns_latest_routed_provider() {
+        let (_dir, db) = setup_db();
+        db.with_connection(|c| {
+            c.execute(
+                "INSERT INTO request_logs \
+                 (timestamp, provider_id, model, status, latency_ms, stream) \
+                 VALUES ('2026-04-29T12:00:00.000Z', 'p1', 'gpt-4', 'ok', 100, 0)",
+                [],
+            )?;
+            c.execute(
+                "INSERT INTO request_logs \
+                 (timestamp, provider_id, model, status, latency_ms, stream) \
+                 VALUES ('2026-04-29T12:01:00.000Z', 'p2', 'claude', 'error', 80, 1)",
+                [],
+            )?;
+            Ok(())
+        })
+        .expect("insert request logs");
+
+        let current = super::query_current_provider(&db).expect("query current provider");
+
+        assert_eq!(current.provider_id.as_deref(), Some("p2"));
+        assert_eq!(current.provider_name.as_deref(), Some("Claude"));
+        assert_eq!(current.model.as_deref(), Some("claude"));
+        assert_eq!(current.status.as_deref(), Some("error"));
+    }
+
+    #[test]
+    fn current_provider_returns_none_without_request_logs() {
+        let (_dir, db) = setup_db();
+
+        let current = super::query_current_provider(&db).expect("query current provider");
+
+        assert!(current.provider_id.is_none());
+        assert!(current.provider_name.is_none());
     }
 
     #[test]

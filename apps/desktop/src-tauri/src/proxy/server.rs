@@ -36,9 +36,9 @@ use crate::providers::{
 };
 use crate::switch::history::{SwitchHistoryInput, SwitchHistoryRepository};
 use crate::switch::request_log::{RequestLogInput, RequestLogRepository};
-use crate::switch::DispatchResult;
+use crate::switch::{DispatchAttemptFailure, DispatchFailure, DispatchResult};
 
-use crate::providers::api::{ApiRequest, ApiResponse};
+use crate::providers::api::{ApiRequest, ApiResponse, ApiUsage};
 
 use super::error::{ApiError, ApiErrorKind};
 use super::{bridge, sse};
@@ -419,38 +419,41 @@ async fn chat_completions(
 
     let start = std::time::Instant::now();
 
-    let result = dispatch_non_streaming(&state, api_req.clone(), &model_mapping).await?;
-
+    let result = match dispatch_non_streaming(&state, api_req.clone(), &model_mapping).await {
+        Ok(result) => result,
+        Err(err) => {
+            let elapsed = start.elapsed();
+            record_failed_attempt_logs(
+                &state,
+                &api_req.model,
+                elapsed,
+                false,
+                err.failed_attempts(),
+            );
+            record_failed_switches(&state, &err);
+            return Err(err.into_api_error());
+        }
+    };
     let elapsed = start.elapsed();
-    record_switch_if_any(&state, &result);
+    record_failed_attempt_logs(
+        &state,
+        &api_req.model,
+        elapsed,
+        false,
+        &result.failed_attempts,
+    );
+    record_success_switches(&state, &result);
 
-    // Fire-and-forget request logging
-    if let Some(ref log_repo) = state.request_log {
-        let input = RequestLogInput {
-            provider_id: result.provider_id.clone(),
-            model: api_req.model.clone(),
-            status: "ok".into(),
-            error_kind: None,
-            latency_ms: i64::try_from(elapsed.as_millis()).unwrap_or(i64::MAX),
-            prompt_tokens: result
-                .response
-                .usage
-                .as_ref()
-                .map(|u| i64::from(u.prompt_tokens)),
-            completion_tokens: result
-                .response
-                .usage
-                .as_ref()
-                .map(|u| i64::from(u.completion_tokens)),
-            total_tokens: result
-                .response
-                .usage
-                .as_ref()
-                .map(|u| i64::from(u.total_tokens)),
-            stream: false,
-        };
-        let _ = log_repo.insert(&input);
-    }
+    record_request_log(
+        &state,
+        &result.provider_id,
+        &api_req.model,
+        "ok",
+        None,
+        elapsed,
+        result.response.usage.as_ref(),
+        false,
+    );
 
     let unified_resp = bridge::api_response_to_unified(&result.response);
     let out = state.openai_converter.unified_to_response(&unified_resp)?;
@@ -469,32 +472,49 @@ async fn handle_streaming_chat(
 ) -> Result<axum::response::Response, ApiError> {
     let start = std::time::Instant::now();
 
-    let result = state
+    let result = match state
         .engine
         .dispatch_stream_with_request_mapper(api_req.clone(), |request, provider| {
             request_with_resolved_model(request, provider, &model_mapping)
         })
         .await
-        .map_err(ApiError::from)?;
+    {
+        Ok(result) => result,
+        Err(failure) => {
+            let err = ProxyDispatchError::Provider(failure);
+            let elapsed = start.elapsed();
+            record_failed_attempt_logs(
+                &state,
+                &api_req.model,
+                elapsed,
+                true,
+                err.failed_attempts(),
+            );
+            record_failed_switches(&state, &err);
+            return Err(err.into_api_error());
+        }
+    };
 
     let elapsed = start.elapsed();
-    record_switch_if_any(&state, &result);
+    record_failed_attempt_logs(
+        &state,
+        &api_req.model,
+        elapsed,
+        true,
+        &result.failed_attempts,
+    );
+    record_success_switches(&state, &result);
 
-    // Log the stream initiation (tokens unknown until stream ends).
-    if let Some(ref log_repo) = state.request_log {
-        let input = RequestLogInput {
-            provider_id: result.provider_id.clone(),
-            model: api_req.model.clone(),
-            status: "ok".into(),
-            error_kind: None,
-            latency_ms: i64::try_from(elapsed.as_millis()).unwrap_or(i64::MAX),
-            prompt_tokens: None,
-            completion_tokens: None,
-            total_tokens: None,
-            stream: true,
-        };
-        let _ = log_repo.insert(&input);
-    }
+    record_request_log(
+        &state,
+        &result.provider_id,
+        &api_req.model,
+        "ok",
+        None,
+        elapsed,
+        None,
+        true,
+    );
 
     let stream = sse::with_keep_alive(result.response, sse::DEFAULT_KEEP_ALIVE);
     Ok(sse::stream_to_sse_response(stream))
@@ -535,36 +555,41 @@ async fn anthropic_messages_inner(
     }
 
     let start = std::time::Instant::now();
-    let result = dispatch_non_streaming(&state, api_req.clone(), &model_mapping).await?;
+    let result = match dispatch_non_streaming(&state, api_req.clone(), &model_mapping).await {
+        Ok(result) => result,
+        Err(err) => {
+            let elapsed = start.elapsed();
+            record_failed_attempt_logs(
+                &state,
+                &api_req.model,
+                elapsed,
+                false,
+                err.failed_attempts(),
+            );
+            record_failed_switches(&state, &err);
+            return Err(err.into_api_error());
+        }
+    };
     let elapsed = start.elapsed();
-    record_switch_if_any(&state, &result);
+    record_failed_attempt_logs(
+        &state,
+        &api_req.model,
+        elapsed,
+        false,
+        &result.failed_attempts,
+    );
+    record_success_switches(&state, &result);
 
-    if let Some(ref log_repo) = state.request_log {
-        let input = RequestLogInput {
-            provider_id: result.provider_id.clone(),
-            model: api_req.model.clone(),
-            status: "ok".into(),
-            error_kind: None,
-            latency_ms: i64::try_from(elapsed.as_millis()).unwrap_or(i64::MAX),
-            prompt_tokens: result
-                .response
-                .usage
-                .as_ref()
-                .map(|u| i64::from(u.prompt_tokens)),
-            completion_tokens: result
-                .response
-                .usage
-                .as_ref()
-                .map(|u| i64::from(u.completion_tokens)),
-            total_tokens: result
-                .response
-                .usage
-                .as_ref()
-                .map(|u| i64::from(u.total_tokens)),
-            stream: false,
-        };
-        let _ = log_repo.insert(&input);
-    }
+    record_request_log(
+        &state,
+        &result.provider_id,
+        &api_req.model,
+        "ok",
+        None,
+        elapsed,
+        result.response.usage.as_ref(),
+        false,
+    );
 
     let unified_resp = bridge::api_response_to_unified(&result.response);
     let out = state
@@ -579,30 +604,48 @@ async fn handle_streaming_anthropic_messages(
     model_mapping: ModelMapping,
 ) -> Result<axum::response::Response, ApiError> {
     let start = std::time::Instant::now();
-    let result = state
+    let result = match state
         .engine
         .dispatch_stream_with_request_mapper(api_req.clone(), |request, provider| {
             request_with_resolved_model(request, provider, &model_mapping)
         })
         .await
-        .map_err(ApiError::from)?;
+    {
+        Ok(result) => result,
+        Err(failure) => {
+            let err = ProxyDispatchError::Provider(failure);
+            let elapsed = start.elapsed();
+            record_failed_attempt_logs(
+                &state,
+                &api_req.model,
+                elapsed,
+                true,
+                err.failed_attempts(),
+            );
+            record_failed_switches(&state, &err);
+            return Err(err.into_api_error());
+        }
+    };
     let elapsed = start.elapsed();
-    record_switch_if_any(&state, &result);
+    record_failed_attempt_logs(
+        &state,
+        &api_req.model,
+        elapsed,
+        true,
+        &result.failed_attempts,
+    );
+    record_success_switches(&state, &result);
 
-    if let Some(ref log_repo) = state.request_log {
-        let input = RequestLogInput {
-            provider_id: result.provider_id.clone(),
-            model: api_req.model.clone(),
-            status: "ok".into(),
-            error_kind: None,
-            latency_ms: i64::try_from(elapsed.as_millis()).unwrap_or(i64::MAX),
-            prompt_tokens: None,
-            completion_tokens: None,
-            total_tokens: None,
-            stream: true,
-        };
-        let _ = log_repo.insert(&input);
-    }
+    record_request_log(
+        &state,
+        &result.provider_id,
+        &api_req.model,
+        "ok",
+        None,
+        elapsed,
+        None,
+        true,
+    );
 
     let stream = openai_sse_to_anthropic_sse(
         result.response,
@@ -629,11 +672,32 @@ fn request_with_resolved_model(
     mapped
 }
 
+enum ProxyDispatchError {
+    Timeout(ApiError),
+    Provider(DispatchFailure),
+}
+
+impl ProxyDispatchError {
+    fn into_api_error(self) -> ApiError {
+        match self {
+            Self::Timeout(err) => err,
+            Self::Provider(failure) => failure.into(),
+        }
+    }
+
+    fn failed_attempts(&self) -> &[DispatchAttemptFailure] {
+        match self {
+            Self::Timeout(_) => &[],
+            Self::Provider(failure) => &failure.failed_attempts,
+        }
+    }
+}
+
 async fn dispatch_non_streaming(
     state: &ProxyAppState,
     api_req: ApiRequest,
     model_mapping: &ModelMapping,
-) -> Result<DispatchResult<ApiResponse>, ApiError> {
+) -> Result<DispatchResult<ApiResponse>, ProxyDispatchError> {
     tokio::time::timeout(
         state.non_streaming_timeout,
         state
@@ -644,32 +708,111 @@ async fn dispatch_non_streaming(
     )
     .await
     .map_err(|_| {
-        ApiError::timeout(format!(
+        ProxyDispatchError::Timeout(ApiError::timeout(format!(
             "request timed out after {:?}",
             state.non_streaming_timeout
-        ))
+        )))
     })?
-    .map_err(ApiError::from)
+    .map_err(ProxyDispatchError::Provider)
 }
 
-fn record_switch_if_any<T>(state: &ProxyAppState, result: &DispatchResult<T>) {
+#[allow(clippy::too_many_arguments)]
+fn record_request_log(
+    state: &ProxyAppState,
+    provider_id: &str,
+    model: &str,
+    status: &str,
+    error_kind: Option<String>,
+    latency: Duration,
+    usage: Option<&ApiUsage>,
+    stream: bool,
+) {
+    let Some(ref log_repo) = state.request_log else {
+        return;
+    };
+    let input = RequestLogInput {
+        provider_id: provider_id.to_owned(),
+        model: model.to_owned(),
+        status: status.to_owned(),
+        error_kind,
+        latency_ms: i64::try_from(latency.as_millis()).unwrap_or(i64::MAX),
+        prompt_tokens: usage.map(|u| i64::from(u.prompt_tokens)),
+        completion_tokens: usage.map(|u| i64::from(u.completion_tokens)),
+        total_tokens: usage.map(|u| i64::from(u.total_tokens)),
+        stream,
+    };
+    let _ = log_repo.insert(&input);
+}
+
+fn record_failed_attempt_logs(
+    state: &ProxyAppState,
+    model: &str,
+    latency: Duration,
+    stream: bool,
+    attempts: &[DispatchAttemptFailure],
+) {
+    for attempt in attempts {
+        record_request_log(
+            state,
+            &attempt.provider_id,
+            model,
+            "error",
+            Some(attempt.error_kind.clone()),
+            latency,
+            None,
+            stream,
+        );
+    }
+}
+
+fn record_success_switches<T>(state: &ProxyAppState, result: &DispatchResult<T>) {
+    record_switches_for_attempts(
+        state,
+        &result.failed_attempts,
+        Some(&result.provider_id),
+        result.strategy.as_str(),
+    );
+}
+
+fn record_failed_switches(state: &ProxyAppState, err: &ProxyDispatchError) {
+    let ProxyDispatchError::Provider(failure) = err else {
+        return;
+    };
+    record_switches_for_attempts(
+        state,
+        &failure.failed_attempts,
+        None,
+        failure.strategy.as_str(),
+    );
+}
+
+fn record_switches_for_attempts(
+    state: &ProxyAppState,
+    failed_attempts: &[DispatchAttemptFailure],
+    final_provider_id: Option<&str>,
+    strategy: &str,
+) {
     let Some(ref repo) = state.switch_history else {
         return;
     };
-    let Some(from_provider) = result.switched_from_provider_id.clone() else {
-        return;
-    };
-    let Some(reason) = result.switch_reason.clone() else {
-        return;
-    };
-    let input = SwitchHistoryInput {
-        from_provider: Some(from_provider),
-        to_provider: result.provider_id.clone(),
-        strategy: result.strategy.as_str().to_owned(),
-        reason,
-        attempts: i32::try_from(result.attempts).unwrap_or(i32::MAX),
-    };
-    let _ = repo.insert(&input);
+
+    for (index, failed) in failed_attempts.iter().enumerate() {
+        let to_provider = failed_attempts
+            .get(index + 1)
+            .map(|next| next.provider_id.as_str())
+            .or(final_provider_id);
+        let Some(to_provider) = to_provider else {
+            continue;
+        };
+        let input = SwitchHistoryInput {
+            from_provider: Some(failed.provider_id.clone()),
+            to_provider: to_provider.to_owned(),
+            strategy: strategy.to_owned(),
+            reason: failed.error_kind.clone(),
+            attempts: i32::try_from(index + 2).unwrap_or(i32::MAX),
+        };
+        let _ = repo.insert(&input);
+    }
 }
 
 struct AnthropicSseBridge {

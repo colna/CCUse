@@ -266,12 +266,6 @@ mod three_provider_mocks {
             .mount(&server)
             .await;
 
-        Mock::given(method("GET"))
-            .and(path("/v1/models"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": []})))
-            .mount(&server)
-            .await;
-
         let provider =
             OpenAIProvider::new("oai-1", "MockOpenAI", server.uri(), "sk-test").expect("build");
 

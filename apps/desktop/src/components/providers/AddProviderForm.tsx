@@ -221,6 +221,9 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
       setSubmitting(true);
       try {
         const provider = await addProvider(input);
+        setValues(INITIAL_VALUES);
+        setErrors({});
+        setAdvancedOpen(false);
         setSuccessId(provider.id);
         onAdded?.(provider.id);
       } catch (err: unknown) {
@@ -240,6 +243,7 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
     setSuccessId(null);
     setTestResult(null);
     setTestError(null);
+    setAdvancedOpen(false);
   }, []);
 
   return (

@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/tauri", () => ({
   addProvider: vi.fn(),
+  testProviderConnection: vi.fn(),
 }));
 
 import { addProvider } from "@/lib/tauri";
@@ -61,6 +62,12 @@ describe("AddProviderForm", () => {
       "11111111-2222-3333-4444-555555555555",
     );
     expect(await screen.findByText(/已添加.*11111111/)).toBeInTheDocument();
+    expect(screen.getByLabelText("名称")).toHaveValue("");
+    expect(screen.getByLabelText("Base URL")).toHaveValue(
+      "https://api.openai.com",
+    );
+    expect(screen.getByLabelText("API Key")).toHaveValue("");
+    expect(screen.getByLabelText("优先级")).toHaveValue("100");
   });
 
   it("shows per-field errors when required values are missing", async () => {

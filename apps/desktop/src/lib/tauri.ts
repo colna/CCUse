@@ -120,6 +120,10 @@ export async function getHealthSnapshot(): Promise<HealthSnapshotResponse> {
   return invoke<HealthSnapshotResponse>("get_health_snapshot");
 }
 
+export async function refreshHealthSnapshot(): Promise<HealthSnapshotResponse> {
+  return invoke<HealthSnapshotResponse>("refresh_health_snapshot");
+}
+
 export interface ProviderStatusChangedEvent {
   provider_id: string;
   provider_name: string;
@@ -234,6 +238,18 @@ export interface SwitchEvent {
   strategy: string;
   reason: string;
   details?: string | null;
+}
+
+export interface CurrentProviderSnapshot {
+  provider_id: string | null;
+  provider_name: string | null;
+  model: string | null;
+  status: string | null;
+  last_request_at: string | null;
+}
+
+export async function getCurrentProvider(): Promise<CurrentProviderSnapshot> {
+  return invoke<CurrentProviderSnapshot>("get_current_provider");
 }
 
 export async function getMetricsTimeseries(): Promise<MetricsBucket[]> {
