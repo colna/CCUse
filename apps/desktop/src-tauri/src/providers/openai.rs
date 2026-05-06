@@ -172,7 +172,6 @@ impl OpenAIProvider {
         Ok(match response.status() {
             s if s.is_success() => HealthStatus::Healthy,
             status @ (StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) => status_to_health(status),
-            StatusCode::TOO_MANY_REQUESTS => HealthStatus::Degraded,
             _ => HealthStatus::Degraded,
         })
     }

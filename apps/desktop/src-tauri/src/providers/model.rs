@@ -12,6 +12,8 @@ pub enum ProviderKind {
     Openai,
     /// Anthropic (`/v1/messages`).
     Anthropic,
+    /// Claude-compatible relays that expose Anthropic Messages.
+    Claude,
     /// Google Gemini (`/v1beta/models/.../generateContent`).
     Gemini,
     /// Relay / proxy endpoint (e.g. `OpenRouter`, One API).
@@ -27,10 +29,27 @@ impl ProviderKind {
         match self {
             Self::Openai => "openai",
             Self::Anthropic => "anthropic",
+            Self::Claude => "claude",
             Self::Gemini => "gemini",
             Self::Relay => "relay",
             Self::Custom => "custom",
         }
+    }
+
+    /// The outbound wire protocol used by the runtime provider.
+    #[must_use]
+    pub const fn protocol_vendor(self) -> &'static str {
+        match self {
+            Self::Openai | Self::Relay => "openai",
+            Self::Anthropic | Self::Claude | Self::Custom => "anthropic",
+            Self::Gemini => "gemini",
+        }
+    }
+
+    /// Whether runtime dispatch should use Anthropic Messages (`/v1/messages`).
+    #[must_use]
+    pub const fn uses_anthropic_messages(self) -> bool {
+        matches!(self, Self::Anthropic | Self::Claude | Self::Custom)
     }
 
     /// Reverse of [`Self::as_str`]. `None` if `value` doesn't match
@@ -40,6 +59,7 @@ impl ProviderKind {
         match value {
             "openai" => Some(Self::Openai),
             "anthropic" => Some(Self::Anthropic),
+            "claude" => Some(Self::Claude),
             "gemini" => Some(Self::Gemini),
             "relay" => Some(Self::Relay),
             "custom" => Some(Self::Custom),
@@ -97,6 +117,7 @@ mod tests {
         for kind in [
             ProviderKind::Openai,
             ProviderKind::Anthropic,
+            ProviderKind::Claude,
             ProviderKind::Gemini,
             ProviderKind::Relay,
             ProviderKind::Custom,

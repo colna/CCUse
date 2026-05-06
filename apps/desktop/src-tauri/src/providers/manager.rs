@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 use tokio::sync::RwLock;
 
+use super::anthropic::AnthropicProvider;
 use super::api::{Provider as ProviderTrait, ProviderError};
 use super::model::ProviderKind;
 use super::openai::OpenAIProvider;
@@ -144,8 +145,7 @@ impl Default for ProviderManager {
     }
 }
 
-/// Build a runtime provider from config. Today only `OpenAI`-
-/// compatible providers exist; `Anthropic` / `Gemini` land in T1.0.3.
+/// Build a runtime provider from config.
 fn build_runtime_provider(
     id: &str,
     name: &str,
@@ -154,16 +154,12 @@ fn build_runtime_provider(
     api_key: &str,
 ) -> Result<Box<dyn super::api::Provider>, ProviderError> {
     match kind {
-        ProviderKind::Openai | ProviderKind::Custom => {
+        ProviderKind::Openai | ProviderKind::Relay | ProviderKind::Gemini => {
             Ok(Box::new(OpenAIProvider::new(id, name, base_url, api_key)?))
         }
-        ProviderKind::Anthropic | ProviderKind::Gemini | ProviderKind::Relay => {
-            // T1.0.3 will add AnthropicProvider / GeminiProvider.
-            // Until then, fall back to the OpenAI-compatible path —
-            // users who add these kinds will get a best-effort proxy
-            // that works if the upstream accepts OpenAI-shaped requests.
-            Ok(Box::new(OpenAIProvider::new(id, name, base_url, api_key)?))
-        }
+        ProviderKind::Anthropic | ProviderKind::Claude | ProviderKind::Custom => Ok(Box::new(
+            AnthropicProvider::new(id, name, base_url, api_key)?,
+        )),
     }
 }
 
@@ -323,11 +319,13 @@ mod tests {
     }
 
     #[test]
-    fn build_runtime_provider_creates_openai_for_all_kinds() {
+    fn build_runtime_provider_creates_provider_for_all_kinds() {
         for kind in [
             ProviderKind::Openai,
             ProviderKind::Anthropic,
+            ProviderKind::Claude,
             ProviderKind::Gemini,
+            ProviderKind::Relay,
             ProviderKind::Custom,
         ] {
             let p = build_runtime_provider("id", "n", kind, "https://api", "sk-key");

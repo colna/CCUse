@@ -32,6 +32,14 @@ struct ProviderSpec<'a> {
     server: &'a MockServer,
 }
 
+struct RuntimeProviderSpec<'a> {
+    id: &'a str,
+    name: &'a str,
+    kind: ProviderKind,
+    priority: i32,
+    server: &'a MockServer,
+}
+
 struct RunningProxy {
     base_url: String,
     shutdown_tx: oneshot::Sender<()>,
@@ -119,6 +127,66 @@ async fn start_proxy_with_providers_mapping_timeout_and_request_log(
     if let Some(timeout) = non_streaming_timeout {
         state = state.with_non_streaming_timeout(timeout);
     }
+    let server = ProxyServer::bind(loopback_zero())
+        .await
+        .expect("bind proxy");
+    let base_url = format!("http://{}", server.local_addr());
+    let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
+    let handle = tokio::spawn(server.serve_with_shutdown(state, async move {
+        let _ = shutdown_rx.await;
+    }));
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    RunningProxy {
+        base_url,
+        shutdown_tx,
+        handle,
+        manager,
+    }
+}
+
+async fn start_proxy_with_runtime_provider(spec: RuntimeProviderSpec<'_>) -> RunningProxy {
+    let manager = Arc::new(ProviderManager::new());
+    let inner: Box<dyn ccuse_desktop_lib::providers::RuntimeProvider> =
+        if spec.kind.uses_anthropic_messages() {
+            Box::new(
+                ccuse_desktop_lib::providers::AnthropicProvider::with_options(
+                    spec.id,
+                    spec.name,
+                    spec.server.uri(),
+                    "sk-upstream-test",
+                    spec.priority,
+                    None,
+                )
+                .expect("build anthropic provider"),
+            )
+        } else {
+            Box::new(
+                OpenAIProvider::with_options(
+                    spec.id,
+                    spec.name,
+                    spec.server.uri(),
+                    "sk-upstream-test",
+                    spec.priority,
+                    None,
+                )
+                .expect("build openai provider"),
+            )
+        };
+    let wrapper = Arc::new(ProviderWrapper::new(
+        spec.id,
+        spec.name,
+        spec.kind,
+        spec.priority,
+        None,
+        true,
+        inner,
+    ));
+    manager.add(wrapper).await.expect("register provider");
+
+    let engine = Arc::new(SwitchEngine::new(Arc::clone(&manager)));
+    let mapping = Arc::new(RwLock::new(ModelMapping::new()));
+    let state = ProxyAppState::new(engine, mapping, Arc::clone(&manager));
     let server = ProxyServer::bind(loopback_zero())
         .await
         .expect("bind proxy");
@@ -246,6 +314,18 @@ fn openai_text_response(content: &str) -> Value {
             "finish_reason": "stop"
         }],
         "usage": {"prompt_tokens": 4, "completion_tokens": 2, "total_tokens": 6}
+    })
+}
+
+fn anthropic_text_response(content: &str) -> Value {
+    json!({
+        "id": "msg-proxy-e2e",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-opus-4-6",
+        "content": [{"type": "text", "text": content}],
+        "stop_reason": "end_turn",
+        "usage": {"input_tokens": 4, "output_tokens": 2}
     })
 }
 
@@ -574,6 +654,48 @@ async fn chat_completions_keeps_original_model_without_mapping() {
     let received = upstream.received_requests().await.expect("received");
     let upstream_body: Value = serde_json::from_slice(&received[0].body).expect("json");
     assert_eq!(upstream_body["model"], "client-unmapped");
+
+    proxy.shutdown().await;
+}
+
+#[tokio::test]
+async fn chat_completions_routes_custom_provider_as_anthropic_messages_upstream() {
+    let upstream = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/messages"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(anthropic_text_response("pong")))
+        .expect(1)
+        .mount(&upstream)
+        .await;
+    let proxy = start_proxy_with_runtime_provider(RuntimeProviderSpec {
+        id: "custom-anthropic",
+        name: "Custom Anthropic",
+        kind: ProviderKind::Custom,
+        priority: 1,
+        server: &upstream,
+    })
+    .await;
+
+    let response = reqwest::Client::new()
+        .post(format!("{}/v1/chat/completions", proxy.base_url))
+        .json(&chat_request_with_model("claude-opus-4-6"))
+        .send()
+        .await
+        .expect("proxy request");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = response.json().await.expect("response json");
+    assert_eq!(body["choices"][0]["message"]["content"], "pong");
+
+    let received = upstream.received_requests().await.expect("received");
+    let upstream_body: Value = serde_json::from_slice(&received[0].body).expect("json");
+    assert_eq!(upstream_body["model"], "claude-opus-4-6");
+    assert_eq!(upstream_body["messages"][0]["role"], "user");
+    assert_eq!(upstream_body["messages"][0]["content"][0]["text"], "ping");
+    assert_eq!(
+        received[0].headers.get("authorization").unwrap(),
+        "Bearer sk-upstream-test",
+    );
 
     proxy.shutdown().await;
 }

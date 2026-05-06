@@ -83,6 +83,38 @@ describe("AddProviderForm", () => {
     expect(addProvider).not.toHaveBeenCalled();
   });
 
+  it("submits Claude-compatible providers with an explicit Base URL", async () => {
+    vi.mocked(addProvider).mockResolvedValueOnce({
+      id: "claude-id",
+      name: "Claude Relay",
+      kind: "claude",
+      base_url: "https://router.example.com/api",
+      priority: 100,
+      enabled: true,
+      created_at: "",
+      updated_at: "",
+    });
+    render(<AddProviderForm />);
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: "Claude" }));
+    await user.type(screen.getByLabelText("名称"), "Claude Relay");
+    await user.type(
+      screen.getByLabelText("Base URL"),
+      "https://router.example.com/api",
+    );
+    await user.type(screen.getByLabelText("API Key"), "sk-relay");
+    await user.click(screen.getByRole("button", { name: "添加" }));
+
+    await waitFor(() => expect(addProvider).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(addProvider).mock.calls[0]?.[0]).toMatchObject({
+      name: "Claude Relay",
+      kind: "claude",
+      base_url: "https://router.example.com/api",
+      api_key: "sk-relay",
+    });
+  });
+
   it("rejects malformed Base URL", async () => {
     render(<AddProviderForm />);
     const user = userEvent.setup();

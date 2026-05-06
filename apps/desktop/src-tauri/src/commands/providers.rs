@@ -9,8 +9,9 @@ use std::sync::Arc;
 
 use tauri::State;
 
+use crate::providers::anthropic::AnthropicProvider;
 use crate::providers::api::{HealthStatus, Provider as _};
-use crate::providers::model::{Provider, ProviderInput};
+use crate::providers::model::{Provider, ProviderInput, ProviderKind};
 use crate::providers::openai::OpenAIProvider;
 use crate::providers::repository::ProviderRepository;
 use crate::providers::{ManagerError, ProviderManager, RepositoryError};
@@ -204,14 +205,21 @@ pub async fn test_provider_connection(
 
     let start = std::time::Instant::now();
 
-    if matches!(
-        provider.kind,
-        crate::providers::model::ProviderKind::Openai
-            | crate::providers::model::ProviderKind::Relay
-            | crate::providers::model::ProviderKind::Custom
-    ) {
+    if matches!(provider.kind, ProviderKind::Openai | ProviderKind::Relay) {
         let runtime =
             OpenAIProvider::new(&provider.id, &provider.name, &provider.base_url, &api_key)
+                .map_err(|e| e.to_string())?;
+        let status = runtime.health_check().await.map_err(|e| e.to_string())?;
+        if status == HealthStatus::Down {
+            return Err("health check reported provider down".to_owned());
+        }
+        #[allow(clippy::cast_possible_truncation)]
+        return Ok(start.elapsed().as_millis() as u64);
+    }
+
+    if provider.kind.uses_anthropic_messages() {
+        let runtime =
+            AnthropicProvider::new(&provider.id, &provider.name, &provider.base_url, &api_key)
                 .map_err(|e| e.to_string())?;
         let status = runtime.health_check().await.map_err(|e| e.to_string())?;
         if status == HealthStatus::Down {
@@ -227,10 +235,10 @@ pub async fn test_provider_connection(
         .map_err(|e| e.to_string())?;
 
     let url = match provider.kind {
-        crate::providers::model::ProviderKind::Anthropic => {
+        ProviderKind::Anthropic | ProviderKind::Claude | ProviderKind::Custom => {
             format!("{}/v1/messages", provider.base_url)
         }
-        crate::providers::model::ProviderKind::Gemini => {
+        ProviderKind::Gemini => {
             format!("{}/v1beta/models", provider.base_url)
         }
         _ => format!("{}/v1/models", provider.base_url),
@@ -238,12 +246,12 @@ pub async fn test_provider_connection(
 
     let mut req = client.get(&url);
     match provider.kind {
-        crate::providers::model::ProviderKind::Anthropic => {
+        ProviderKind::Anthropic | ProviderKind::Claude | ProviderKind::Custom => {
             req = req
                 .header("x-api-key", &api_key)
                 .header("anthropic-version", "2023-06-01");
         }
-        crate::providers::model::ProviderKind::Gemini => {
+        ProviderKind::Gemini => {
             req = req.query(&[("key", &api_key)]);
         }
         _ => {

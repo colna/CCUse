@@ -35,6 +35,12 @@ const PROVIDER_TYPES: ProviderTypeOption[] = [
     requiresBaseUrl: false,
   },
   {
+    kind: "claude",
+    label: "Claude",
+    defaultBaseUrl: "",
+    requiresBaseUrl: true,
+  },
+  {
     kind: "gemini",
     label: "Gemini",
     defaultBaseUrl: "https://generativelanguage.googleapis.com",

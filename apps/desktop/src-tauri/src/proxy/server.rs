@@ -661,8 +661,11 @@ fn request_with_resolved_model(
     provider: &ProviderWrapper,
     model_mapping: &ModelMapping,
 ) -> ApiRequest {
-    let resolved =
-        model_mapping.resolve_for_provider(&request.model, provider.id(), provider.kind().as_str());
+    let resolved = model_mapping.resolve_for_provider(
+        &request.model,
+        provider.id(),
+        provider.kind().protocol_vendor(),
+    );
     if resolved == request.model {
         return request.clone();
     }
@@ -1105,5 +1108,17 @@ mod tests {
         let mapped = request_with_resolved_model(&request, &provider, &mapping);
 
         assert_eq!(mapped.model, "client-fast");
+    }
+
+    #[test]
+    fn request_with_resolved_model_treats_custom_as_anthropic_protocol() {
+        let mut mapping = ModelMapping::new();
+        mapping.set_mapping("client-fast", "anthropic", "claude-kind-wide");
+        let provider = provider_for_model_mapping("custom-a", ProviderKind::Custom);
+        let request = api_request_for_model("client-fast");
+
+        let mapped = request_with_resolved_model(&request, &provider, &mapping);
+
+        assert_eq!(mapped.model, "claude-kind-wide");
     }
 }

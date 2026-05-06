@@ -13,7 +13,7 @@ export interface LocalApiConfig {
  * T1.0.2.19's `add_provider` Tauri command. */
 export interface ProviderInput {
   name: string;
-  kind: "openai" | "anthropic" | "gemini" | "relay" | "custom";
+  kind: "openai" | "anthropic" | "claude" | "gemini" | "relay" | "custom";
   base_url: string;
   api_key: string;
   priority: number;
@@ -277,7 +277,7 @@ export async function sendNotification(
 
 export interface ExportProvider {
   name: string;
-  kind: "openai" | "anthropic" | "gemini" | "relay" | "custom";
+  kind: "openai" | "anthropic" | "claude" | "gemini" | "relay" | "custom";
   base_url: string;
   priority: number;
   enabled: boolean;

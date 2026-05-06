@@ -10,7 +10,7 @@
 //! |-------------------------|----------------|---------------------------------------|
 //! | `Provider`              | <= 224         | 7 Strings + 2 Option + i32 + bool     |
 //! | `ProviderInput`         | <= 176         | 4 Strings + enums + Options            |
-//! | `ProviderKind`          |   1            | 5-variant enum, fits in 1 byte         |
+//! | `ProviderKind`          |   1            | 6-variant enum, fits in 1 byte         |
 //! | `SwitchStrategy`        |   1            | 5-variant enum                         |
 //! | `SwitchConfig`          | <= 48          | enum + usize + `SmartWeights`          |
 //! | `SmartWeights`          |  32            | 4 x f64                                |
