@@ -77,13 +77,21 @@ pub(crate) async fn update_provider_and_reload(
     id: &str,
     input: ProviderInput,
 ) -> Result<Provider, String> {
-    let previous = provider_input_for_existing_row(repo, id).map_err(|e| e.to_string())?;
+    let previous = maybe_provider_input_for_existing_row(repo, id).map_err(|e| e.to_string())?;
     let updated = repo.update(id, &input).map_err(|e| e.to_string())?;
     match manager.reload_from_repository(repo).await {
         Ok(_) => Ok(updated),
         Err(err) => {
-            let rollback = repo.update(id, &previous).map(|_| ());
-            Err(format_reload_failure("update_provider", &err, rollback))
+            if let Some(previous) = previous {
+                let rollback = repo.update(id, &previous).map(|_| ());
+                Err(format_reload_failure("update_provider", &err, rollback))
+            } else {
+                Err(format_reload_failure_without_rollback(
+                    "update_provider",
+                    &err,
+                    "previous api key could not be decrypted",
+                ))
+            }
         }
     }
 }
@@ -93,26 +101,43 @@ pub(crate) async fn delete_provider_and_reload(
     manager: &ProviderManager,
     id: &str,
 ) -> Result<(), String> {
-    let previous = provider_input_for_existing_row(repo, id).map_err(|e| e.to_string())?;
+    let previous = maybe_provider_input_for_existing_row(repo, id).map_err(|e| e.to_string())?;
     repo.delete(id).map_err(|e| e.to_string())?;
     match manager.reload_from_repository(repo).await {
         Ok(_) => Ok(()),
         Err(err) => {
-            let rollback = repo.insert_with_id(id, &previous).map(|_| ());
-            Err(format_reload_failure("delete_provider", &err, rollback))
+            if let Some(previous) = previous {
+                let rollback = repo.insert_with_id(id, &previous).map(|_| ());
+                Err(format_reload_failure("delete_provider", &err, rollback))
+            } else {
+                Err(format_reload_failure_without_rollback(
+                    "delete_provider",
+                    &err,
+                    "previous api key could not be decrypted",
+                ))
+            }
         }
     }
 }
 
-fn provider_input_for_existing_row(
+fn maybe_provider_input_for_existing_row(
     repo: &ProviderRepository,
     id: &str,
-) -> Result<ProviderInput, RepositoryError> {
+) -> Result<Option<ProviderInput>, RepositoryError> {
     let provider = repo
         .get(id)?
         .ok_or_else(|| RepositoryError::NotFound(id.to_owned()))?;
-    let api_key = repo.get_decrypted_api_key(id)?;
-    Ok(provider_to_input(provider, api_key))
+    let api_key = match repo.get_decrypted_api_key(id) {
+        Ok(api_key) => api_key,
+        Err(RepositoryError::Crypto(err)) => {
+            eprintln!(
+                "CCUse: provider `{id}` api key cannot be decrypted; allowing replacement/delete: {err}",
+            );
+            return Ok(None);
+        }
+        Err(err) => return Err(err),
+    };
+    Ok(Some(provider_to_input(provider, api_key)))
 }
 
 fn provider_to_input(provider: Provider, api_key: String) -> ProviderInput {
@@ -146,6 +171,14 @@ fn format_reload_failure(
             )
         }
     }
+}
+
+fn format_reload_failure_without_rollback(
+    action: &str,
+    reload_error: &ManagerError,
+    reason: &str,
+) -> String {
+    format!("{action} failed during provider reload and database rollback was unavailable ({reason}): {reload_error}")
 }
 
 /// Test connectivity to a provider's endpoint (T1.0.4.05).
@@ -245,6 +278,16 @@ mod tests {
         .expect("corrupt kind");
     }
 
+    fn corrupt_api_key(db: &Database, id: &str) {
+        db.with_connection(|conn| {
+            conn.execute(
+                "UPDATE providers SET encrypted_api_key=?1 WHERE id=?2",
+                params![vec![1_u8, 2, 3], id],
+            )
+        })
+        .expect("corrupt api key");
+    }
+
     fn provider_row_count(db: &Database) -> i64 {
         db.with_connection(|conn| {
             conn.query_row("SELECT COUNT(*) FROM providers", [], |row| row.get(0))
@@ -317,6 +360,33 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn update_provider_and_reload_replaces_unreadable_api_key() {
+        let (_dir, repo, db) = make_repo();
+        let manager = ProviderManager::new();
+        let added = add_provider_and_reload(repo.as_ref(), &manager, sample_input("Primary", 20))
+            .await
+            .expect("add and reload");
+        corrupt_api_key(&db, &added.id);
+
+        let updated = update_provider_and_reload(
+            repo.as_ref(),
+            &manager,
+            &added.id,
+            ProviderInput {
+                api_key: "sk-replacement-key".into(),
+                ..sample_input("Renamed", 5)
+            },
+        )
+        .await
+        .expect("update replaces unreadable key");
+
+        let wrapper = manager.get(&added.id).await.expect("runtime provider");
+        assert_eq!(updated.name, "Renamed");
+        assert_eq!(wrapper.name(), "Renamed");
+        assert_eq!(wrapper.get_priority(), 5);
+    }
+
+    #[tokio::test]
     async fn delete_provider_and_reload_removes_runtime_wrapper_immediately() {
         let (_dir, repo, _db) = make_repo();
         let manager = ProviderManager::new();
@@ -328,6 +398,23 @@ mod tests {
             .await
             .expect("delete and reload");
 
+        assert!(manager.get(&added.id).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn delete_provider_and_reload_removes_unreadable_provider() {
+        let (_dir, repo, db) = make_repo();
+        let manager = ProviderManager::new();
+        let added = add_provider_and_reload(repo.as_ref(), &manager, sample_input("Primary", 10))
+            .await
+            .expect("add and reload");
+        corrupt_api_key(&db, &added.id);
+
+        delete_provider_and_reload(repo.as_ref(), &manager, &added.id)
+            .await
+            .expect("delete unreadable provider");
+
+        assert!(repo.get(&added.id).expect("provider lookup").is_none());
         assert!(manager.get(&added.id).await.is_none());
     }
 
