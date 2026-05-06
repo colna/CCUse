@@ -9,6 +9,7 @@ pub mod secure_storage;
 
 pub use master_key::{
     load_or_create_master_key, FallbackKeyringBackend, FileKeyringBackend, KeyringBackend,
-    MasterKey, MasterKeyError, KEYRING_SERVICE, KEYRING_USER, MASTER_KEY_BYTES,
+    MasterKey, MasterKeyError, FILE_KEY_STORE_NAME, KEYRING_SERVICE, KEYRING_USER,
+    MASTER_KEY_BYTES,
 };
 pub use secure_storage::{decrypt, encrypt, SecureStorageError, ENVELOPE_VERSION, NONCE_LEN};

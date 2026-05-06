@@ -94,8 +94,8 @@ pub fn run() {
             let database = db::open_database(&db_path).expect("failed to open database");
             db::run_migrations(&database).expect("failed to run migrations");
 
-            let keyring_fallback_path = app_dir.join("keyring_fallback.json");
-            let backend = crypto::FallbackKeyringBackend::new(keyring_fallback_path);
+            let key_store_path = app_dir.join(crypto::FILE_KEY_STORE_NAME);
+            let backend = crypto::FileKeyringBackend::new(key_store_path);
             let master_key = Arc::new(
                 crypto::load_or_create_master_key(&backend)
                     .expect("failed to initialise master key"),

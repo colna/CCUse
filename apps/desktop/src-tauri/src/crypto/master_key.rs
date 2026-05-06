@@ -1,11 +1,10 @@
-//! Master encryption key, persisted in the OS secret store.
+//! Master encryption key, persisted through a pluggable secret store.
 //!
 //! Behaviour:
 //! 1. On first launch we generate a 256-bit key from the OS RNG and
-//!    base64-encode it into the platform keyring (Keychain on macOS,
-//!    Credential Manager on Windows, libsecret on Linux).
+//!    base64-encode it into the configured backend.
 //! 2. Subsequent launches read it back. The plaintext key never
-//!    touches disk in user-visible form.
+//!    touches the provider database in user-visible form.
 //!
 //! Tests don't depend on a real keyring — they pass an in-memory
 //! [`KeyringBackend`] so they run unmodified in CI.
@@ -24,6 +23,10 @@ pub const KEYRING_SERVICE: &str = "io.ccuse.desktop";
 /// migrate to a new key shape later without colliding with the
 /// existing entry.
 pub const KEYRING_USER: &str = "master_key_v1";
+
+/// File used by the desktop app when storing the master key without
+/// touching the OS keyring.
+pub const FILE_KEY_STORE_NAME: &str = "key_store.json";
 
 /// AES-256 key length.
 pub const MASTER_KEY_BYTES: usize = 32;
@@ -361,6 +364,11 @@ mod tests {
         // key. Pin them at the test layer so the bump is loud.
         assert_eq!(KEYRING_SERVICE, "io.ccuse.desktop");
         assert_eq!(KEYRING_USER, "master_key_v1");
+    }
+
+    #[test]
+    fn file_key_store_name_is_stable() {
+        assert_eq!(FILE_KEY_STORE_NAME, "key_store.json");
     }
 
     // ----- FileKeyringBackend tests -----
