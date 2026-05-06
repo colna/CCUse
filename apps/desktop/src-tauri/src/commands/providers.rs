@@ -78,6 +78,7 @@ pub(crate) async fn update_provider_and_reload(
     input: ProviderInput,
 ) -> Result<Provider, String> {
     let previous = maybe_provider_input_for_existing_row(repo, id).map_err(|e| e.to_string())?;
+    let input = merge_existing_api_key_for_update(input, previous.as_ref())?;
     let updated = repo.update(id, &input).map_err(|e| e.to_string())?;
     match manager.reload_from_repository(repo).await {
         Ok(_) => Ok(updated),
@@ -94,6 +95,19 @@ pub(crate) async fn update_provider_and_reload(
             }
         }
     }
+}
+
+fn merge_existing_api_key_for_update(
+    mut input: ProviderInput,
+    previous: Option<&ProviderInput>,
+) -> Result<ProviderInput, String> {
+    if input.api_key.trim().is_empty() {
+        let previous = previous.ok_or_else(|| {
+            "update_provider requires a replacement api key because the previous api key could not be decrypted".to_owned()
+        })?;
+        input.api_key.clone_from(&previous.api_key);
+    }
+    Ok(input)
 }
 
 pub(crate) async fn delete_provider_and_reload(
@@ -360,6 +374,72 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn update_provider_and_reload_keeps_existing_api_key_when_input_key_is_blank() {
+        let (_dir, repo, _db) = make_repo();
+        let manager = ProviderManager::new();
+        let added = add_provider_and_reload(
+            repo.as_ref(),
+            &manager,
+            ProviderInput {
+                api_key: "sk-original-key".into(),
+                ..sample_input("Primary", 20)
+            },
+        )
+        .await
+        .expect("add and reload");
+
+        update_provider_and_reload(
+            repo.as_ref(),
+            &manager,
+            &added.id,
+            ProviderInput {
+                api_key: String::new(),
+                ..sample_input("Renamed", 5)
+            },
+        )
+        .await
+        .expect("update keeps api key");
+
+        let key = repo
+            .get_decrypted_api_key(&added.id)
+            .expect("decrypt api key");
+        assert_eq!(key, "sk-original-key");
+    }
+
+    #[tokio::test]
+    async fn update_provider_and_reload_replaces_api_key_when_input_key_is_present() {
+        let (_dir, repo, _db) = make_repo();
+        let manager = ProviderManager::new();
+        let added = add_provider_and_reload(
+            repo.as_ref(),
+            &manager,
+            ProviderInput {
+                api_key: "sk-original-key".into(),
+                ..sample_input("Primary", 20)
+            },
+        )
+        .await
+        .expect("add and reload");
+
+        update_provider_and_reload(
+            repo.as_ref(),
+            &manager,
+            &added.id,
+            ProviderInput {
+                api_key: "sk-replacement-key".into(),
+                ..sample_input("Renamed", 5)
+            },
+        )
+        .await
+        .expect("update replaces api key");
+
+        let key = repo
+            .get_decrypted_api_key(&added.id)
+            .expect("decrypt api key");
+        assert_eq!(key, "sk-replacement-key");
+    }
+
+    #[tokio::test]
     async fn update_provider_and_reload_replaces_unreadable_api_key() {
         let (_dir, repo, db) = make_repo();
         let manager = ProviderManager::new();
@@ -384,6 +464,30 @@ mod tests {
         assert_eq!(updated.name, "Renamed");
         assert_eq!(wrapper.name(), "Renamed");
         assert_eq!(wrapper.get_priority(), 5);
+    }
+
+    #[tokio::test]
+    async fn update_provider_and_reload_requires_replacement_when_existing_api_key_is_unreadable() {
+        let (_dir, repo, db) = make_repo();
+        let manager = ProviderManager::new();
+        let added = add_provider_and_reload(repo.as_ref(), &manager, sample_input("Primary", 20))
+            .await
+            .expect("add and reload");
+        corrupt_api_key(&db, &added.id);
+
+        let err = update_provider_and_reload(
+            repo.as_ref(),
+            &manager,
+            &added.id,
+            ProviderInput {
+                api_key: String::new(),
+                ..sample_input("Renamed", 5)
+            },
+        )
+        .await
+        .expect_err("blank key cannot replace unreadable key");
+
+        assert!(err.contains("requires a replacement api key"));
     }
 
     #[tokio::test]

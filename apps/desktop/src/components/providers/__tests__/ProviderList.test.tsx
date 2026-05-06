@@ -95,6 +95,34 @@ describe("ProviderList", () => {
         api_key: "",
         priority: 10,
         enabled: true,
+        monthly_quota: null,
+        rate_limit_rpm: null,
+        cost_per_1k_tokens: null,
+      }),
+    );
+  });
+
+  it("submits a replacement api key when editing the provider", async () => {
+    render(<ProviderList />);
+    const user = userEvent.setup();
+
+    await user.click(
+      await screen.findByRole("button", { name: /编辑 Claude Prod/ }),
+    );
+    await user.type(screen.getByLabelText("API Key"), "sk-new-secret");
+    await user.click(screen.getByRole("button", { name: "保存修改" }));
+
+    await waitFor(() =>
+      expect(updateProvider).toHaveBeenCalledWith("provider-1", {
+        name: "Claude Prod",
+        kind: "anthropic",
+        base_url: "https://api.anthropic.com",
+        api_key: "sk-new-secret",
+        priority: 10,
+        enabled: true,
+        monthly_quota: null,
+        rate_limit_rpm: null,
+        cost_per_1k_tokens: null,
       }),
     );
   });

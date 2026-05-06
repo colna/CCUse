@@ -26,6 +26,7 @@
   "field_base_url": "Base URL",
   "field_api_key": "API Key",
   "field_api_key_placeholder": "sk-...",
+  "edit_api_key_placeholder": "Leave blank to keep current key",
   "field_priority": "Priority",
   "field_priority_placeholder": "100",
   "field_priority_hint": "Lower number = higher priority ({{min}}--{{max}})",

@@ -219,10 +219,10 @@ async fn build_snapshot_from_runtime(inner: &Inner) -> Vec<HealthSnapshot> {
 
     for provider in &providers {
         let status = provider.state.health().await;
-        let success_rate = probe_states
-            .get(provider.id())
-            .map(|state| state.window.success_rate())
-            .unwrap_or_else(|| default_success_rate(status));
+        let success_rate = probe_states.get(provider.id()).map_or_else(
+            || default_success_rate(status),
+            |state| state.window.success_rate(),
+        );
 
         snapshots.push(HealthSnapshot {
             provider_id: provider.id().to_owned(),

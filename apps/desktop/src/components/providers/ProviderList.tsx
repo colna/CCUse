@@ -113,6 +113,7 @@ interface EditState {
   name: string;
   kind: ProviderInput["kind"];
   base_url: string;
+  api_key: string;
   priority: string;
   enabled: boolean;
 }
@@ -143,6 +144,7 @@ function SortableProviderItem({
     name: provider.name,
     kind: provider.kind,
     base_url: provider.base_url,
+    api_key: "",
     priority: String(provider.priority),
     enabled: provider.enabled,
   });
@@ -167,6 +169,7 @@ function SortableProviderItem({
       name: provider.name,
       kind: provider.kind,
       base_url: provider.base_url,
+      api_key: "",
       priority: String(provider.priority),
       enabled: provider.enabled,
     });
@@ -249,6 +252,24 @@ function SortableProviderItem({
             value={editValues.base_url}
             onChange={(e) =>
               setEditValues((s) => ({ ...s, base_url: e.target.value }))
+            }
+            className="flex-1 rounded-md border border-border bg-background px-2 py-1 text-sm outline-none focus-visible:border-primary"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <label
+            htmlFor={`edit-api-key-${provider.id}`}
+            className="w-16 shrink-0 text-xs text-muted-foreground"
+          >
+            {t("field_api_key")}
+          </label>
+          <input
+            id={`edit-api-key-${provider.id}`}
+            type="password"
+            value={editValues.api_key}
+            placeholder={t("edit_api_key_placeholder")}
+            onChange={(e) =>
+              setEditValues((s) => ({ ...s, api_key: e.target.value }))
             }
             className="flex-1 rounded-md border border-border bg-background px-2 py-1 text-sm outline-none focus-visible:border-primary"
           />
@@ -412,6 +433,24 @@ function SortableProviderItem({
   );
 }
 
+function providerToInput(
+  provider: Provider,
+  overrides: Partial<ProviderInput> = {},
+): ProviderInput {
+  return {
+    name: provider.name,
+    kind: provider.kind,
+    base_url: provider.base_url,
+    api_key: "",
+    priority: provider.priority,
+    enabled: provider.enabled,
+    monthly_quota: provider.monthly_quota ?? null,
+    rate_limit_rpm: provider.rate_limit_rpm ?? null,
+    cost_per_1k_tokens: provider.cost_per_1k_tokens ?? null,
+    ...overrides,
+  };
+}
+
 // ─── Provider List ───────────────────────────────────────────
 
 interface ProviderListProps {
@@ -508,12 +547,8 @@ export function ProviderList({ refreshKey }: ProviderListProps) {
         if (p.priority !== newPriority) {
           try {
             await updateProvider(p.id, {
-              name: p.name,
-              kind: p.kind,
-              base_url: p.base_url,
-              api_key: "",
+              ...providerToInput(p),
               priority: newPriority,
-              enabled: p.enabled,
             });
           } catch {
             fetchProviders();
@@ -550,14 +585,7 @@ export function ProviderList({ refreshKey }: ProviderListProps) {
     async (id: string, enabled: boolean) => {
       const provider = providers.find((p) => p.id === id);
       if (!provider) return;
-      const input: ProviderInput = {
-        name: provider.name,
-        kind: provider.kind,
-        base_url: provider.base_url,
-        api_key: "",
-        priority: provider.priority,
-        enabled,
-      };
+      const input = providerToInput(provider, { enabled });
       try {
         const updated = await updateProvider(id, input);
         setProviders((prev) => prev.map((p) => (p.id === id ? updated : p)));
@@ -598,14 +626,16 @@ export function ProviderList({ refreshKey }: ProviderListProps) {
     async (id: string, patch: Partial<EditState>) => {
       const provider = providers.find((p) => p.id === id);
       if (!provider) return;
-      const input: ProviderInput = {
-        name: patch.name ?? provider.name,
+      const input = providerToInput(provider, {
+        name: (patch.name ?? provider.name).trim(),
         kind: patch.kind ?? provider.kind,
-        base_url: patch.base_url ?? provider.base_url,
-        api_key: "",
+        base_url: (patch.base_url ?? provider.base_url)
+          .trim()
+          .replace(/\/$/, ""),
+        api_key: (patch.api_key ?? "").trim(),
         priority: patch.priority ? Number(patch.priority) : provider.priority,
         enabled: patch.enabled ?? provider.enabled,
-      };
+      });
       try {
         const updated = await updateProvider(id, input);
         setProviders((prev) => prev.map((p) => (p.id === id ? updated : p)));

@@ -323,7 +323,7 @@ fn select_excluding(
 /// | Unauthorized/BadRequest   | Yes                |
 /// | Decode failures           | No                 |
 ///
-/// Decode failures remain terminal because they usually mean CCUse's
+/// Decode failures remain terminal because they usually mean `CCUse`'s
 /// response parser, not a single upstream, cannot interpret the body.
 #[cfg(test)]
 mod tests {
