@@ -12,7 +12,7 @@ use tokio::sync::RwLock;
 use super::api::{Provider as ProviderTrait, ProviderError};
 use super::model::ProviderKind;
 use super::openai::OpenAIProvider;
-use super::repository::ProviderRepository;
+use super::repository::{ProviderRepository, RepositoryError};
 use super::wrapper::{ProviderWrapper, RuntimeState};
 
 /// Errors specific to [`ProviderManager`] operations.
@@ -174,7 +174,17 @@ fn build_wrappers_from_repository(
     let db_providers = repo.list()?;
     let mut wrappers = Vec::with_capacity(db_providers.len());
     for p in &db_providers {
-        let api_key = repo.get_decrypted_api_key(&p.id)?;
+        let api_key = match repo.get_decrypted_api_key(&p.id) {
+            Ok(api_key) => api_key,
+            Err(RepositoryError::Crypto(err)) => {
+                eprintln!(
+                    "CCUse: skipping provider `{}` during runtime reload because its api key cannot be decrypted: {err}",
+                    p.id,
+                );
+                continue;
+            }
+            Err(err) => return Err(err.into()),
+        };
         let inner = build_runtime_provider(&p.id, &p.name, p.kind, &p.base_url, &api_key)?;
         let state = existing_states
             .get(&p.id)
@@ -192,17 +202,24 @@ fn build_wrappers_from_repository(
 mod tests {
     use super::*;
     use crate::crypto::MasterKey;
-    use crate::db::{open_database, run_migrations};
+    use crate::db::{open_database, run_migrations, Database};
     use crate::providers::api::{HealthStatus, Provider as RuntimeProviderTrait};
     use crate::providers::model::ProviderInput;
+    use rusqlite::params;
     use tempfile::TempDir;
 
     fn fresh_repo() -> (TempDir, ProviderRepository) {
+        let (dir, repo, _db) = fresh_repo_with_db();
+        (dir, repo)
+    }
+
+    fn fresh_repo_with_db() -> (TempDir, ProviderRepository, Database) {
         let dir = TempDir::new().expect("tempdir");
         let db = open_database(dir.path().join("ccuse.db")).expect("open ok");
         run_migrations(&db).expect("migrate ok");
         let key = Arc::new(MasterKey::generate().expect("rng"));
-        (dir, ProviderRepository::new(db, key))
+        let repo = ProviderRepository::new(db.clone(), key);
+        (dir, repo, db)
     }
 
     fn sample_input() -> ProviderInput {
@@ -346,5 +363,35 @@ mod tests {
         assert_eq!(after.name(), "Renamed OpenAI");
         assert_eq!(after.get_priority(), 5);
         assert_eq!(after.state.health().await, HealthStatus::Degraded);
+    }
+
+    #[tokio::test]
+    async fn load_from_repository_skips_provider_with_unreadable_api_key() {
+        let (_dir, repo, db) = fresh_repo_with_db();
+        let broken = repo.add(&sample_input()).expect("add broken provider");
+        db.with_connection(|conn| {
+            conn.execute(
+                "UPDATE providers SET encrypted_api_key=?1 WHERE id=?2",
+                params![vec![1_u8, 2, 3], &broken.id],
+            )
+        })
+        .expect("corrupt encrypted key");
+        let valid = repo
+            .add(&ProviderInput {
+                name: "Backup OpenAI".into(),
+                priority: 5,
+                ..sample_input()
+            })
+            .expect("add valid provider");
+        let mgr = ProviderManager::new();
+
+        let count = mgr
+            .load_from_repository(&repo)
+            .await
+            .expect("load skips unreadable key");
+
+        assert_eq!(count, 1);
+        assert!(mgr.get(&broken.id).await.is_none());
+        assert!(mgr.get(&valid.id).await.is_some());
     }
 }

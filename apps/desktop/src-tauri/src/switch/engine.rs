@@ -169,13 +169,14 @@ impl SwitchEngine {
                     });
                 }
                 Err(err) => {
-                    if err.is_retriable() {
+                    let should_try_next = should_try_next_provider(&err);
+                    if should_try_next {
                         provider.state.set_health(HealthStatus::Degraded).await;
                         last_failed_provider_id = Some(provider.id().to_owned());
                         last_failure_reason = Some(switch_reason_for_provider_error(&err));
                     }
                     last_error = Some(err);
-                    if !last_error.as_ref().is_some_and(ProviderError::is_retriable) {
+                    if !should_try_next {
                         break;
                     }
                 }
@@ -248,13 +249,14 @@ impl SwitchEngine {
                     });
                 }
                 Err(err) => {
-                    if err.is_retriable() {
+                    let should_try_next = should_try_next_provider(&err);
+                    if should_try_next {
                         provider.state.set_health(HealthStatus::Degraded).await;
                         last_failed_provider_id = Some(provider.id().to_owned());
                         last_failure_reason = Some(switch_reason_for_provider_error(&err));
                     }
                     last_error = Some(err);
-                    if !last_error.as_ref().is_some_and(ProviderError::is_retriable) {
+                    if !should_try_next {
                         break;
                     }
                 }
@@ -268,6 +270,17 @@ impl SwitchEngine {
 
 fn clone_request_for_provider(request: &ApiRequest, _: &ProviderWrapper) -> ApiRequest {
     request.clone()
+}
+
+fn should_try_next_provider(error: &ProviderError) -> bool {
+    match error {
+        ProviderError::Decode(_) => false,
+        ProviderError::Network(_)
+        | ProviderError::Upstream { .. }
+        | ProviderError::RateLimited(_)
+        | ProviderError::Unauthorized(_)
+        | ProviderError::BadRequest(_) => true,
+    }
 }
 
 fn switch_reason_for_provider_error(error: &ProviderError) -> String {
@@ -297,20 +310,21 @@ fn select_excluding(
     select(strategy, &filtered, rr_state, weights)
 }
 
-/// T1.0.2.16: error classification. `is_retriable` is already on
-/// [`ProviderError`]; this module re-exports the concept for
-/// documentation. The mapping is:
+/// T1.0.2.16: error classification. `ProviderError::is_retriable`
+/// remains the provider-level classification for transport retries.
+/// At the switch layer, auth and bad-request errors can still be
+/// provider-local (bad key, model mismatch, Claude-compatible relay
+/// shape mismatch), so the engine tries the next configured provider.
+/// The mapping is:
 ///
-/// | HTTP status     | Error variant  | Retriable? |
-/// |-----------------|----------------|------------|
-/// | 408, 429, 5xx   | Network/Rate/Up| Yes        |
-/// | Timeout         | Network        | Yes        |
-/// | 400, 401, 403   | BadReq/Unauth  | No         |
-/// | 404, 422        | `BadRequest`   | No         |
-/// | Decode failures | Decode         | No         |
+/// | Error variant             | Try next provider? |
+/// |---------------------------|--------------------|
+/// | Network/RateLimited/5xx   | Yes                |
+/// | Unauthorized/BadRequest   | Yes                |
+/// | Decode failures           | No                 |
 ///
-/// The `SwitchEngine` uses `is_retriable` to decide whether to try
-/// the next provider or immediately surface the error.
+/// Decode failures remain terminal because they usually mean CCUse's
+/// response parser, not a single upstream, cannot interpret the body.
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -322,10 +336,43 @@ mod tests {
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering as AtomicOrdering};
     use std::sync::Mutex;
 
+    #[derive(Debug, Clone, Copy)]
+    enum MockFailure {
+        Upstream,
+        Unauthorized,
+        BadRequest,
+        Decode,
+    }
+
+    impl MockFailure {
+        fn into_error(self) -> ProviderError {
+            match self {
+                Self::Upstream => ProviderError::Upstream {
+                    status: 500,
+                    body: "mock 500".into(),
+                },
+                Self::Unauthorized => ProviderError::Unauthorized("mock 401".into()),
+                Self::BadRequest => ProviderError::BadRequest("mock 400".into()),
+                Self::Decode => ProviderError::Decode("mock decode".into()),
+            }
+        }
+
+        fn into_stream_error(self) -> ProviderError {
+            match self {
+                Self::Upstream => ProviderError::Upstream {
+                    status: 502,
+                    body: "mock 502".into(),
+                },
+                other => other.into_error(),
+            }
+        }
+    }
+
     #[derive(Debug)]
     struct MockDispatchProvider {
         id: String,
         should_succeed: Arc<AtomicBool>,
+        failure: MockFailure,
         call_count: Arc<AtomicUsize>,
         seen_models: Arc<Mutex<Vec<String>>>,
     }
@@ -377,10 +424,7 @@ mod tests {
                     }),
                 })
             } else {
-                Err(ProviderError::Upstream {
-                    status: 500,
-                    body: "mock 500".into(),
-                })
+                Err(self.failure.into_error())
             }
         }
         async fn send_stream_request(
@@ -396,10 +440,7 @@ mod tests {
                 Ok(Box::pin(stream::empty())
                     as Pin<Box<dyn futures::Stream<Item = StreamChunk> + Send>>)
             } else {
-                Err(ProviderError::Upstream {
-                    status: 502,
-                    body: "mock 502".into(),
-                })
+                Err(self.failure.into_stream_error())
             }
         }
     }
@@ -432,15 +473,32 @@ mod tests {
         Vec<Arc<AtomicUsize>>,
         Vec<Arc<Mutex<Vec<String>>>>,
     ) {
+        make_engine_with_failures(
+            providers
+                .into_iter()
+                .map(|(id, succeed)| (id, succeed, MockFailure::Upstream))
+                .collect(),
+        )
+        .await
+    }
+
+    async fn make_engine_with_failures(
+        providers: Vec<(String, bool, MockFailure)>,
+    ) -> (
+        SwitchEngine,
+        Vec<Arc<AtomicUsize>>,
+        Vec<Arc<Mutex<Vec<String>>>>,
+    ) {
         let mgr = Arc::new(ProviderManager::new());
         let mut counters = Vec::new();
         let mut seen_models = Vec::new();
-        for (id, succeed) in providers {
+        for (id, succeed, failure) in providers {
             let count = Arc::new(AtomicUsize::new(0));
             let models = Arc::new(Mutex::new(Vec::new()));
             let mock = MockDispatchProvider {
                 id: id.clone(),
                 should_succeed: Arc::new(AtomicBool::new(succeed)),
+                failure,
                 call_count: Arc::clone(&count),
                 seen_models: Arc::clone(&models),
             };
@@ -477,6 +535,53 @@ mod tests {
         assert_eq!(result.attempts, 2);
         assert_eq!(counters[0].load(AtomicOrdering::Relaxed), 1);
         assert_eq!(counters[1].load(AtomicOrdering::Relaxed), 1);
+    }
+
+    #[tokio::test]
+    async fn dispatch_fails_over_after_provider_unauthorized() {
+        let (engine, counters, _) = make_engine_with_failures(vec![
+            ("p1".into(), false, MockFailure::Unauthorized),
+            ("p2".into(), true, MockFailure::Upstream),
+        ])
+        .await;
+
+        let result = engine.dispatch(sample_request()).await.unwrap();
+
+        assert_eq!(result.provider_id, "p2");
+        assert_eq!(result.switch_reason.as_deref(), Some("unauthorized"));
+        assert_eq!(counters[0].load(AtomicOrdering::Relaxed), 1);
+        assert_eq!(counters[1].load(AtomicOrdering::Relaxed), 1);
+    }
+
+    #[tokio::test]
+    async fn dispatch_fails_over_after_provider_bad_request() {
+        let (engine, counters, _) = make_engine_with_failures(vec![
+            ("p1".into(), false, MockFailure::BadRequest),
+            ("p2".into(), true, MockFailure::Upstream),
+        ])
+        .await;
+
+        let result = engine.dispatch(sample_request()).await.unwrap();
+
+        assert_eq!(result.provider_id, "p2");
+        assert_eq!(result.switch_reason.as_deref(), Some("bad_request"));
+        assert_eq!(counters[0].load(AtomicOrdering::Relaxed), 1);
+        assert_eq!(counters[1].load(AtomicOrdering::Relaxed), 1);
+    }
+
+    #[tokio::test]
+    async fn dispatch_decode_error_remains_terminal() {
+        let (engine, counters, _) = make_engine_with_failures(vec![
+            ("p1".into(), false, MockFailure::Decode),
+            ("p2".into(), true, MockFailure::Upstream),
+        ])
+        .await;
+
+        let err = engine.dispatch(sample_request()).await.unwrap_err();
+
+        assert!(matches!(err, ProviderError::Decode(_)));
+        assert_eq!(counters[0].load(AtomicOrdering::Relaxed), 1);
+        assert_eq!(counters[1].load(AtomicOrdering::Relaxed), 0);
     }
 
     #[tokio::test]
@@ -520,6 +625,22 @@ mod tests {
         let result = engine.dispatch_stream(sample_request()).await.unwrap();
         assert_eq!(result.provider_id, "p1");
         assert_eq!(result.attempts, 1);
+    }
+
+    #[tokio::test]
+    async fn dispatch_stream_fails_over_after_provider_bad_request() {
+        let (engine, counters, _) = make_engine_with_failures(vec![
+            ("p1".into(), false, MockFailure::BadRequest),
+            ("p2".into(), true, MockFailure::Upstream),
+        ])
+        .await;
+
+        let result = engine.dispatch_stream(sample_request()).await.unwrap();
+
+        assert_eq!(result.provider_id, "p2");
+        assert_eq!(result.switch_reason.as_deref(), Some("bad_request"));
+        assert_eq!(counters[0].load(AtomicOrdering::Relaxed), 1);
+        assert_eq!(counters[1].load(AtomicOrdering::Relaxed), 1);
     }
 
     #[tokio::test]

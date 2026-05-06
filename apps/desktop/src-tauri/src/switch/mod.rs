@@ -2,7 +2,7 @@
 //!
 //! * [`SwitchStrategy`] enum with five selection algorithms
 //! * [`SwitchEngine`] — retry chain with automatic failover
-//! * Error classification via [`ProviderError::is_retriable`]
+//! * Switch-layer failover classification in [`SwitchEngine`]
 //! * [`SwitchHistoryRepository`] — audit log for switch events (T1.0.2.17)
 //! * [`RequestLogRepository`] — metadata log for proxied requests (T1.0.2.18)
 

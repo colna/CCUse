@@ -1160,6 +1160,62 @@ async fn chat_completions_retries_after_429_and_uses_next_provider() {
 }
 
 #[tokio::test]
+async fn chat_completions_retries_after_provider_bad_request_and_uses_next_provider() {
+    let primary = MockServer::start().await;
+    let backup = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(
+            ResponseTemplate::new(400)
+                .set_body_json(json!({"error": {"message": "model not supported here"}})),
+        )
+        .expect(1)
+        .mount(&primary)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(openai_text_response("backup")))
+        .expect(1)
+        .mount(&backup)
+        .await;
+    let proxy = start_proxy_with_providers(&[
+        ProviderSpec {
+            id: "primary-bad-request",
+            name: "Primary Bad Request",
+            priority: 1,
+            server: &primary,
+        },
+        ProviderSpec {
+            id: "backup-after-bad-request",
+            name: "Backup After Bad Request",
+            priority: 2,
+            server: &backup,
+        },
+    ])
+    .await;
+
+    let response = reqwest::Client::new()
+        .post(format!("{}/v1/chat/completions", proxy.base_url))
+        .json(&chat_request(false))
+        .send()
+        .await
+        .expect("proxy request");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = response.json().await.expect("response json");
+    assert_eq!(body["choices"][0]["message"]["content"], "backup");
+
+    let first = proxy
+        .manager
+        .get("primary-bad-request")
+        .await
+        .expect("primary provider");
+    assert_eq!(first.state.health().await, HealthStatus::Degraded);
+
+    proxy.shutdown().await;
+}
+
+#[tokio::test]
 async fn chat_completions_records_switch_history_after_503_failover() {
     let primary = MockServer::start().await;
     let backup = MockServer::start().await;

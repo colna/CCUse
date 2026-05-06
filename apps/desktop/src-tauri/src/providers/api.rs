@@ -147,10 +147,11 @@ pub enum HealthStatus {
 
 /// Errors a provider may surface while talking to its upstream.
 ///
-/// Keep the variant set small — the `SwitchEngine` decides whether
-/// to fail-over by inspecting `is_retriable`, not by pattern-
-/// matching on every variant. Carries `String` payloads on purpose:
-/// the underlying `reqwest::Error` is bulky and rarely actionable.
+/// Keep the variant set small. The provider-level retry flag covers
+/// same-provider transport retries; the switch layer has a broader
+/// cross-provider failover policy for provider-local 4xx errors.
+/// Carries `String` payloads on purpose: the underlying
+/// `reqwest::Error` is bulky and rarely actionable.
 #[derive(Debug, thiserror::Error)]
 pub enum ProviderError {
     /// Network failure (DNS, TCP, TLS, timeout). Retriable.
@@ -159,7 +160,7 @@ pub enum ProviderError {
     /// HTTP 5xx from upstream. Retriable.
     #[error("upstream returned {status}: {body}")]
     Upstream { status: u16, body: String },
-    /// HTTP 401/403. *Not* retriable — fail-over to next provider.
+    /// HTTP 401/403. Not retriable within the same provider.
     #[error("upstream rejected the api key: {0}")]
     Unauthorized(String),
     /// HTTP 429. Retriable but with backoff handled by `SwitchEngine`.
@@ -168,15 +169,15 @@ pub enum ProviderError {
     /// Body decode / shape mismatch.
     #[error("failed to parse upstream response: {0}")]
     Decode(String),
-    /// Caller passed a request the provider can't execute (unknown
-    /// model, bad parameters). Not retriable.
+    /// Caller passed a request this provider can't execute (unknown
+    /// model, bad parameters). Not retriable within the same provider.
     #[error("invalid request: {0}")]
     BadRequest(String),
 }
 
 impl ProviderError {
-    /// Whether the `SwitchEngine` should retry this error against
-    /// another provider. Auth / bad-request failures are terminal.
+    /// Whether the same provider should be treated as retryable.
+    /// `SwitchEngine` has a broader failover policy across providers.
     #[must_use]
     pub const fn is_retriable(&self) -> bool {
         match self {

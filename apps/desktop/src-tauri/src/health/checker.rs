@@ -121,7 +121,11 @@ impl HealthChecker {
 
     /// Read the cached health snapshot (T1.0.2.07 / T1.0.2.21).
     pub async fn snapshot(&self) -> Vec<HealthSnapshot> {
-        self.inner.cache.read().await.clone()
+        let cached = self.inner.cache.read().await.clone();
+        if cached.is_empty() {
+            return build_snapshot_from_runtime(&self.inner).await;
+        }
+        cached
     }
 
     /// Start the periodic probe loop. Idempotent.
@@ -206,6 +210,38 @@ async fn run_probe_cycle(inner: &Inner) {
     }
 
     *inner.cache.write().await = snapshots;
+}
+
+async fn build_snapshot_from_runtime(inner: &Inner) -> Vec<HealthSnapshot> {
+    let providers = inner.manager.list().await;
+    let mut snapshots = Vec::with_capacity(providers.len());
+    let probe_states = inner.probe_states.read().await;
+
+    for provider in &providers {
+        let status = provider.state.health().await;
+        let success_rate = probe_states
+            .get(provider.id())
+            .map(|state| state.window.success_rate())
+            .unwrap_or_else(|| default_success_rate(status));
+
+        snapshots.push(HealthSnapshot {
+            provider_id: provider.id().to_owned(),
+            provider_name: provider.name().to_owned(),
+            status,
+            success_rate,
+            response_time_us: provider.state.rolling_response_us(),
+        });
+    }
+
+    snapshots
+}
+
+const fn default_success_rate(status: HealthStatus) -> f64 {
+    match status {
+        HealthStatus::Healthy => 1.0,
+        HealthStatus::Degraded => 0.5,
+        HealthStatus::Down => 0.0,
+    }
 }
 
 /// Map success rate to health status using the two thresholds.
@@ -358,13 +394,38 @@ mod tests {
     async fn probe_once_updates_cache() {
         let (mgr, _flag) = make_manager_with_mock(true).await;
         let checker = HealthChecker::new(mgr);
-        assert!(checker.snapshot().await.is_empty());
         checker.probe_once().await;
         let snap = checker.snapshot().await;
         assert_eq!(snap.len(), 1);
         assert_eq!(snap[0].provider_id, "mock1");
         assert_eq!(snap[0].status, HealthStatus::Healthy);
         assert_eq!(snap[0].success_rate, 1.0);
+    }
+
+    #[tokio::test]
+    async fn snapshot_without_probe_reads_runtime_providers() {
+        let (mgr, _flag) = make_manager_with_mock(true).await;
+        let checker = HealthChecker::new(mgr);
+
+        let snap = checker.snapshot().await;
+
+        assert_eq!(snap.len(), 1);
+        assert_eq!(snap[0].provider_id, "mock1");
+        assert_eq!(snap[0].status, HealthStatus::Healthy);
+        assert_eq!(snap[0].success_rate, 1.0);
+    }
+
+    #[tokio::test]
+    async fn snapshot_without_probe_reflects_runtime_health() {
+        let (mgr, _flag) = make_manager_with_mock(true).await;
+        let provider = mgr.get("mock1").await.expect("provider");
+        provider.state.set_health(HealthStatus::Down).await;
+        let checker = HealthChecker::new(mgr);
+
+        let snap = checker.snapshot().await;
+
+        assert_eq!(snap[0].status, HealthStatus::Down);
+        assert_eq!(snap[0].success_rate, 0.0);
     }
 
     #[tokio::test]
