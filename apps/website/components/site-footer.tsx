@@ -11,6 +11,8 @@ const footerLinks = [
   { key: "home", href: "" },
   { key: "docs", href: "/docs" },
   { key: "download", href: "/download" },
+  { key: "privacy", href: "/legal/privacy" },
+  { key: "terms", href: "/legal/terms" },
   { key: "github", href: "https://github.com/colna/CCUse" },
 ] as const;
 

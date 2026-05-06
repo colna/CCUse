@@ -16,7 +16,15 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, Pencil, Trash2, Check, X } from "lucide-react";
+import {
+  Check,
+  FlaskConical,
+  GripVertical,
+  Pencil,
+  RefreshCw,
+  Trash2,
+  X,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
@@ -27,6 +35,7 @@ import {
   updateProvider,
   getHealthSnapshot,
   onProviderStatusChanged,
+  testProviderConnection,
   type Provider,
   type ProviderInput,
   type HealthSnapshot,
@@ -99,16 +108,20 @@ interface EditState {
 interface SortableProviderItemProps {
   provider: Provider;
   health?: HealthSnapshot;
+  testing?: boolean;
   onDelete: (id: string, name: string) => void;
   onToggleEnabled: (id: string, enabled: boolean) => void;
+  onTestConnection: (id: string) => Promise<void>;
   onSaveEdit: (id: string, patch: Partial<EditState>) => Promise<void>;
 }
 
 function SortableProviderItem({
   provider,
   health,
+  testing,
   onDelete,
   onToggleEnabled,
+  onTestConnection,
   onSaveEdit,
 }: SortableProviderItemProps) {
   const { t } = useTranslation("providers");
@@ -326,6 +339,21 @@ function SortableProviderItem({
         variant="ghost"
         size="icon"
         className="size-7 text-muted-foreground hover:text-foreground"
+        onClick={() => onTestConnection(provider.id)}
+        disabled={testing}
+        aria-label={t("test_connection_provider_aria", { name: provider.name })}
+      >
+        {testing ? (
+          <RefreshCw className="size-3.5 animate-spin" />
+        ) : (
+          <FlaskConical className="size-3.5" />
+        )}
+      </Button>
+
+      <Button
+        variant="ghost"
+        size="icon"
+        className="size-7 text-muted-foreground hover:text-foreground"
         onClick={handleStartEdit}
         aria-label={t("edit_provider_aria", { name: provider.name })}
       >
@@ -357,6 +385,7 @@ export function ProviderList({ refreshKey }: ProviderListProps) {
   const [healthMap, setHealthMap] = useState<Record<string, HealthSnapshot>>(
     {},
   );
+  const [testingIds, setTestingIds] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{
     id: string;
@@ -500,6 +529,32 @@ export function ProviderList({ refreshKey }: ProviderListProps) {
     [providers],
   );
 
+  const handleTestConnection = useCallback(
+    async (id: string) => {
+      setTestingIds((current) => ({ ...current, [id]: true }));
+      try {
+        const latencyMs = await testProviderConnection(id);
+        const provider = providers.find((item) => item.id === id);
+        setHealthMap((current) => ({
+          ...current,
+          [id]: {
+            provider_id: id,
+            provider_name: provider?.name ?? id,
+            status: "healthy",
+            success_rate: current[id]?.success_rate ?? 1,
+            response_time_us: latencyMs * 1000,
+          },
+        }));
+        setError(null);
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setTestingIds((current) => ({ ...current, [id]: false }));
+      }
+    },
+    [providers],
+  );
+
   const handleSaveEdit = useCallback(
     async (id: string, patch: Partial<EditState>) => {
       const provider = providers.find((p) => p.id === id);
@@ -555,8 +610,10 @@ export function ProviderList({ refreshKey }: ProviderListProps) {
                 key={provider.id}
                 provider={provider}
                 health={healthMap[provider.id]}
+                testing={testingIds[provider.id] ?? false}
                 onDelete={handleRequestDelete}
                 onToggleEnabled={handleToggleEnabled}
+                onTestConnection={handleTestConnection}
                 onSaveEdit={handleSaveEdit}
               />
             ))}

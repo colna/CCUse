@@ -143,6 +143,10 @@ export default async function DownloadPage({ params }: DownloadPageProps) {
     releaseState.status === "ready"
       ? releaseState.release.assets.map(toAssetCandidate)
       : [];
+  const releaseHash =
+    releaseState.status === "ready"
+      ? getReleaseHash(releaseState.release)
+      : null;
 
   return (
     <main className="bg-background text-foreground">
@@ -198,6 +202,7 @@ export default async function DownloadPage({ params }: DownloadPageProps) {
 
       <DownloadPackagesSection
         release={releaseState.status === "ready" ? releaseState.release : null}
+        releaseHash={releaseHash}
         t={t}
       />
 
@@ -247,9 +252,11 @@ export default async function DownloadPage({ params }: DownloadPageProps) {
 
 function DownloadPackagesSection({
   release,
+  releaseHash,
   t,
 }: {
   release: LatestRelease | null;
+  releaseHash: string | null;
   t: DownloadTranslator;
 }) {
   return (
@@ -271,6 +278,11 @@ function DownloadPackagesSection({
           </h2>
           <p className="mt-4 text-base leading-7 text-muted-foreground">
             {t("packages.description")}
+          </p>
+          <p className="mt-3 text-xs leading-6 text-muted-foreground">
+            {releaseHash
+              ? t("packages.sha256", { hash: releaseHash })
+              : t("packages.sha256Missing")}
           </p>
         </div>
 
@@ -392,6 +404,14 @@ function getPlatformLabels(t: DownloadTranslator) {
     unknownDescription: t("platform.unknownDescription"),
     unknownTitle: t("platform.unknownTitle"),
   };
+}
+
+function getReleaseHash(release: LatestRelease) {
+  const asset = release.assets.find((item) =>
+    item.name.toLowerCase().includes("sha256"),
+  );
+
+  return asset?.name ?? null;
 }
 
 async function getLatestRelease(): Promise<ReleaseState> {

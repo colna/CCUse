@@ -12,12 +12,13 @@
     "typecheck": "tsc --noEmit",
     "lint": "pnpm --dir ../.. exec eslint apps/website",
     "lint:fix": "pnpm --dir ../.. exec eslint apps/website --fix",
-    "test": "node scripts/verify-next-app.mjs && node scripts/verify-tailwind.mjs && node scripts/verify-i18n-routing.mjs && node scripts/verify-theme.mjs && node scripts/verify-seo.mjs && node scripts/verify-home-hero.mjs && node scripts/verify-home-features.mjs && node scripts/verify-home-architecture.mjs && node scripts/verify-mdx-pipeline.mjs && node scripts/verify-docs-sidebar.mjs && node scripts/verify-docs-toc.mjs && node scripts/verify-docs-search.mjs && node scripts/verify-docs-getting-started.mjs && node scripts/verify-docs-strategies.mjs && node scripts/verify-docs-monitoring.mjs && node scripts/verify-docs-faq.mjs && node scripts/verify-features-page.mjs && node scripts/verify-download-release.mjs && node scripts/verify-download-platform.mjs && node scripts/verify-download-artifacts.mjs"
+    "test": "node scripts/verify-next-app.mjs && node scripts/verify-tailwind.mjs && node scripts/verify-i18n-routing.mjs && node scripts/verify-theme.mjs && node scripts/verify-seo.mjs && node scripts/verify-home-hero.mjs && node scripts/verify-home-features.mjs && node scripts/verify-home-architecture.mjs && node scripts/verify-mdx-pipeline.mjs && node scripts/verify-docs-sidebar.mjs && node scripts/verify-docs-toc.mjs && node scripts/verify-docs-search.mjs && node scripts/verify-docs-getting-started.mjs && node scripts/verify-docs-strategies.mjs && node scripts/verify-docs-monitoring.mjs && node scripts/verify-docs-faq.mjs && node scripts/verify-features-page.mjs && node scripts/verify-download-release.mjs && node scripts/verify-download-platform.mjs && node scripts/verify-download-artifacts.mjs && node scripts/verify-legal-pages.mjs"
   },
   "dependencies": {
     "@mdx-js/loader": "^3.1.1",
     "@mdx-js/react": "^3.1.1",
     "@next/mdx": "^14.2.35",
+    "@vercel/analytics": "^1.5.0",
     "github-slugger": "^2.0.0",
     "gray-matter": "^4.0.3",
     "lucide-react": "^0.453.0",

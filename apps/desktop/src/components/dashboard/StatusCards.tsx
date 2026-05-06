@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { Activity, Clock, Server, TrendingUp } from "lucide-react";
+import { Activity, Clock, RefreshCw, Server, TrendingUp } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
   getHealthSnapshot,
@@ -29,6 +30,7 @@ export function StatusCards() {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
@@ -82,6 +84,15 @@ export function StatusCards() {
     }
   }, []);
 
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await fetchData();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [fetchData]);
+
   useEffect(() => {
     fetchData();
   }, [fetchData]);
@@ -100,53 +111,72 @@ export function StatusCards() {
   }
 
   return (
-    <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-      <StatCard
-        testId="current-provider-card"
-        icon={<Server className="size-4" />}
-        label={t("current_provider")}
-        value={loading ? "--" : (data.currentProvider ?? t("none"))}
-        loading={loading}
-      />
-      <StatCard
-        testId="today-requests-card"
-        icon={<Activity className="size-4" />}
-        label={t("today_requests")}
-        value={loading ? "--" : String(data.todayRequests)}
-        loading={loading}
-      />
-      <StatCard
-        testId="success-rate-card"
-        icon={<TrendingUp className="size-4" />}
-        label={t("success_rate")}
-        value={
-          loading
-            ? "--"
-            : data.successRate != null
-              ? `${(data.successRate * 100).toFixed(1)}%`
-              : "--"
-        }
-        loading={loading}
-        highlight={
-          data.successRate != null && data.successRate < 0.95
-            ? "warning"
-            : undefined
-        }
-      />
-      <StatCard
-        testId="avg-response-time-card"
-        icon={<Clock className="size-4" />}
-        label={t("avg_response_time")}
-        value={
-          loading
-            ? "--"
-            : data.avgResponseTimeMs != null
-              ? `${Math.round(data.avgResponseTimeMs)}ms`
-              : "--"
-        }
-        loading={loading}
-      />
-    </div>
+    <section className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-sm font-semibold text-foreground">
+          {t("status_overview")}
+        </h3>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={handleRefresh}
+          disabled={refreshing}
+        >
+          <RefreshCw
+            className={refreshing ? "mr-2 size-4 animate-spin" : "mr-2 size-4"}
+          />
+          {t("refresh")}
+        </Button>
+      </div>
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatCard
+          testId="current-provider-card"
+          icon={<Server className="size-4" />}
+          label={t("current_provider")}
+          value={loading ? "--" : (data.currentProvider ?? t("none"))}
+          loading={loading}
+        />
+        <StatCard
+          testId="today-requests-card"
+          icon={<Activity className="size-4" />}
+          label={t("today_requests")}
+          value={loading ? "--" : String(data.todayRequests)}
+          loading={loading}
+        />
+        <StatCard
+          testId="success-rate-card"
+          icon={<TrendingUp className="size-4" />}
+          label={t("success_rate")}
+          value={
+            loading
+              ? "--"
+              : data.successRate != null
+                ? `${(data.successRate * 100).toFixed(1)}%`
+                : "--"
+          }
+          loading={loading}
+          highlight={
+            data.successRate != null && data.successRate < 0.95
+              ? "warning"
+              : undefined
+          }
+        />
+        <StatCard
+          testId="avg-response-time-card"
+          icon={<Clock className="size-4" />}
+          label={t("avg_response_time")}
+          value={
+            loading
+              ? "--"
+              : data.avgResponseTimeMs != null
+                ? `${Math.round(data.avgResponseTimeMs)}ms`
+                : "--"
+          }
+          loading={loading}
+        />
+      </div>
+    </section>
   );
 }
 

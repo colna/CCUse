@@ -721,6 +721,7 @@
       "title": "Three release artifacts, matched by filename.",
       "description": "CCUse only promotes the supported desktop packages: macOS Apple Silicon DMG, macOS Intel DMG, and Windows x64 setup installer.",
       "filenamePattern": "Required filename",
+      "sha256Missing": "SHA-256 checksum unavailable",
       "status": "Status",
       "size": "Size",
       "missing": "Not found",
@@ -779,7 +780,9 @@
       "home": "Home",
       "features": "Features",
       "docs": "Docs",
-      "download": "Download"
+      "download": "Download",
+      "privacy": "Privacy",
+      "terms": "Terms"
     },
     "languages": {
       "zh": "中文",
@@ -799,8 +802,48 @@
       "home": "Home",
       "docs": "Docs",
       "download": "Download",
-      "github": "GitHub"
+      "github": "GitHub",
+      "privacy": "Privacy",
+      "terms": "Terms"
     },
     "copyright": "© 2026 CCUse. All rights reserved."
+  },
+  "PrivacyPage": {
+    "metadata": {
+      "title": "Privacy Policy",
+      "description": "How CCUse handles local configuration and release-site telemetry."
+    },
+    "eyebrow": "Legal",
+    "title": "Privacy Policy",
+    "description": "This page summarizes the current privacy stance for the website and desktop app.",
+    "body": {
+      "intro": "The desktop app keeps provider configuration on the local machine. The website only serves public pages and release information.",
+      "data": "If analytics are enabled in production, they should avoid collecting personally identifiable information.",
+      "contact": "Questions about data handling can be raised through the GitHub repository."
+    }
+  },
+  "TermsPage": {
+    "metadata": {
+      "title": "Terms of Service",
+      "description": "The basic terms for using CCUse downloads and documentation."
+    },
+    "eyebrow": "Legal",
+    "title": "Terms of Service",
+    "description": "This page outlines the usage terms for the website and released desktop builds.",
+    "body": {
+      "intro": "Use the website and desktop releases according to applicable law and your organization's policies.",
+      "usage": "Release downloads are provided as-is, and operational responsibility remains with the operator.",
+      "contact": "Questions about the project can be raised in the repository."
+    }
+  },
+  "DownloadPreviewPage": {
+    "metadata": {
+      "title": "Preview Downloads",
+      "description": "Pre-release download surface for preview builds."
+    },
+    "eyebrow": "Preview",
+    "title": "Preview downloads",
+    "description": "Preview builds stay separate from stable release assets.",
+    "body": "This route exists so pre-release downloads can be presented without mixing them into the stable download path."
   }
 }

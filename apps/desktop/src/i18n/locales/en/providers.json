@@ -16,6 +16,7 @@
   "enable_provider_aria": "Enable {{name}}",
   "edit_provider_aria": "Edit {{name}}",
   "delete_provider_aria": "Delete {{name}}",
+  "test_connection_provider_aria": "Test {{name}} health",
   "add_provider_title": "Add Provider",
   "add_provider_desc": "Select provider type, fill in details. Lower priority number = higher preference.",
   "provider_type": "Provider Type",

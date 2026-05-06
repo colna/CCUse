@@ -721,6 +721,7 @@
       "title": "严格按文件名匹配三个发布产物。",
       "description": "CCUse 只突出展示受支持的桌面端安装包：macOS Apple Silicon DMG、macOS Intel DMG 和 Windows x64 setup 安装器。",
       "filenamePattern": "要求的文件名",
+      "sha256Missing": "SHA-256 校验和不可用",
       "status": "状态",
       "size": "大小",
       "missing": "未找到",
@@ -779,7 +780,9 @@
       "home": "首页",
       "features": "功能",
       "docs": "文档",
-      "download": "下载"
+      "download": "下载",
+      "privacy": "隐私",
+      "terms": "条款"
     },
     "languages": {
       "zh": "中文",
@@ -799,8 +802,48 @@
       "home": "首页",
       "docs": "文档",
       "download": "下载",
-      "github": "GitHub"
+      "github": "GitHub",
+      "privacy": "隐私",
+      "terms": "条款"
     },
     "copyright": "© 2026 CCUse. 保留所有权利。"
+  },
+  "PrivacyPage": {
+    "metadata": {
+      "title": "隐私政策",
+      "description": "说明 CCUse 如何处理本地配置与发布站点埋点。"
+    },
+    "eyebrow": "法律",
+    "title": "隐私政策",
+    "description": "本页概述官网与桌面应用当前的隐私处理方式。",
+    "body": {
+      "intro": "桌面应用会把供应商配置保留在本机。官网只提供公开页面和发布信息。",
+      "data": "如果生产环境启用分析，应避免收集可识别个人身份的信息。",
+      "contact": "关于数据处理的问题可通过 GitHub 仓库提出。"
+    }
+  },
+  "TermsPage": {
+    "metadata": {
+      "title": "服务条款",
+      "description": "使用 CCUse 下载与文档的基础条款。"
+    },
+    "eyebrow": "法律",
+    "title": "服务条款",
+    "description": "本页说明官网与已发布桌面版本的使用条款。",
+    "body": {
+      "intro": "请根据适用法律和你所在组织的政策使用官网与桌面版本。",
+      "usage": "发布下载按现状提供，运营责任仍由使用者承担。",
+      "contact": "关于项目的问题可以在仓库中提出。"
+    }
+  },
+  "DownloadPreviewPage": {
+    "metadata": {
+      "title": "预览下载",
+      "description": "预发布版本的下载入口。"
+    },
+    "eyebrow": "预览",
+    "title": "预览下载",
+    "description": "预览版本会与稳定版下载资源分开。",
+    "body": "这个路由用于展示预发布下载，避免混入稳定版下载路径。"
   }
 }

@@ -18,6 +18,8 @@
   "switch_reason": "Reason: ",
   "switch_details": "Details: ",
   "switch_id": "ID: ",
+  "status_overview": "Overview",
+  "refresh": "Refresh",
   "settings_title": "Settings",
   "settings_desc": "App preferences (port / theme / startup options) will be available in T1.0.4.",
   "model_mapping_title": "Model Mapping Table",

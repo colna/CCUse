@@ -13,6 +13,8 @@ const navItems = [
   { key: "features", href: "/features" },
   { key: "docs", href: "/docs" },
   { key: "download", href: "/download" },
+  { key: "privacy", href: "/legal/privacy" },
+  { key: "terms", href: "/legal/terms" },
 ] as const;
 
 export async function SiteHeader({ locale }: SiteHeaderProps) {
@@ -39,7 +41,7 @@ export async function SiteHeader({ locale }: SiteHeaderProps) {
 
         <nav
           aria-label={t("primaryLabel")}
-          className="order-3 flex w-full items-center gap-4 text-sm text-muted-foreground sm:order-none sm:w-auto"
+          className="order-3 flex w-full flex-wrap items-center gap-4 text-sm text-muted-foreground sm:order-none sm:w-auto"
         >
           {navItems.map((item) => (
             <a

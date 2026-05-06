@@ -14,6 +14,7 @@ import { SiteHeader } from "../../components/site-header";
 import { ThemeProvider } from "../../components/theme-provider";
 import { defaultLocale, isLocale, locales } from "../../i18n/routing";
 import { absoluteUrl, siteName, siteUrl } from "../../site";
+import { Analytics } from "@vercel/analytics/next";
 
 type LocaleLayoutProps = {
   children: ReactNode;
@@ -108,6 +109,7 @@ export default async function LocaleLayout({
             <SiteFooter locale={locale} />
           </ThemeProvider>
         </NextIntlClientProvider>
+        <Analytics />
       </body>
     </html>
   );
