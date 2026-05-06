@@ -1,0 +1,27 @@
+# Scratchpad
+
+- Active task: TW.2.13 / TW.2.14 / TW.3.01-08
+- Files touched:
+  - apps/website/app/[locale]/download/page.tsx
+  - apps/website/app/[locale]/download/preview/page.tsx
+  - apps/website/app/[locale]/legal/privacy/page.tsx
+  - apps/website/app/[locale]/legal/terms/page.tsx
+  - apps/website/app/[locale]/layout.tsx
+  - apps/website/components/site-header.tsx
+  - apps/website/components/site-footer.tsx
+  - apps/website/messages/en.json
+  - apps/website/messages/zh.json
+  - apps/website/package.json
+  - apps/website/scripts/verify-legal-pages.mjs
+  - apps/desktop/src/components/dashboard/StatusCards.tsx
+  - apps/desktop/src/components/dashboard/**tests**/StatusCards.test.tsx
+  - apps/desktop/src/components/providers/ProviderList.tsx
+  - apps/desktop/src/components/providers/**tests**/ProviderList.test.tsx
+  - apps/desktop/src/i18n/locales/en/monitor.json
+  - apps/desktop/src/i18n/locales/en/providers.json
+  - apps/desktop/src/i18n/locales/zh/monitor.json
+  - apps/desktop/src/i18n/locales/zh/providers.json
+- Follow-ups:
+  - Add Vercel deployment config docs or vercel.json if required.
+  - Verify Anthropic endpoints: first should pass, second should fail 503.
+  - Review whether release sha256 is actually exposed by workflow assets or needs workflow change.
