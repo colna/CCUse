@@ -18,6 +18,7 @@ use serde_json::json;
 use super::api::{
     ApiModel, ApiRequest, ApiResponse, HealthStatus, Provider, ProviderError, StreamingResponse,
 };
+use super::error_format::format_reqwest_error;
 
 /// Default timeout for non-streaming chat-completions calls. Keep
 /// short — `SwitchEngine` wants to fail-over rather than wait.
@@ -77,7 +78,7 @@ impl OpenAIProvider {
         let client = Client::builder()
             .timeout(DEFAULT_REQUEST_TIMEOUT)
             .build()
-            .map_err(|e| ProviderError::Network(e.to_string()))?;
+            .map_err(|e| ProviderError::Network(format_reqwest_error(e)))?;
         Ok(Self {
             id: id.into(),
             name: name.into(),
@@ -144,7 +145,7 @@ impl Provider for OpenAIProvider {
             .headers(self.auth_headers()?)
             .send()
             .await
-            .map_err(|e| ProviderError::Network(e.to_string()))?;
+            .map_err(|e| ProviderError::Network(format_reqwest_error(e)))?;
         match response.status() {
             s if s.is_success() => Ok(HealthStatus::Healthy),
             StatusCode::TOO_MANY_REQUESTS => Ok(HealthStatus::Degraded),
@@ -159,7 +160,7 @@ impl Provider for OpenAIProvider {
             .headers(self.auth_headers()?)
             .send()
             .await
-            .map_err(|e| ProviderError::Network(e.to_string()))?;
+            .map_err(|e| ProviderError::Network(format_reqwest_error(e)))?;
 
         let status = response.status();
         if status.is_success() {
@@ -167,7 +168,7 @@ impl Provider for OpenAIProvider {
                 .json::<ModelsResponse>()
                 .await
                 .map(|body| body.data)
-                .map_err(|e| ProviderError::Decode(e.to_string()));
+                .map_err(|e| ProviderError::Decode(format_reqwest_error(e)));
         }
 
         let body_text = response.text().await.unwrap_or_default();
@@ -201,14 +202,14 @@ impl Provider for OpenAIProvider {
             .json(&body)
             .send()
             .await
-            .map_err(|e| ProviderError::Network(e.to_string()))?;
+            .map_err(|e| ProviderError::Network(format_reqwest_error(e)))?;
 
         let status = response.status();
         if status.is_success() {
             return response
                 .json::<ApiResponse>()
                 .await
-                .map_err(|e| ProviderError::Decode(e.to_string()));
+                .map_err(|e| ProviderError::Decode(format_reqwest_error(e)));
         }
 
         let body_text = response.text().await.unwrap_or_default();
@@ -245,7 +246,7 @@ impl Provider for OpenAIProvider {
             .json(&body)
             .send()
             .await
-            .map_err(|e| ProviderError::Network(e.to_string()))?;
+            .map_err(|e| ProviderError::Network(format_reqwest_error(e)))?;
 
         let status = response.status();
         if !status.is_success() {
@@ -256,7 +257,7 @@ impl Provider for OpenAIProvider {
         // them as SSE in T1.0.1.22 (`axum::response::Sse`).
         let upstream = response
             .bytes_stream()
-            .map(|chunk| chunk.map_err(|e| ProviderError::Network(e.to_string())));
+            .map(|chunk| chunk.map_err(|e| ProviderError::Network(format_reqwest_error(e))));
         Ok(Box::pin(upstream))
     }
 }

@@ -11,7 +11,7 @@ use tauri::State;
 
 use crate::providers::model::{Provider, ProviderInput};
 use crate::providers::repository::ProviderRepository;
-use crate::providers::{ManagerError, ProviderManager, RepositoryError};
+use crate::providers::{format_reqwest_error, ManagerError, ProviderManager, RepositoryError};
 
 /// Managed state type for the provider repository.
 pub type ProviderRepoHandle = Arc<ProviderRepository>;
@@ -204,17 +204,24 @@ pub async fn test_provider_connection(
     repo: State<'_, ProviderRepoHandle>,
     id: String,
 ) -> Result<u64, String> {
+    test_provider_connection_with_repo(repo.inner().as_ref(), &id).await
+}
+
+pub(crate) async fn test_provider_connection_with_repo(
+    repo: &ProviderRepository,
+    id: &str,
+) -> Result<u64, String> {
     let provider = repo
-        .get(&id)
+        .get(id)
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("provider {id} not found"))?;
-    let api_key = repo.get_decrypted_api_key(&id).map_err(|e| e.to_string())?;
+    let api_key = repo.get_decrypted_api_key(id).map_err(|e| e.to_string())?;
 
     let start = std::time::Instant::now();
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
         .build()
-        .map_err(|e| e.to_string())?;
+        .map_err(format_reqwest_error)?;
 
     let url = match provider.kind {
         crate::providers::model::ProviderKind::Anthropic => {
@@ -241,9 +248,15 @@ pub async fn test_provider_connection(
         }
     }
 
-    let resp = req.send().await.map_err(|e| e.to_string())?;
+    let resp = req.send().await.map_err(format_reqwest_error)?;
     if !resp.status().is_success() && resp.status().as_u16() != 401 {
-        return Err(format!("HTTP {}", resp.status()));
+        let status = resp.status();
+        let body_text = resp.text().await.map_err(format_reqwest_error)?;
+        let body_text = body_text.trim();
+        if body_text.is_empty() {
+            return Err(format!("HTTP {status}"));
+        }
+        return Err(format!("HTTP {status}: {body_text}"));
     }
     #[allow(clippy::cast_possible_truncation)]
     let ms = start.elapsed().as_millis() as u64;
@@ -259,6 +272,8 @@ mod tests {
     use crate::providers::model::ProviderKind;
     use rusqlite::params;
     use tempfile::TempDir;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
     fn make_repo() -> (TempDir, Arc<ProviderRepository>, Database) {
         let dir = TempDir::new().expect("tempdir");
@@ -589,5 +604,30 @@ mod tests {
         assert!(err.contains("database rollback succeeded"));
         assert!(repo.get(&target.id).expect("get restored").is_some());
         assert!(manager.get(&target.id).await.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_provider_connection_returns_upstream_error_body() {
+        let (_dir, repo, _db) = make_repo();
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v1/models"))
+            .respond_with(ResponseTemplate::new(503).set_body_string("models endpoint unavailable"))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let added = repo
+            .add(&ProviderInput {
+                base_url: server.uri(),
+                ..sample_input("Failing", 10)
+            })
+            .expect("add provider");
+
+        let err = test_provider_connection_with_repo(repo.as_ref(), &added.id)
+            .await
+            .expect_err("models probe must fail");
+
+        assert!(err.contains("HTTP 503 Service Unavailable"));
+        assert!(err.contains("models endpoint unavailable"));
     }
 }

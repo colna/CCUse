@@ -9,6 +9,7 @@
 //! domain [`Provider`] here is the persistence shape, not the trait.
 
 pub mod api;
+mod error_format;
 pub mod manager;
 pub mod model;
 pub mod openai;
@@ -27,3 +28,5 @@ pub use openai::{OpenAIProvider, DEFAULT_REQUEST_TIMEOUT};
 pub use repository::{ProviderRepository, RepositoryError};
 pub use startup::load_initial_providers;
 pub use wrapper::{ProviderWrapper, RuntimeState};
+
+pub(crate) use error_format::format_reqwest_error;
