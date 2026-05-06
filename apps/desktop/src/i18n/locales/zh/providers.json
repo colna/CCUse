@@ -5,6 +5,7 @@
   "delete_confirm": "确定要删除",
   "delete_undone": "此操作无法撤销。",
   "edit_name_label": "名称",
+  "edit_kind_label": "供应商类型",
   "edit_url_label": "Base URL",
   "edit_priority_label": "优先级",
   "save_changes_aria": "保存修改",

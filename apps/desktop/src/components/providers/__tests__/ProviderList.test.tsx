@@ -17,22 +17,23 @@ import {
   listProviders,
   onProviderStatusChanged,
   testProviderConnection,
+  updateProvider,
 } from "@/lib/tauri";
 import { ProviderList } from "../ProviderList";
 
+const provider = {
+  id: "provider-1",
+  name: "Claude Prod",
+  kind: "anthropic" as const,
+  base_url: "https://api.anthropic.com",
+  priority: 10,
+  enabled: true,
+  created_at: "2026-04-29T00:00:00.000Z",
+  updated_at: "2026-04-29T00:00:00.000Z",
+};
+
 beforeEach(() => {
-  vi.mocked(listProviders).mockResolvedValue([
-    {
-      id: "provider-1",
-      name: "Claude Prod",
-      kind: "anthropic",
-      base_url: "https://api.anthropic.com",
-      priority: 10,
-      enabled: true,
-      created_at: "2026-04-29T00:00:00.000Z",
-      updated_at: "2026-04-29T00:00:00.000Z",
-    },
-  ]);
+  vi.mocked(listProviders).mockResolvedValue([provider]);
   vi.mocked(getHealthSnapshot).mockResolvedValue({
     providers: [
       {
@@ -46,6 +47,10 @@ beforeEach(() => {
   });
   vi.mocked(onProviderStatusChanged).mockResolvedValue(() => undefined);
   vi.mocked(testProviderConnection).mockResolvedValue(88);
+  vi.mocked(updateProvider).mockResolvedValue({
+    ...provider,
+    kind: "openai",
+  });
 });
 
 describe("ProviderList", () => {
@@ -70,5 +75,27 @@ describe("ProviderList", () => {
       expect(testProviderConnection).toHaveBeenCalledWith("provider-1"),
     );
     expect(deleteProvider).not.toHaveBeenCalled();
+  });
+
+  it("edits the provider type and saves it", async () => {
+    render(<ProviderList />);
+    const user = userEvent.setup();
+
+    await user.click(
+      await screen.findByRole("button", { name: /编辑 Claude Prod/ }),
+    );
+    await user.selectOptions(screen.getByLabelText("供应商类型"), "openai");
+    await user.click(screen.getByRole("button", { name: "保存修改" }));
+
+    await waitFor(() =>
+      expect(updateProvider).toHaveBeenCalledWith("provider-1", {
+        name: "Claude Prod",
+        kind: "openai",
+        base_url: "https://api.anthropic.com",
+        api_key: "",
+        priority: 10,
+        enabled: true,
+      }),
+    );
   });
 });

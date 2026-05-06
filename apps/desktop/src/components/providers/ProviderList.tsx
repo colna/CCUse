@@ -59,6 +59,17 @@ function formatSuccessRate(rate?: number): string {
   return `${(rate * 100).toFixed(1)}%`;
 }
 
+const providerKindOptions: Array<{
+  kind: ProviderInput["kind"];
+  label: string;
+}> = [
+  { kind: "openai", label: "OpenAI" },
+  { kind: "anthropic", label: "Anthropic" },
+  { kind: "gemini", label: "Gemini" },
+  { kind: "relay", label: "Relay" },
+  { kind: "custom", label: "Custom" },
+];
+
 // ─── Delete Confirmation Dialog ──────────────────────────────
 
 interface DeleteDialogProps {
@@ -100,6 +111,7 @@ function DeleteDialog({
 
 interface EditState {
   name: string;
+  kind: ProviderInput["kind"];
   base_url: string;
   priority: string;
   enabled: boolean;
@@ -129,6 +141,7 @@ function SortableProviderItem({
   const [editing, setEditing] = useState(false);
   const [editValues, setEditValues] = useState<EditState>({
     name: provider.name,
+    kind: provider.kind,
     base_url: provider.base_url,
     priority: String(provider.priority),
     enabled: provider.enabled,
@@ -152,6 +165,7 @@ function SortableProviderItem({
   const handleStartEdit = useCallback(() => {
     setEditValues({
       name: provider.name,
+      kind: provider.kind,
       base_url: provider.base_url,
       priority: String(provider.priority),
       enabled: provider.enabled,
@@ -196,6 +210,31 @@ function SortableProviderItem({
             }
             className="flex-1 rounded-md border border-border bg-background px-2 py-1 text-sm outline-none focus-visible:border-primary"
           />
+        </div>
+        <div className="flex items-center gap-2">
+          <label
+            htmlFor={`edit-kind-${provider.id}`}
+            className="w-16 shrink-0 text-xs text-muted-foreground"
+          >
+            {t("edit_kind_label")}
+          </label>
+          <select
+            id={`edit-kind-${provider.id}`}
+            value={editValues.kind}
+            onChange={(e) =>
+              setEditValues((s) => ({
+                ...s,
+                kind: e.target.value as ProviderInput["kind"],
+              }))
+            }
+            className="w-40 rounded-md border border-border bg-background px-2 py-1 text-sm outline-none focus-visible:border-primary"
+          >
+            {providerKindOptions.map((option) => (
+              <option key={option.kind} value={option.kind}>
+                {option.label}
+              </option>
+            ))}
+          </select>
         </div>
         <div className="flex items-center gap-2">
           <label
@@ -561,7 +600,7 @@ export function ProviderList({ refreshKey }: ProviderListProps) {
       if (!provider) return;
       const input: ProviderInput = {
         name: patch.name ?? provider.name,
-        kind: provider.kind,
+        kind: patch.kind ?? provider.kind,
         base_url: patch.base_url ?? provider.base_url,
         api_key: "",
         priority: patch.priority ? Number(patch.priority) : provider.priority,

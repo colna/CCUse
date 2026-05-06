@@ -5,6 +5,7 @@
   "delete_confirm": "Are you sure you want to delete",
   "delete_undone": "This action cannot be undone.",
   "edit_name_label": "Name",
+  "edit_kind_label": "Provider Type",
   "edit_url_label": "Base URL",
   "edit_priority_label": "Priority",
   "save_changes_aria": "Save changes",
