@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -75,6 +75,33 @@ describe("ProviderList", () => {
       expect(testProviderConnection).toHaveBeenCalledWith("provider-1"),
     );
     expect(deleteProvider).not.toHaveBeenCalled();
+  });
+
+  it("keeps the provider list visible and shows a dialog when health test fails", async () => {
+    vi.mocked(testProviderConnection).mockRejectedValueOnce(
+      new Error("HTTP 401 invalid key"),
+    );
+    render(<ProviderList />);
+    const user = userEvent.setup();
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: /测试 Claude Prod 的健康状态/,
+      }),
+    );
+
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog).toBeInTheDocument();
+    expect(within(dialog).getByText("连接测试失败")).toBeInTheDocument();
+    expect(
+      within(dialog).getByText("HTTP 401 invalid key"),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByText("Claude Prod")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: /测试 Claude Prod 的健康状态/,
+      }),
+    ).toBeInTheDocument();
   });
 
   it("edits the provider type and saves it", async () => {

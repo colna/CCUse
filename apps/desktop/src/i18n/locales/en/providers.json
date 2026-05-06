@@ -18,6 +18,7 @@
   "edit_provider_aria": "Edit {{name}}",
   "delete_provider_aria": "Delete {{name}}",
   "test_connection_provider_aria": "Test {{name}} health",
+  "test_connection_failed_title": "Connection Test Failed",
   "add_provider_title": "Add Provider",
   "add_provider_desc": "Select provider type, fill in details. Lower priority number = higher preference.",
   "provider_type": "Provider Type",

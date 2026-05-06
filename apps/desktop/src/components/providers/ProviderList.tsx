@@ -107,6 +107,52 @@ function DeleteDialog({
   );
 }
 
+interface ProviderErrorDialogProps {
+  title: string;
+  providerName: string;
+  message: string;
+  onClose: () => void;
+}
+
+function ProviderErrorDialog({
+  title,
+  providerName,
+  message,
+  onClose,
+}: ProviderErrorDialogProps) {
+  const { t: tc } = useTranslation("common");
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="provider-error-dialog-title"
+        aria-describedby="provider-error-dialog-message"
+        className="mx-4 w-full max-w-sm rounded-2xl border border-destructive/30 bg-card p-6 shadow-lg"
+      >
+        <h3
+          id="provider-error-dialog-title"
+          className="text-base font-semibold text-foreground"
+        >
+          {title}
+        </h3>
+        <p className="mt-2 text-sm text-muted-foreground">{providerName}</p>
+        <pre
+          id="provider-error-dialog-message"
+          className="mt-3 max-h-44 overflow-auto whitespace-pre-wrap rounded-md bg-muted/50 p-3 text-xs text-destructive"
+        >
+          {message}
+        </pre>
+        <div className="mt-5 flex justify-end">
+          <Button variant="outline" size="sm" onClick={onClose}>
+            {tc("close")}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Inline Edit Form ────────────────────────────────────────
 
 interface EditState {
@@ -469,6 +515,10 @@ export function ProviderList({ refreshKey }: ProviderListProps) {
     id: string;
     name: string;
   } | null>(null);
+  const [testErrorDialog, setTestErrorDialog] = useState<{
+    providerName: string;
+    message: string;
+  } | null>(null);
 
   const fetchProviders = useCallback(async () => {
     try {
@@ -614,7 +664,11 @@ export function ProviderList({ refreshKey }: ProviderListProps) {
         }));
         setError(null);
       } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : String(err));
+        const provider = providers.find((item) => item.id === id);
+        setTestErrorDialog({
+          providerName: provider?.name ?? id,
+          message: err instanceof Error ? err.message : String(err),
+        });
       } finally {
         setTestingIds((current) => ({ ...current, [id]: false }));
       }
@@ -695,6 +749,15 @@ export function ProviderList({ refreshKey }: ProviderListProps) {
           providerName={deleteTarget.name}
           onConfirm={handleConfirmDelete}
           onCancel={handleCancelDelete}
+        />
+      )}
+
+      {testErrorDialog && (
+        <ProviderErrorDialog
+          title={t("test_connection_failed_title")}
+          providerName={testErrorDialog.providerName}
+          message={testErrorDialog.message}
+          onClose={() => setTestErrorDialog(null)}
         />
       )}
     </>
