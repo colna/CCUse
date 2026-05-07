@@ -21,9 +21,8 @@ use std::sync::Arc;
 
 use tauri::Manager;
 
-use commands::health::HealthCheckerHandle;
 use commands::model_mapping::ModelMappingHandle;
-use commands::providers::{ProviderManagerHandle, ProviderRepoHandle};
+use commands::providers::{HealthCheckerHandle, ProviderManagerHandle, ProviderRepoHandle};
 use commands::switch::SwitchEngineHandle;
 use providers::ProviderManager;
 use proxy::ProxyRuntime;

@@ -6,7 +6,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Runtime};
@@ -19,7 +19,7 @@ use crate::providers::manager::ProviderManager;
 use super::sliding_window::SlidingWindow;
 
 /// Default interval between health probes.
-pub const DEFAULT_CHECK_INTERVAL: Duration = Duration::from_secs(30);
+pub const DEFAULT_CHECK_INTERVAL: Duration = Duration::from_secs(5);
 /// Default sliding window capacity (number of recent probes).
 pub const DEFAULT_WINDOW_SIZE: usize = 10;
 /// Below this success rate the provider is `Degraded`.
@@ -168,8 +168,15 @@ async fn run_probe_cycle(inner: &Inner) {
     let mut snapshots = Vec::with_capacity(providers.len());
 
     for provider in &providers {
+        let probe_start = Instant::now();
         let probe_result = provider.health_check().await;
-        let probe_ok = probe_result.is_ok();
+        let elapsed_us = i64::try_from(probe_start.elapsed().as_micros()).unwrap_or(i64::MAX);
+        provider.state.record_response_us(elapsed_us);
+        let reported_status = match probe_result {
+            Ok(status) => status,
+            Err(_) => HealthStatus::Down,
+        };
+        let probe_ok = reported_status != HealthStatus::Down;
 
         let mut states = inner.probe_states.write().await;
         let state = states
@@ -181,7 +188,7 @@ async fn run_probe_cycle(inner: &Inner) {
 
         state.window.push(probe_ok);
         let rate = state.window.success_rate();
-        let new_status = classify_health(rate);
+        let new_status = classify_health(reported_status, rate);
 
         // T1.0.2.08: emit event on transition
         if new_status != state.last_status {
@@ -245,13 +252,12 @@ const fn default_success_rate(status: HealthStatus) -> f64 {
 }
 
 /// Map success rate to health status using the two thresholds.
-fn classify_health(success_rate: f64) -> HealthStatus {
-    if success_rate >= DEGRADED_THRESHOLD {
-        HealthStatus::Healthy
-    } else if success_rate >= DOWN_THRESHOLD {
-        HealthStatus::Degraded
-    } else {
-        HealthStatus::Down
+fn classify_health(reported_status: HealthStatus, success_rate: f64) -> HealthStatus {
+    match reported_status {
+        HealthStatus::Degraded => HealthStatus::Degraded,
+        HealthStatus::Healthy if success_rate >= DEGRADED_THRESHOLD => HealthStatus::Healthy,
+        HealthStatus::Healthy if success_rate >= DOWN_THRESHOLD => HealthStatus::Degraded,
+        HealthStatus::Down | HealthStatus::Healthy => HealthStatus::Down,
     }
 }
 
@@ -280,6 +286,7 @@ mod tests {
     struct ConfigurableMockProvider {
         id: String,
         should_succeed: Arc<AtomicBool>,
+        degraded_when_succeeding: bool,
     }
 
     #[async_trait]
@@ -301,7 +308,11 @@ mod tests {
         }
         async fn health_check(&self) -> Result<HealthStatus, ProviderError> {
             if self.should_succeed.load(Ordering::Relaxed) {
-                Ok(HealthStatus::Healthy)
+                if self.degraded_when_succeeding {
+                    Ok(HealthStatus::Degraded)
+                } else {
+                    Ok(HealthStatus::Healthy)
+                }
             } else {
                 Err(ProviderError::Network("mock failure".into()))
             }
@@ -338,10 +349,18 @@ mod tests {
     }
 
     async fn make_manager_with_mock(succeed: bool) -> (Arc<ProviderManager>, Arc<AtomicBool>) {
+        make_manager_with_mock_status(succeed, false).await
+    }
+
+    async fn make_manager_with_mock_status(
+        succeed: bool,
+        degraded_when_succeeding: bool,
+    ) -> (Arc<ProviderManager>, Arc<AtomicBool>) {
         let flag = Arc::new(AtomicBool::new(succeed));
         let mock = ConfigurableMockProvider {
             id: "mock1".into(),
             should_succeed: Arc::clone(&flag),
+            degraded_when_succeeding,
         };
         let wrapper = Arc::new(ProviderWrapper::new(
             "mock1",
@@ -359,12 +378,39 @@ mod tests {
 
     #[test]
     fn classify_health_thresholds() {
-        assert_eq!(classify_health(1.0), HealthStatus::Healthy);
-        assert_eq!(classify_health(0.7), HealthStatus::Healthy);
-        assert_eq!(classify_health(0.69), HealthStatus::Degraded);
-        assert_eq!(classify_health(0.3), HealthStatus::Degraded);
-        assert_eq!(classify_health(0.29), HealthStatus::Down);
-        assert_eq!(classify_health(0.0), HealthStatus::Down);
+        assert_eq!(
+            classify_health(HealthStatus::Healthy, 1.0),
+            HealthStatus::Healthy
+        );
+        assert_eq!(
+            classify_health(HealthStatus::Healthy, 0.7),
+            HealthStatus::Healthy
+        );
+        assert_eq!(
+            classify_health(HealthStatus::Healthy, 0.69),
+            HealthStatus::Degraded
+        );
+        assert_eq!(
+            classify_health(HealthStatus::Healthy, 0.3),
+            HealthStatus::Degraded
+        );
+        assert_eq!(
+            classify_health(HealthStatus::Healthy, 0.29),
+            HealthStatus::Down
+        );
+        assert_eq!(
+            classify_health(HealthStatus::Healthy, 0.0),
+            HealthStatus::Down
+        );
+    }
+
+    #[test]
+    fn classify_health_preserves_reported_down_and_degraded_statuses() {
+        assert_eq!(classify_health(HealthStatus::Down, 1.0), HealthStatus::Down);
+        assert_eq!(
+            classify_health(HealthStatus::Degraded, 1.0),
+            HealthStatus::Degraded
+        );
     }
 
     #[test]
@@ -400,6 +446,28 @@ mod tests {
         assert_eq!(snap[0].provider_id, "mock1");
         assert_eq!(snap[0].status, HealthStatus::Healthy);
         assert_eq!(snap[0].success_rate, 1.0);
+    }
+
+    #[tokio::test]
+    async fn probe_once_records_response_time_sample() {
+        let (mgr, _flag) = make_manager_with_mock(true).await;
+        let provider = mgr.get("mock1").await.expect("provider");
+        let checker = HealthChecker::new(mgr);
+
+        checker.probe_once().await;
+
+        assert!(provider.state.rolling_response_us().is_some());
+    }
+
+    #[tokio::test]
+    async fn probe_once_preserves_provider_reported_degraded_status() {
+        let (mgr, _flag) = make_manager_with_mock_status(true, true).await;
+        let checker = HealthChecker::new(mgr);
+
+        checker.probe_once().await;
+        let snap = checker.snapshot().await;
+
+        assert_eq!(snap[0].status, HealthStatus::Degraded);
     }
 
     #[tokio::test]
@@ -458,7 +526,8 @@ mod tests {
         // First probe: Healthy (no change from default)
         checker.probe_once().await;
 
-        // Second probe (fail): window=[true,false] rate=0.5 → Degraded
+        // Second probe (fail): transport failure immediately removes
+        // the provider from strategy selection.
         flag.store(false, Ordering::Relaxed);
         checker.probe_once().await;
 
@@ -466,13 +535,6 @@ mod tests {
         let event = rx.borrow_and_update().clone().expect("event");
         assert_eq!(event.provider_id, "mock1");
         assert_eq!(event.old_status, HealthStatus::Healthy);
-        assert_eq!(event.new_status, HealthStatus::Degraded);
-
-        // Third probe (fail): window=[false,false] rate=0.0 → Down
-        checker.probe_once().await;
-        rx.changed().await.unwrap();
-        let event = rx.borrow_and_update().clone().expect("event");
-        assert_eq!(event.old_status, HealthStatus::Degraded);
         assert_eq!(event.new_status, HealthStatus::Down);
     }
 

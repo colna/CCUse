@@ -149,7 +149,8 @@ impl SwitchEngine {
                 &self.rr_state,
                 &config.smart_weights,
                 &tried,
-            );
+            )
+            .await;
 
             let Some(provider) = candidate else { break };
 
@@ -229,7 +230,8 @@ impl SwitchEngine {
                 &self.rr_state,
                 &config.smart_weights,
                 &tried,
-            );
+            )
+            .await;
 
             let Some(provider) = candidate else { break };
 
@@ -295,7 +297,7 @@ fn switch_reason_for_provider_error(error: &ProviderError) -> String {
 }
 
 /// Select a provider, excluding those already tried.
-fn select_excluding(
+async fn select_excluding(
     strategy: SwitchStrategy,
     candidates: &[Arc<ProviderWrapper>],
     rr_state: &RoundRobinState,
@@ -307,7 +309,7 @@ fn select_excluding(
         .filter(|p| !exclude.contains(&p.id().to_owned()))
         .cloned()
         .collect();
-    select(strategy, &filtered, rr_state, weights)
+    select(strategy, &filtered, rr_state, weights).await
 }
 
 /// T1.0.2.16: error classification. `ProviderError::is_retriable`

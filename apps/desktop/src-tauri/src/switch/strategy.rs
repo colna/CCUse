@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
-use crate::providers::api::Provider as ProviderTrait;
+use crate::providers::api::{HealthStatus, Provider as ProviderTrait};
 use crate::providers::wrapper::ProviderWrapper;
 
 /// User-selectable switching strategy.
@@ -74,18 +74,18 @@ pub struct RoundRobinState {
 
 /// Select the best provider from `candidates` using the given
 /// strategy. Returns `None` if no healthy + enabled candidate exists.
-pub fn select(
+pub async fn select(
     strategy: SwitchStrategy,
     candidates: &[Arc<ProviderWrapper>],
     rr_state: &RoundRobinState,
     smart_weights: &SmartWeights,
 ) -> Option<Arc<ProviderWrapper>> {
-    // Filter to only healthy or degraded (not Down) providers.
-    let alive: Vec<_> = candidates
-        .iter()
-        .filter(|p| p.is_enabled())
-        .cloned()
-        .collect();
+    let mut alive = Vec::with_capacity(candidates.len());
+    for provider in candidates {
+        if provider.is_enabled() && provider.state.health().await != HealthStatus::Down {
+            alive.push(Arc::clone(provider));
+        }
+    }
     if alive.is_empty() {
         return None;
     }
@@ -264,91 +264,107 @@ mod tests {
         assert_eq!(back, SwitchStrategy::LoadBalance);
     }
 
-    #[test]
-    fn priority_selects_lowest() {
+    #[tokio::test]
+    async fn priority_selects_lowest() {
         let a = mock_wrapper("a", 50, None);
         let b = mock_wrapper("b", 10, None);
         let c = mock_wrapper("c", 30, None);
         let rr = RoundRobinState::default();
         let sw = SmartWeights::default();
-        let result = select(SwitchStrategy::Priority, &[a, b.clone(), c], &rr, &sw);
+        let result = select(SwitchStrategy::Priority, &[a, b.clone(), c], &rr, &sw).await;
         assert_eq!(result.unwrap().id(), "b");
     }
 
-    #[test]
-    fn cost_selects_cheapest() {
+    #[tokio::test]
+    async fn cost_selects_cheapest() {
         let a = mock_wrapper("a", 10, Some(0.000_01));
         let b = mock_wrapper("b", 10, Some(0.000_003));
         let c = mock_wrapper("c", 10, None);
         let rr = RoundRobinState::default();
         let sw = SmartWeights::default();
-        let result = select(SwitchStrategy::Cost, &[a, b.clone(), c], &rr, &sw);
+        let result = select(SwitchStrategy::Cost, &[a, b.clone(), c], &rr, &sw).await;
         assert_eq!(result.unwrap().id(), "b");
     }
 
-    #[test]
-    fn fastest_selects_lowest_response_time() {
+    #[tokio::test]
+    async fn fastest_selects_lowest_response_time() {
         let a = mock_wrapper("a", 10, None);
         let b = mock_wrapper("b", 10, None);
         a.state.record_response_us(5000);
         b.state.record_response_us(1000);
         let rr = RoundRobinState::default();
         let sw = SmartWeights::default();
-        let result = select(SwitchStrategy::Fastest, &[a, b.clone()], &rr, &sw);
+        let result = select(SwitchStrategy::Fastest, &[a, b.clone()], &rr, &sw).await;
         assert_eq!(result.unwrap().id(), "b");
     }
 
-    #[test]
-    fn load_balance_rotates() {
+    #[tokio::test]
+    async fn fastest_skips_down_provider_even_when_it_has_best_latency() {
+        let down = mock_wrapper("down", 10, None);
+        let healthy = mock_wrapper("healthy", 20, None);
+        down.state.record_response_us(100);
+        healthy.state.record_response_us(5000);
+        down.state.set_health(HealthStatus::Down).await;
+        let rr = RoundRobinState::default();
+        let sw = SmartWeights::default();
+        let result = select(SwitchStrategy::Fastest, &[down, healthy.clone()], &rr, &sw).await;
+        assert_eq!(result.unwrap().id(), "healthy");
+    }
+
+    #[tokio::test]
+    async fn load_balance_rotates() {
         let a = mock_wrapper("a", 10, None);
         let b = mock_wrapper("b", 10, None);
         let candidates = vec![a, b];
         let rr = RoundRobinState::default();
         let sw = SmartWeights::default();
-        let r1 = select(SwitchStrategy::LoadBalance, &candidates, &rr, &sw).unwrap();
-        let r2 = select(SwitchStrategy::LoadBalance, &candidates, &rr, &sw).unwrap();
+        let r1 = select(SwitchStrategy::LoadBalance, &candidates, &rr, &sw)
+            .await
+            .unwrap();
+        let r2 = select(SwitchStrategy::LoadBalance, &candidates, &rr, &sw)
+            .await
+            .unwrap();
         assert_ne!(r1.id(), r2.id());
     }
 
-    #[test]
-    fn load_balance_weights_by_inverse_priority() {
+    #[tokio::test]
+    async fn load_balance_weights_by_inverse_priority() {
         let high_priority = mock_wrapper("high", 10, None);
         let backup = mock_wrapper("backup", 20, None);
         let candidates = vec![high_priority, backup];
         let rr = RoundRobinState::default();
         let sw = SmartWeights::default();
 
-        let picks = (0..6)
-            .map(|_| {
-                select(SwitchStrategy::LoadBalance, &candidates, &rr, &sw)
-                    .unwrap()
-                    .id()
-                    .to_owned()
-            })
-            .collect::<Vec<_>>();
+        let mut picks = Vec::new();
+        for _ in 0..6 {
+            let provider = select(SwitchStrategy::LoadBalance, &candidates, &rr, &sw)
+                .await
+                .unwrap();
+            picks.push(provider.id().to_owned());
+        }
 
         assert_eq!(picks, ["high", "high", "backup", "high", "high", "backup"]);
     }
 
-    #[test]
-    fn smart_prefers_better_provider() {
+    #[tokio::test]
+    async fn smart_prefers_better_provider() {
         let a = mock_wrapper("a", 50, Some(0.000_01));
         let b = mock_wrapper("b", 10, Some(0.000_003));
         a.state.record_response_us(5000);
         b.state.record_response_us(1000);
         let rr = RoundRobinState::default();
         let sw = SmartWeights::default();
-        let result = select(SwitchStrategy::Smart, &[a, b.clone()], &rr, &sw);
+        let result = select(SwitchStrategy::Smart, &[a, b.clone()], &rr, &sw).await;
         // b has better priority, cost, and response time
         assert_eq!(result.unwrap().id(), "b");
     }
 
-    #[test]
-    fn empty_candidates_returns_none() {
+    #[tokio::test]
+    async fn empty_candidates_returns_none() {
         let rr = RoundRobinState::default();
         let sw = SmartWeights::default();
         for strategy in SwitchStrategy::ALL {
-            assert!(select(strategy, &[], &rr, &sw).is_none());
+            assert!(select(strategy, &[], &rr, &sw).await.is_none());
         }
     }
 }

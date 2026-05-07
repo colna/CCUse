@@ -222,9 +222,8 @@ impl Provider for ProviderWrapper {
 
     async fn health_check(&self) -> Result<HealthStatus, ProviderError> {
         let result = self.inner.health_check().await;
-        if let Ok(status) = &result {
-            self.state.set_health(*status).await;
-        }
+        let status = result.as_ref().copied().unwrap_or(HealthStatus::Down);
+        self.state.set_health(status).await;
         result
     }
 
@@ -262,9 +261,16 @@ mod tests {
     use std::pin::Pin;
 
     /// Minimal mock provider for unit tests.
+    #[derive(Debug, Clone, Copy)]
+    enum MockHealthResult {
+        Healthy,
+        NetworkError,
+    }
+
     #[derive(Debug)]
     struct MockProvider {
         id: String,
+        health_result: MockHealthResult,
     }
 
     #[async_trait]
@@ -285,7 +291,10 @@ mod tests {
             None
         }
         async fn health_check(&self) -> Result<HealthStatus, ProviderError> {
-            Ok(HealthStatus::Healthy)
+            match self.health_result {
+                MockHealthResult::Healthy => Ok(HealthStatus::Healthy),
+                MockHealthResult::NetworkError => Err(ProviderError::Network("offline".into())),
+            }
         }
         async fn send_request(&self, _req: ApiRequest) -> Result<ApiResponse, ProviderError> {
             Ok(ApiResponse {
@@ -342,7 +351,25 @@ mod tests {
             10,
             Some(0.000_003),
             true,
-            Box::new(MockProvider { id: "p1".into() }),
+            Box::new(MockProvider {
+                id: "p1".into(),
+                health_result: MockHealthResult::Healthy,
+            }),
+        )
+    }
+
+    fn make_wrapper_with_health(health_result: MockHealthResult) -> ProviderWrapper {
+        ProviderWrapper::new(
+            "p1",
+            "Test Provider",
+            ProviderKind::Openai,
+            10,
+            Some(0.000_003),
+            true,
+            Box::new(MockProvider {
+                id: "p1".into(),
+                health_result,
+            }),
         )
     }
 
@@ -364,6 +391,16 @@ mod tests {
         assert_eq!(w.state.health().await, HealthStatus::Healthy);
         let status = w.health_check().await.expect("ok");
         assert_eq!(status, HealthStatus::Healthy);
+    }
+
+    #[tokio::test]
+    async fn health_check_error_marks_runtime_state_down() {
+        let w = make_wrapper_with_health(MockHealthResult::NetworkError);
+
+        let err = w.health_check().await.expect_err("must fail");
+
+        assert!(matches!(err, ProviderError::Network(_)));
+        assert_eq!(w.state.health().await, HealthStatus::Down);
     }
 
     #[tokio::test]

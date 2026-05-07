@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 use tauri::State;
 
+use crate::health::HealthChecker;
 use crate::providers::model::{Provider, ProviderInput};
 use crate::providers::repository::ProviderRepository;
 use crate::providers::{format_reqwest_error, ManagerError, ProviderManager, RepositoryError};
@@ -18,6 +19,9 @@ pub type ProviderRepoHandle = Arc<ProviderRepository>;
 
 /// Managed state type for the runtime provider registry.
 pub type ProviderManagerHandle = Arc<ProviderManager>;
+
+/// Managed state type for health snapshots.
+pub type HealthCheckerHandle = Arc<HealthChecker>;
 
 /// Return all providers (API keys excluded from the model).
 #[tauri::command]
@@ -30,9 +34,13 @@ pub async fn list_providers(repo: State<'_, ProviderRepoHandle>) -> Result<Vec<P
 pub async fn add_provider(
     repo: State<'_, ProviderRepoHandle>,
     manager: State<'_, ProviderManagerHandle>,
+    checker: State<'_, HealthCheckerHandle>,
     input: ProviderInput,
 ) -> Result<Provider, String> {
-    add_provider_and_reload(repo.inner().as_ref(), manager.inner().as_ref(), input).await
+    let provider =
+        add_provider_and_reload(repo.inner().as_ref(), manager.inner().as_ref(), input).await?;
+    checker.probe_once().await;
+    Ok(provider)
 }
 
 /// Update an existing provider (all fields) and return the refreshed row.
@@ -40,10 +48,15 @@ pub async fn add_provider(
 pub async fn update_provider(
     repo: State<'_, ProviderRepoHandle>,
     manager: State<'_, ProviderManagerHandle>,
+    checker: State<'_, HealthCheckerHandle>,
     id: String,
     input: ProviderInput,
 ) -> Result<Provider, String> {
-    update_provider_and_reload(repo.inner().as_ref(), manager.inner().as_ref(), &id, input).await
+    let provider =
+        update_provider_and_reload(repo.inner().as_ref(), manager.inner().as_ref(), &id, input)
+            .await?;
+    checker.probe_once().await;
+    Ok(provider)
 }
 
 /// Delete a provider by id.
@@ -51,9 +64,12 @@ pub async fn update_provider(
 pub async fn delete_provider(
     repo: State<'_, ProviderRepoHandle>,
     manager: State<'_, ProviderManagerHandle>,
+    checker: State<'_, HealthCheckerHandle>,
     id: String,
 ) -> Result<(), String> {
-    delete_provider_and_reload(repo.inner().as_ref(), manager.inner().as_ref(), &id).await
+    delete_provider_and_reload(repo.inner().as_ref(), manager.inner().as_ref(), &id).await?;
+    checker.probe_once().await;
+    Ok(())
 }
 
 pub(crate) async fn add_provider_and_reload(
