@@ -13,7 +13,7 @@ use futures::stream::StreamExt;
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use reqwest::{Client, StatusCode};
 use serde::Deserialize;
-use serde_json::json;
+use serde_json::{json, Value};
 
 use super::api::{
     ApiModel, ApiRequest, ApiResponse, HealthStatus, Provider, ProviderError, StreamingResponse,
@@ -177,24 +177,8 @@ impl Provider for OpenAIProvider {
 
     async fn send_request(&self, request: ApiRequest) -> Result<ApiResponse, ProviderError> {
         // Force non-streaming on the wire — the streaming path goes
-        // through `send_stream_request`. Re-emit the body manually so
-        // we don't accidentally forward `stream: true` to the upstream.
-        let ApiRequest {
-            model,
-            messages,
-            temperature,
-            max_tokens,
-            stream: _,
-            tools,
-        } = request;
-        let mut body = json!({
-            "model": model,
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-            "stream": false,
-        });
-        add_tools_to_body(&mut body, &tools);
+        // through `send_stream_request`.
+        let body = chat_completion_body(request, false)?;
         let response = self
             .client
             .post(self.endpoint("/v1/chat/completions"))
@@ -223,22 +207,7 @@ impl Provider for OpenAIProvider {
         // Force `stream: true` regardless of caller input — the
         // non-streaming path is `send_request`. Splitting the wire
         // override here mirrors `send_request` which forces `false`.
-        let ApiRequest {
-            model,
-            messages,
-            temperature,
-            max_tokens,
-            stream: _,
-            tools,
-        } = request;
-        let mut body = json!({
-            "model": model,
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-            "stream": true,
-        });
-        add_tools_to_body(&mut body, &tools);
+        let body = chat_completion_body(request, true)?;
         let response = self
             .client
             .post(self.endpoint("/v1/chat/completions"))
@@ -260,6 +229,16 @@ impl Provider for OpenAIProvider {
             .map(|chunk| chunk.map_err(|e| ProviderError::Network(format_reqwest_error(e))));
         Ok(Box::pin(upstream))
     }
+}
+
+fn chat_completion_body(mut request: ApiRequest, stream: bool) -> Result<Value, ProviderError> {
+    request.stream = stream;
+    let tools = std::mem::take(&mut request.tools);
+    let mut body = serde_json::to_value(request).map_err(|e| {
+        ProviderError::BadRequest(format!("failed to serialize provider request: {e}"))
+    })?;
+    add_tools_to_body(&mut body, &tools);
+    Ok(body)
 }
 
 /// Map an upstream HTTP status to the appropriate `ProviderError`.
@@ -309,6 +288,7 @@ fn add_tools_to_body(body: &mut serde_json::Value, tools: &[super::api::ApiToolD
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::providers::api::{ApiToolDefinition, ChatMessage};
 
     #[test]
     fn map_http_error_classifies_401_as_unauthorized() {
@@ -396,5 +376,36 @@ mod tests {
         let p = OpenAIProvider::new("id", "n", "https://api", "bad\nkey").expect("build");
         let err = p.auth_headers().expect_err("must reject");
         assert!(matches!(err, ProviderError::BadRequest(_)));
+    }
+
+    #[test]
+    fn chat_completion_body_omits_none_fields_and_wraps_tools() {
+        let body = chat_completion_body(
+            ApiRequest {
+                model: "gpt-4o".into(),
+                messages: vec![ChatMessage {
+                    role: "user".into(),
+                    content: "ping".into(),
+                    tool_call_id: None,
+                    tool_calls: vec![],
+                }],
+                temperature: None,
+                max_tokens: None,
+                stream: false,
+                tools: vec![ApiToolDefinition {
+                    name: "get_weather".into(),
+                    description: Some("Get weather".into()),
+                    parameters: json!({"type": "object"}),
+                }],
+            },
+            true,
+        )
+        .expect("serialize request body");
+
+        assert_eq!(body["stream"], true);
+        assert!(body.get("temperature").is_none());
+        assert!(body.get("max_tokens").is_none());
+        assert_eq!(body["tools"][0]["type"], "function");
+        assert_eq!(body["tools"][0]["function"]["name"], "get_weather");
     }
 }

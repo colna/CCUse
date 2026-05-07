@@ -12,7 +12,9 @@ use std::pin::Pin;
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::stream::Stream;
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::de::{Error as DeError, SeqAccess, Visitor};
+use serde::ser::SerializeSeq;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// What `SwitchEngine` hands to a provider. Wire format is
 /// `OpenAI` chat-completions today; format-conversion adapters in
@@ -45,15 +47,174 @@ pub struct ApiRequest {
 pub struct ChatMessage {
     /// `system` / `user` / `assistant` / `tool`.
     pub role: String,
-    /// Plain text. Tool/function calls land in T1.0.2+ (richer enum).
-    #[serde(default, deserialize_with = "deserialize_nullable_string")]
-    pub content: String,
+    /// OpenAI-compatible text or multimodal content parts.
+    #[serde(default, deserialize_with = "deserialize_nullable_chat_content")]
+    pub content: ChatContent,
     /// Correlates an `OpenAI` `tool` message with the assistant call it answers.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_call_id: Option<String>,
     /// OpenAI-compatible tool calls emitted by an assistant message.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tool_calls: Vec<ApiToolCall>,
+}
+
+/// OpenAI-compatible message content.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ChatContent {
+    Text(String),
+    Parts(Box<[ChatContentPart]>),
+}
+
+impl Default for ChatContent {
+    fn default() -> Self {
+        Self::Text(String::new())
+    }
+}
+
+impl ChatContent {
+    #[must_use]
+    pub fn parts(parts: Vec<ChatContentPart>) -> Self {
+        Self::Parts(parts.into_boxed_slice())
+    }
+
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        match self {
+            Self::Text(text) => text.is_empty(),
+            Self::Parts(parts) => parts.is_empty(),
+        }
+    }
+
+    #[must_use]
+    pub fn text_content(&self) -> String {
+        match self {
+            Self::Text(text) => text.clone(),
+            Self::Parts(parts) => {
+                let mut text_content = String::new();
+                for part in parts {
+                    if let ChatContentPart::Text { text } = part {
+                        text_content.push_str(text);
+                    }
+                }
+                text_content
+            }
+        }
+    }
+}
+
+impl From<String> for ChatContent {
+    fn from(value: String) -> Self {
+        Self::Text(value)
+    }
+}
+
+impl From<&str> for ChatContent {
+    fn from(value: &str) -> Self {
+        Self::Text(value.to_owned())
+    }
+}
+
+impl PartialEq<&str> for ChatContent {
+    fn eq(&self, other: &&str) -> bool {
+        matches!(self, Self::Text(text) if text == other)
+    }
+}
+
+impl PartialEq<String> for ChatContent {
+    fn eq(&self, other: &String) -> bool {
+        matches!(self, Self::Text(text) if text == other)
+    }
+}
+
+impl Serialize for ChatContent {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            Self::Text(text) => serializer.serialize_str(text),
+            Self::Parts(parts) => {
+                let mut seq = serializer.serialize_seq(Some(parts.len()))?;
+                for part in parts {
+                    seq.serialize_element(part)?;
+                }
+                seq.end()
+            }
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ChatContent {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_any(ChatContentVisitor)
+    }
+}
+
+struct ChatContentVisitor;
+
+impl<'de> Visitor<'de> for ChatContentVisitor {
+    type Value = ChatContent;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("null, a string, or an array of chat content parts")
+    }
+
+    fn visit_none<E>(self) -> Result<Self::Value, E>
+    where
+        E: DeError,
+    {
+        Ok(ChatContent::default())
+    }
+
+    fn visit_unit<E>(self) -> Result<Self::Value, E>
+    where
+        E: DeError,
+    {
+        Ok(ChatContent::default())
+    }
+
+    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+    where
+        E: DeError,
+    {
+        Ok(ChatContent::Text(value.to_owned()))
+    }
+
+    fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
+    where
+        E: DeError,
+    {
+        Ok(ChatContent::Text(value))
+    }
+
+    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+    where
+        A: SeqAccess<'de>,
+    {
+        let mut parts = Vec::new();
+        while let Some(part) = seq.next_element()? {
+            parts.push(part);
+        }
+        Ok(ChatContent::parts(parts))
+    }
+}
+
+/// One content part in OpenAI-compatible multimodal messages.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ChatContentPart {
+    Text { text: String },
+    ImageUrl { image_url: ChatImageUrl },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ChatImageUrl {
+    pub url: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
 }
 
 /// Tool definition in the provider-layer request shape.
@@ -94,11 +255,11 @@ pub struct ApiToolCallFunction {
     pub arguments: String,
 }
 
-fn deserialize_nullable_string<'de, D>(deserializer: D) -> Result<String, D::Error>
+fn deserialize_nullable_chat_content<'de, D>(deserializer: D) -> Result<ChatContent, D::Error>
 where
     D: Deserializer<'de>,
 {
-    Ok(Option::<String>::deserialize(deserializer)?.unwrap_or_default())
+    Option::<ChatContent>::deserialize(deserializer).map(Option::unwrap_or_default)
 }
 
 /// Non-streaming response. Full body delivered in one go.
@@ -335,6 +496,61 @@ mod tests {
 
         assert!(msg.content.is_empty());
         assert_eq!(msg.tool_calls[0].function.name, "get_weather");
+    }
+
+    #[test]
+    fn chat_message_serializes_multimodal_content_parts() {
+        let msg = ChatMessage {
+            role: "user".into(),
+            content: ChatContent::parts(vec![
+                ChatContentPart::Text {
+                    text: "describe".into(),
+                },
+                ChatContentPart::ImageUrl {
+                    image_url: ChatImageUrl {
+                        url: "data:image/png;base64,abc".into(),
+                        detail: Some("high".into()),
+                    },
+                },
+            ]),
+            tool_call_id: None,
+            tool_calls: vec![],
+        };
+
+        let json = serde_json::to_value(&msg).expect("serialize message");
+
+        assert_eq!(json["content"][0]["type"], "text");
+        assert_eq!(
+            json["content"][1]["image_url"]["url"],
+            "data:image/png;base64,abc"
+        );
+        assert_eq!(json["content"][1]["image_url"]["detail"], "high");
+    }
+
+    #[test]
+    fn chat_message_deserializes_multimodal_content_parts() {
+        let msg: ChatMessage = serde_json::from_value(serde_json::json!({
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "describe"},
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": "https://example.com/image.png",
+                        "detail": "low"
+                    }
+                }
+            ]
+        }))
+        .expect("deserialize multimodal message");
+
+        let ChatContent::Parts(parts) = msg.content else {
+            panic!("expected content parts");
+        };
+        assert!(matches!(&parts[0], ChatContentPart::Text { text } if text == "describe"));
+        assert!(
+            matches!(&parts[1], ChatContentPart::ImageUrl { image_url } if image_url.url == "https://example.com/image.png" && image_url.detail.as_deref() == Some("low"))
+        );
     }
 
     #[test]

@@ -3,8 +3,7 @@
 //!
 //! All providers currently use `OpenAIProvider` which speaks `ApiRequest`.
 //! The converter layer produces `UnifiedRequest`. This bridge maps between
-//! the two, preserving text and OpenAI-compatible tool calls while still
-//! dropping image/file parts until provider-layer multimodal support lands.
+//! the two, preserving text, images, and OpenAI-compatible tool calls.
 
 use crate::converter::types::{
     ContentPart, FinishReason, Role, ToolCall, ToolResult, UnifiedChoice, UnifiedMessage,
@@ -12,7 +11,8 @@ use crate::converter::types::{
 };
 use crate::converter::UnifiedRequest;
 use crate::providers::api::{
-    ApiRequest, ApiResponse, ApiToolCall, ApiToolCallFunction, ApiToolDefinition, ChatMessage,
+    ApiRequest, ApiResponse, ApiToolCall, ApiToolCallFunction, ApiToolDefinition, ChatContent,
+    ChatContentPart, ChatImageUrl, ChatMessage,
 };
 
 /// Convert a [`UnifiedRequest`] into the [`ApiRequest`] that
@@ -41,7 +41,7 @@ fn unified_message_to_chat(message: &UnifiedMessage) -> ChatMessage {
     if let Some(result) = first_tool_result(message) {
         return ChatMessage {
             role: "tool".to_owned(),
-            content: result.output.clone(),
+            content: result.output.as_str().into(),
             tool_call_id: Some(result.tool_call_id.clone()),
             tool_calls: vec![],
         };
@@ -62,10 +62,35 @@ fn unified_message_to_chat(message: &UnifiedMessage) -> ChatMessage {
 
     ChatMessage {
         role: role_to_provider(message.role).to_owned(),
-        content: message.text_content(),
+        content: unified_content_to_chat_content(&message.content),
         tool_call_id: None,
         tool_calls,
     }
+}
+
+fn unified_content_to_chat_content(parts: &[ContentPart]) -> ChatContent {
+    let content_parts = parts
+        .iter()
+        .filter_map(|part| match part {
+            ContentPart::Text { text } => Some(ChatContentPart::Text { text: text.clone() }),
+            ContentPart::ImageUrl { url, detail } => Some(ChatContentPart::ImageUrl {
+                image_url: ChatImageUrl {
+                    url: url.clone(),
+                    detail: detail.clone(),
+                },
+            }),
+            ContentPart::ToolCall(_) | ContentPart::ToolResult(_) => None,
+        })
+        .collect::<Vec<_>>();
+
+    if content_parts.is_empty() {
+        return ChatContent::Text(String::new());
+    }
+    if let [ChatContentPart::Text { text }] = content_parts.as_slice() {
+        return ChatContent::Text(text.clone());
+    }
+
+    ChatContent::parts(content_parts)
 }
 
 fn first_tool_result(message: &UnifiedMessage) -> Option<&ToolResult> {
@@ -104,7 +129,7 @@ fn chat_message_to_unified(message: &ChatMessage) -> UnifiedMessage {
             role: Role::Tool,
             content: vec![ContentPart::ToolResult(ToolResult {
                 tool_call_id: tool_call_id.clone(),
-                output: message.content.clone(),
+                output: message.content.text_content(),
             })],
             name: None,
         };
@@ -112,9 +137,16 @@ fn chat_message_to_unified(message: &ChatMessage) -> UnifiedMessage {
 
     let mut content = Vec::new();
     if !message.content.is_empty() {
-        content.push(ContentPart::Text {
-            text: message.content.clone(),
-        });
+        match &message.content {
+            ChatContent::Text(text) => content.push(ContentPart::Text { text: text.clone() }),
+            ChatContent::Parts(parts) => content.extend(parts.iter().map(|part| match part {
+                ChatContentPart::Text { text } => ContentPart::Text { text: text.clone() },
+                ChatContentPart::ImageUrl { image_url } => ContentPart::ImageUrl {
+                    url: image_url.url.clone(),
+                    detail: image_url.detail.clone(),
+                },
+            })),
+        }
     }
     content.extend(message.tool_calls.iter().map(|call| {
         ContentPart::ToolCall(ToolCall {
@@ -195,7 +227,7 @@ mod tests {
     }
 
     #[test]
-    fn unified_to_api_request_multimodal_extracts_text_only() {
+    fn unified_to_api_request_preserves_multimodal_content() {
         let unified = UnifiedRequest {
             model: "gpt-4o".into(),
             messages: vec![UnifiedMessage {
@@ -220,7 +252,14 @@ mod tests {
         };
 
         let api = unified_to_api_request(&unified);
-        assert_eq!(api.messages[0].content, "What is this?");
+        let ChatContent::Parts(parts) = &api.messages[0].content else {
+            panic!("expected multimodal content parts");
+        };
+        assert_eq!(parts.len(), 2);
+        assert!(matches!(&parts[0], ChatContentPart::Text { text } if text == "What is this?"));
+        assert!(
+            matches!(&parts[1], ChatContentPart::ImageUrl { image_url } if image_url.url == "https://example.com/img.png")
+        );
     }
 
     #[test]
@@ -350,7 +389,7 @@ mod tests {
                 index: 0,
                 message: ChatMessage {
                     role: "assistant".into(),
-                    content: String::new(),
+                    content: ChatContent::default(),
                     tool_call_id: None,
                     tool_calls: vec![crate::providers::ApiToolCall {
                         id: "call_weather".into(),
@@ -375,5 +414,41 @@ mod tests {
         let calls = unified.choices[0].message.tool_calls();
         assert_eq!(calls[0].id, "call_weather");
         assert_eq!(calls[0].name, "get_weather");
+    }
+
+    #[test]
+    fn api_response_to_unified_preserves_multimodal_content() {
+        let resp = ApiResponse {
+            id: "chatcmpl-image".into(),
+            model: "gpt-4o".into(),
+            choices: vec![ApiChoice {
+                index: 0,
+                message: ChatMessage {
+                    role: "assistant".into(),
+                    content: ChatContent::parts(vec![
+                        ChatContentPart::Text {
+                            text: "diagram".into(),
+                        },
+                        ChatContentPart::ImageUrl {
+                            image_url: ChatImageUrl {
+                                url: "data:image/png;base64,abc".into(),
+                                detail: Some("high".into()),
+                            },
+                        },
+                    ]),
+                    tool_call_id: None,
+                    tool_calls: vec![],
+                },
+                finish_reason: Some("stop".into()),
+            }],
+            usage: None,
+        };
+
+        let unified = api_response_to_unified(&resp);
+
+        assert!(matches!(
+            &unified.choices[0].message.content[1],
+            ContentPart::ImageUrl { url, detail } if url == "data:image/png;base64,abc" && detail.as_deref() == Some("high")
+        ));
     }
 }

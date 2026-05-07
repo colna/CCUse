@@ -70,11 +70,14 @@ impl AnthropicConverter {
                     parts.push(ContentPart::Text { text });
                 }
                 Some("image") => {
-                    let media_type = block["source"]["media_type"]
-                        .as_str()
-                        .unwrap_or("image/png");
-                    let data = block["source"]["data"].as_str().unwrap_or_default();
-                    let url = format!("data:{media_type};base64,{data}");
+                    let source = &block["source"];
+                    let url = if source["type"].as_str() == Some("url") {
+                        source["url"].as_str().unwrap_or_default().to_owned()
+                    } else {
+                        let media_type = source["media_type"].as_str().unwrap_or("image/png");
+                        let data = source["data"].as_str().unwrap_or_default();
+                        format!("data:{media_type};base64,{data}")
+                    };
                     parts.push(ContentPart::ImageUrl { url, detail: None });
                 }
                 Some("tool_use") => {
@@ -813,5 +816,30 @@ mod tests {
             back["messages"][0]["content"][0]["source"]["media_type"],
             "image/png"
         );
+    }
+
+    #[test]
+    fn image_url_roundtrip() {
+        let input = json!({
+            "model": "claude-3-5-sonnet-20241022",
+            "max_tokens": 1024,
+            "messages": [{
+                "role": "user",
+                "content": [{
+                    "type": "image",
+                    "source": {
+                        "type": "url",
+                        "url": "https://example.com/image.png"
+                    }
+                }]
+            }]
+        });
+
+        let unified = converter().request_to_unified(&input).unwrap();
+
+        assert!(matches!(
+            &unified.messages[0].content[0],
+            ContentPart::ImageUrl { url, .. } if url == "https://example.com/image.png"
+        ));
     }
 }

@@ -8,7 +8,9 @@
 //! 5. `health_check` and `list_models` read `GET /v1/models`.
 
 use ccuse_desktop_lib::providers::api::ProviderError;
-use ccuse_desktop_lib::providers::api::{ApiRequest, ChatMessage, HealthStatus, Provider};
+use ccuse_desktop_lib::providers::api::{
+    ApiRequest, ChatContent, ChatContentPart, ChatImageUrl, ChatMessage, HealthStatus, Provider,
+};
 use ccuse_desktop_lib::providers::OpenAIProvider;
 use futures::StreamExt;
 use serde_json::Value;
@@ -26,6 +28,32 @@ fn sample_request(stream: bool) -> ApiRequest {
         }],
         temperature: Some(0.7),
         max_tokens: Some(64),
+        stream,
+        tools: vec![],
+    }
+}
+
+fn multimodal_request(stream: bool) -> ApiRequest {
+    ApiRequest {
+        model: "gpt-4o".into(),
+        messages: vec![ChatMessage {
+            role: "user".into(),
+            content: ChatContent::parts(vec![
+                ChatContentPart::Text {
+                    text: "describe this".into(),
+                },
+                ChatContentPart::ImageUrl {
+                    image_url: ChatImageUrl {
+                        url: "data:image/png;base64,abc123".into(),
+                        detail: Some("high".into()),
+                    },
+                },
+            ]),
+            tool_call_id: None,
+            tool_calls: vec![],
+        }],
+        temperature: None,
+        max_tokens: None,
         stream,
         tools: vec![],
     }
@@ -67,6 +95,35 @@ async fn send_request_round_trips_a_successful_completion() {
     assert_eq!(response.choices.len(), 1);
     assert_eq!(response.choices[0].message.content, "pong");
     assert_eq!(response.usage.expect("usage").total_tokens, 5);
+}
+
+#[tokio::test]
+async fn send_request_preserves_multimodal_content_on_the_wire() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(fixture_response_body()))
+        .mount(&server)
+        .await;
+
+    let provider =
+        OpenAIProvider::new("p1", "Mock", server.uri(), "sk-test").expect("build provider");
+    provider
+        .send_request(multimodal_request(false))
+        .await
+        .expect("ok");
+
+    let received = &server.received_requests().await.expect("requests")[0];
+    let body: Value = serde_json::from_slice(&received.body).expect("json");
+    assert_eq!(body["messages"][0]["content"][0]["type"], "text");
+    assert_eq!(
+        body["messages"][0]["content"][1]["image_url"]["url"],
+        "data:image/png;base64,abc123",
+    );
+    assert_eq!(
+        body["messages"][0]["content"][1]["image_url"]["detail"],
+        "high",
+    );
 }
 
 #[tokio::test]
@@ -295,6 +352,36 @@ async fn streaming_request_forces_stream_true_on_the_wire() {
 
     let received = &server.received_requests().await.expect("requests")[0];
     let body: Value = serde_json::from_slice(&received.body).expect("json");
+    assert_eq!(body["stream"], serde_json::json!(true));
+}
+
+#[tokio::test]
+async fn streaming_request_preserves_multimodal_content_on_the_wire() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string("data: [DONE]\n\n")
+                .insert_header("content-type", "text/event-stream"),
+        )
+        .mount(&server)
+        .await;
+
+    let provider =
+        OpenAIProvider::new("p1", "Mock", server.uri(), "sk-test").expect("build provider");
+    let stream = provider
+        .send_stream_request(multimodal_request(true))
+        .await
+        .expect("stream ok");
+    drop(stream);
+
+    let received = &server.received_requests().await.expect("requests")[0];
+    let body: Value = serde_json::from_slice(&received.body).expect("json");
+    assert_eq!(
+        body["messages"][0]["content"][1]["image_url"]["url"],
+        "data:image/png;base64,abc123",
+    );
     assert_eq!(body["stream"], serde_json::json!(true));
 }
 

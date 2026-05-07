@@ -19,8 +19,8 @@ pub mod wrapper;
 
 pub use api::{
     ApiChoice, ApiModel, ApiRequest, ApiResponse, ApiToolCall, ApiToolCallFunction,
-    ApiToolDefinition, ApiUsage, ChatMessage, HealthStatus, Provider as RuntimeProvider,
-    ProviderError, StreamChunk, StreamingResponse,
+    ApiToolDefinition, ApiUsage, ChatContent, ChatContentPart, ChatImageUrl, ChatMessage,
+    HealthStatus, Provider as RuntimeProvider, ProviderError, StreamChunk, StreamingResponse,
 };
 pub use manager::{ManagerError, ProviderManager};
 pub use model::{Provider, ProviderInput, ProviderKind};

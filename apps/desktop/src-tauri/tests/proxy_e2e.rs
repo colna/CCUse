@@ -155,6 +155,32 @@ fn chat_request_with_model(model: &str) -> Value {
     })
 }
 
+fn chat_request_with_image() -> Value {
+    json!({
+        "model": "gpt-4o",
+        "messages": [{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "describe this"},
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": "data:image/png;base64,abc123",
+                        "detail": "high"
+                    }
+                }
+            ]
+        }],
+        "stream": false
+    })
+}
+
+fn chat_stream_request_with_image() -> Value {
+    let mut body = chat_request_with_image();
+    body["stream"] = json!(true);
+    body
+}
+
 fn chat_request_with_tools() -> Value {
     json!({
         "model": "gpt-4o",
@@ -191,6 +217,34 @@ fn anthropic_messages_request_with_model(model: &str) -> Value {
         "messages": [{"role": "user", "content": "ping"}],
         "stream": false
     })
+}
+
+fn anthropic_messages_request_with_base64_image() -> Value {
+    json!({
+        "model": "claude-3-5-sonnet-20241022",
+        "max_tokens": 128,
+        "messages": [{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "describe this"},
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/png",
+                        "data": "abc123"
+                    }
+                }
+            ]
+        }],
+        "stream": false
+    })
+}
+
+fn anthropic_messages_stream_request_with_base64_image() -> Value {
+    let mut body = anthropic_messages_request_with_base64_image();
+    body["stream"] = json!(true);
+    body
 }
 
 fn anthropic_messages_stream_request() -> Value {
@@ -705,6 +759,88 @@ async fn anthropic_messages_dispatches_non_streaming_request_to_upstream() {
 }
 
 #[tokio::test]
+async fn anthropic_messages_converts_image_content_to_openai_upstream_shape() {
+    let upstream = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(openai_text_response("vision")))
+        .expect(1)
+        .mount(&upstream)
+        .await;
+    let proxy = start_proxy_with_providers(&[ProviderSpec {
+        id: "anthropic-image",
+        name: "Anthropic Image",
+        priority: 1,
+        server: &upstream,
+    }])
+    .await;
+
+    let response = reqwest::Client::new()
+        .post(format!("{}/v1/messages", proxy.base_url))
+        .json(&anthropic_messages_request_with_base64_image())
+        .send()
+        .await
+        .expect("proxy request");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let received = upstream.received_requests().await.expect("received");
+    let upstream_body: Value = serde_json::from_slice(&received[0].body).expect("json");
+    assert_eq!(
+        upstream_body["messages"][0]["content"][0]["text"],
+        "describe this"
+    );
+    assert_eq!(
+        upstream_body["messages"][0]["content"][1]["image_url"]["url"],
+        "data:image/png;base64,abc123",
+    );
+
+    proxy.shutdown().await;
+}
+
+#[tokio::test]
+async fn anthropic_messages_streaming_converts_image_content_to_openai_upstream_shape() {
+    let upstream = MockServer::start().await;
+    let sse = "data: {\"id\":\"chatcmpl-anthropic-image-stream\",\"model\":\"gpt-4o\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\"},\"finish_reason\":null}]}\n\n\
+               data: {\"id\":\"chatcmpl-anthropic-image-stream\",\"model\":\"gpt-4o\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ok\"},\"finish_reason\":null}]}\n\n\
+               data: [DONE]\n\n";
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string(sse)
+                .insert_header("content-type", "text/event-stream"),
+        )
+        .expect(1)
+        .mount(&upstream)
+        .await;
+    let proxy = start_proxy_with_providers(&[ProviderSpec {
+        id: "anthropic-image-stream",
+        name: "Anthropic Image Stream",
+        priority: 1,
+        server: &upstream,
+    }])
+    .await;
+
+    let response = reqwest::Client::new()
+        .post(format!("{}/v1/messages", proxy.base_url))
+        .json(&anthropic_messages_stream_request_with_base64_image())
+        .send()
+        .await
+        .expect("proxy request");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let received = upstream.received_requests().await.expect("received");
+    let upstream_body: Value = serde_json::from_slice(&received[0].body).expect("json");
+    assert_eq!(upstream_body["stream"], true);
+    assert_eq!(
+        upstream_body["messages"][0]["content"][1]["image_url"]["url"],
+        "data:image/png;base64,abc123",
+    );
+
+    proxy.shutdown().await;
+}
+
+#[tokio::test]
 async fn anthropic_messages_preserves_tool_use_round_trip() {
     let upstream = MockServer::start().await;
     Mock::given(method("POST"))
@@ -965,6 +1101,91 @@ async fn chat_completions_dispatches_text_request_to_upstream() {
     assert_eq!(upstream_body["model"], "gpt-4o");
     assert_eq!(upstream_body["messages"][0]["content"], "ping");
     assert_eq!(upstream_body["stream"], false);
+
+    proxy.shutdown().await;
+}
+
+#[tokio::test]
+async fn chat_completions_forwards_multimodal_content_to_upstream() {
+    let upstream = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(openai_text_response("vision")))
+        .expect(1)
+        .mount(&upstream)
+        .await;
+    let proxy = start_proxy_with_providers(&[ProviderSpec {
+        id: "openai-image",
+        name: "OpenAI Image",
+        priority: 1,
+        server: &upstream,
+    }])
+    .await;
+
+    let response = reqwest::Client::new()
+        .post(format!("{}/v1/chat/completions", proxy.base_url))
+        .json(&chat_request_with_image())
+        .send()
+        .await
+        .expect("proxy request");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let received = upstream.received_requests().await.expect("received");
+    let upstream_body: Value = serde_json::from_slice(&received[0].body).expect("json");
+    assert_eq!(
+        upstream_body["messages"][0]["content"][0]["text"],
+        "describe this"
+    );
+    assert_eq!(
+        upstream_body["messages"][0]["content"][1]["image_url"]["url"],
+        "data:image/png;base64,abc123",
+    );
+    assert_eq!(
+        upstream_body["messages"][0]["content"][1]["image_url"]["detail"],
+        "high",
+    );
+
+    proxy.shutdown().await;
+}
+
+#[tokio::test]
+async fn chat_completions_streams_multimodal_content_to_upstream() {
+    let upstream = MockServer::start().await;
+    let sse = "data: {\"id\":\"chatcmpl-image-stream\",\"model\":\"gpt-4o\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"ok\"},\"finish_reason\":null}]}\n\n\
+               data: [DONE]\n\n";
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string(sse)
+                .insert_header("content-type", "text/event-stream"),
+        )
+        .expect(1)
+        .mount(&upstream)
+        .await;
+    let proxy = start_proxy_with_providers(&[ProviderSpec {
+        id: "openai-image-stream",
+        name: "OpenAI Image Stream",
+        priority: 1,
+        server: &upstream,
+    }])
+    .await;
+
+    let response = reqwest::Client::new()
+        .post(format!("{}/v1/chat/completions", proxy.base_url))
+        .json(&chat_stream_request_with_image())
+        .send()
+        .await
+        .expect("proxy request");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let received = upstream.received_requests().await.expect("received");
+    let upstream_body: Value = serde_json::from_slice(&received[0].body).expect("json");
+    assert_eq!(upstream_body["stream"], true);
+    assert_eq!(
+        upstream_body["messages"][0]["content"][1]["image_url"]["url"],
+        "data:image/png;base64,abc123",
+    );
 
     proxy.shutdown().await;
 }
