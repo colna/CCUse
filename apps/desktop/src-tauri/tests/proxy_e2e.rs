@@ -1049,6 +1049,58 @@ async fn anthropic_messages_streams_anthropic_sse_events() {
 }
 
 #[tokio::test]
+async fn anthropic_messages_stream_adds_message_start_when_upstream_omits_role_and_id() {
+    let upstream = MockServer::start().await;
+    let sse = "data: {\"model\":\"gpt-4o\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Hi\"},\"finish_reason\":null}]}\n\n\
+               data: {\"model\":\"gpt-4o\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n\
+               data: [DONE]\n\n";
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string(sse)
+                .insert_header("content-type", "text/event-stream"),
+        )
+        .expect(1)
+        .mount(&upstream)
+        .await;
+    let proxy = start_proxy_with_providers(&[ProviderSpec {
+        id: "anthropic-stream-missing-start",
+        name: "Anthropic Stream Missing Start",
+        priority: 1,
+        server: &upstream,
+    }])
+    .await;
+
+    let response = reqwest::Client::new()
+        .post(format!("{}/v1/messages", proxy.base_url))
+        .json(&anthropic_messages_stream_request())
+        .send()
+        .await
+        .expect("proxy request");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.text().await.expect("sse text");
+    assert!(body.contains("event: message_start"));
+    assert!(body.contains("\"id\":\"msg_"));
+    assert!(body.contains("\"text\":\"Hi\""));
+    assert_contains_in_order(
+        &body,
+        &[
+            "event: message_start",
+            "event: content_block_start",
+            "\"text\":\"Hi\"",
+            "event: content_block_stop",
+            "event: message_delta",
+            "event: message_stop",
+        ],
+    );
+    assert!(!body.contains("\"id\":null"));
+
+    proxy.shutdown().await;
+}
+
+#[tokio::test]
 async fn anthropic_messages_streams_tool_use_events_in_order() {
     let upstream = MockServer::start().await;
     let sse = r#"data: {"id":"chatcmpl-tool-stream","model":"gpt-4o","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}

@@ -675,6 +675,9 @@ fn record_switch_if_any<T>(state: &ProxyAppState, result: &DispatchResult<T>) {
 struct AnthropicSseBridge {
     openai: OpenAIConverter,
     anthropic: AnthropicConverter,
+    message_started: bool,
+    fallback_message_id: String,
+    fallback_model: String,
     text_block_started: bool,
     text_block_stopped: bool,
     active_tool_blocks: Vec<u32>,
@@ -686,6 +689,9 @@ impl AnthropicSseBridge {
         Self {
             openai,
             anthropic,
+            message_started: false,
+            fallback_message_id: format!("msg_{}", uuid::Uuid::new_v4().simple()),
+            fallback_model: "unknown".to_owned(),
             text_block_started: false,
             text_block_stopped: false,
             active_tool_blocks: Vec::new(),
@@ -729,9 +735,25 @@ impl AnthropicSseBridge {
                 .iter()
                 .filter_map(|choice| choice.delta.as_ref())
                 .flat_map(|delta| delta.tool_calls.iter())
-                .filter(|tool_call| tool_call.id.is_some() || tool_call.name.is_some())
+                .filter(|tool_call| {
+                    tool_call.id.as_ref().is_some_and(|value| !value.is_empty())
+                        || tool_call
+                            .name
+                            .as_ref()
+                            .is_some_and(|value| !value.is_empty())
+                })
                 .map(|tool_call| tool_call.index)
                 .collect::<Vec<_>>();
+            let will_emit_message_start = chunk
+                .choices
+                .iter()
+                .any(|choice| choice.delta.as_ref().and_then(|delta| delta.role).is_some());
+
+            if will_emit_message_start {
+                self.message_started = true;
+            } else {
+                self.push_message_start_if_needed(&chunk, pending);
+            }
 
             if has_text_delta && !self.text_block_started {
                 self.text_block_started = true;
@@ -758,7 +780,60 @@ impl AnthropicSseBridge {
         }
     }
 
+    fn push_message_start_if_needed(
+        &mut self,
+        chunk: &crate::converter::UnifiedStreamChunk,
+        pending: &mut VecDeque<Result<Bytes, ProviderError>>,
+    ) {
+        if self.message_started {
+            return;
+        }
+
+        self.message_started = true;
+        if !chunk.model.is_empty() {
+            self.fallback_model.clone_from(&chunk.model);
+        }
+
+        let message_id = if chunk.id.is_empty() {
+            self.fallback_message_id.clone()
+        } else {
+            chunk.id.clone()
+        };
+        let model = if chunk.model.is_empty() {
+            self.fallback_model.clone()
+        } else {
+            chunk.model.clone()
+        };
+        let frame = json!({
+            "type": "message_start",
+            "message": {
+                "id": message_id,
+                "type": "message",
+                "role": "assistant",
+                "model": model,
+                "content": [],
+                "stop_reason": Value::Null,
+                "stop_sequence": Value::Null,
+                "usage": {
+                    "input_tokens": chunk.usage.as_ref().map_or(0, |usage| usage.prompt_tokens),
+                    "output_tokens": 0,
+                },
+            }
+        });
+        let encoded = format!("event: message_start\ndata: {frame}\n\n");
+        pending.push_back(Ok(Bytes::from(encoded)));
+    }
+
     fn push_done(&mut self, pending: &mut VecDeque<Result<Bytes, ProviderError>>) {
+        if !self.message_started {
+            let chunk = crate::converter::UnifiedStreamChunk {
+                id: self.fallback_message_id.clone(),
+                model: self.fallback_model.clone(),
+                choices: vec![],
+                usage: None,
+            };
+            self.push_message_start_if_needed(&chunk, pending);
+        }
         if self.text_block_started && !self.text_block_stopped {
             self.text_block_stopped = true;
             pending.push_back(Ok(content_block_stop_frame(0)));

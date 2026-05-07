@@ -74,6 +74,34 @@ impl AnthropicConverter {
         })
     }
 
+    fn message_id_value(id: &str) -> String {
+        if id.is_empty() {
+            format!("msg_{}", uuid::Uuid::new_v4().simple())
+        } else {
+            id.to_owned()
+        }
+    }
+
+    fn tool_use_id_value(id: &str) -> String {
+        if id.is_empty() {
+            format!("toolu_{}", uuid::Uuid::new_v4().simple())
+        } else {
+            id.to_owned()
+        }
+    }
+
+    fn stream_tool_use_id_value(id: Option<&String>, index: u32) -> String {
+        id.filter(|value| !value.is_empty())
+            .cloned()
+            .unwrap_or_else(|| format!("toolu_{index}"))
+    }
+
+    fn stream_tool_name_value(name: Option<&String>) -> String {
+        name.filter(|value| !value.is_empty())
+            .cloned()
+            .unwrap_or_else(|| "unknown_tool".to_owned())
+    }
+
     fn parse_content_blocks(blocks: &[Value]) -> Vec<ContentPart> {
         let mut parts = Vec::new();
         for block in blocks {
@@ -156,7 +184,7 @@ impl AnthropicConverter {
                     let input: Value = serde_json::from_str(&tc.arguments).unwrap_or(json!({}));
                     json!({
                         "type": "tool_use",
-                        "id": tc.id,
+                        "id": Self::tool_use_id_value(&tc.id),
                         "name": tc.name,
                         "input": input,
                     })
@@ -503,12 +531,13 @@ impl FormatConverter for AnthropicConverter {
             .map_or("end_turn", Self::stop_reason_str);
 
         let body = json!({
-            "id": resp.id,
+            "id": Self::message_id_value(&resp.id),
             "type": "message",
             "role": "assistant",
             "model": resp.model,
             "content": content,
             "stop_reason": stop_reason,
+            "stop_sequence": Value::Null,
             "usage": Self::response_usage_value(resp.usage.as_ref()),
         });
 
@@ -532,32 +561,31 @@ impl FormatConverter for AnthropicConverter {
     fn encode_stream_chunk(&self, chunk: &UnifiedStreamChunk) -> Result<String, ConvertError> {
         let mut frames = String::new();
 
-        // If this chunk has id + model, emit message_start.
-        if !chunk.id.is_empty() {
-            let role_delta = chunk
-                .choices
-                .first()
-                .and_then(|c| c.delta.as_ref())
-                .and_then(|d| d.role);
+        let role_delta = chunk
+            .choices
+            .first()
+            .and_then(|c| c.delta.as_ref())
+            .and_then(|d| d.role);
 
-            if role_delta.is_some() {
-                let msg_start = json!({
-                    "type": "message_start",
-                    "message": {
-                        "id": chunk.id,
-                        "type": "message",
-                        "role": "assistant",
-                        "model": chunk.model,
-                        "content": [],
-                        "usage": Self::response_usage_value(chunk.usage.as_ref()),
-                    }
-                });
-                let _ = write!(
-                    frames,
-                    "event: message_start\ndata: {}\n\n",
-                    serde_json::to_string(&msg_start)?
-                );
-            }
+        if role_delta.is_some() {
+            let msg_start = json!({
+                "type": "message_start",
+                "message": {
+                    "id": Self::message_id_value(&chunk.id),
+                    "type": "message",
+                    "role": "assistant",
+                    "model": chunk.model,
+                    "content": [],
+                    "stop_reason": Value::Null,
+                    "stop_sequence": Value::Null,
+                    "usage": Self::response_usage_value(chunk.usage.as_ref()),
+                }
+            });
+            let _ = write!(
+                frames,
+                "event: message_start\ndata: {}\n\n",
+                serde_json::to_string(&msg_start)?
+            );
         }
 
         for choice in &chunk.choices {
@@ -576,14 +604,16 @@ impl FormatConverter for AnthropicConverter {
                 }
 
                 for tc in &delta.tool_calls {
-                    if tc.id.is_some() || tc.name.is_some() {
+                    let has_tool_start = tc.id.as_ref().is_some_and(|value| !value.is_empty())
+                        || tc.name.as_ref().is_some_and(|value| !value.is_empty());
+                    if has_tool_start {
                         let event = json!({
                             "type": "content_block_start",
                             "index": tc.index,
                             "content_block": {
                                 "type": "tool_use",
-                                "id": tc.id,
-                                "name": tc.name,
+                                "id": Self::stream_tool_use_id_value(tc.id.as_ref(), tc.index),
+                                "name": Self::stream_tool_name_value(tc.name.as_ref()),
                                 "input": {},
                             }
                         });
@@ -611,7 +641,10 @@ impl FormatConverter for AnthropicConverter {
             if let Some(fr) = choice.finish_reason {
                 let mut delta_event = json!({
                     "type": "message_delta",
-                    "delta": { "stop_reason": Self::stop_reason_str(fr) }
+                    "delta": {
+                        "stop_reason": Self::stop_reason_str(fr),
+                        "stop_sequence": Value::Null,
+                    }
                 });
                 delta_event["usage"] = Self::delta_usage_value(chunk.usage.as_ref());
                 let _ = write!(
@@ -722,7 +755,7 @@ mod tests {
     #[test]
     fn response_includes_zero_usage_when_unified_usage_is_missing() {
         let response = UnifiedResponse {
-            id: "msg_no_usage".into(),
+            id: String::new(),
             model: "claude-3-5-sonnet-20241022".into(),
             choices: vec![UnifiedChoice {
                 index: 0,
@@ -734,6 +767,7 @@ mod tests {
 
         let body = converter().unified_to_response(&response).unwrap();
 
+        assert!(body["id"].as_str().is_some_and(|id| id.starts_with("msg_")));
         assert_eq!(body["usage"]["input_tokens"], 0);
         assert_eq!(body["usage"]["output_tokens"], 0);
     }
@@ -822,6 +856,36 @@ mod tests {
         let frames = converter().encode_stream_chunk(&chunk).unwrap();
 
         assert!(frames.contains("\"usage\":{\"output_tokens\":0}"));
+    }
+
+    #[test]
+    fn stream_tool_start_never_serializes_null_id_or_name() {
+        let chunk = UnifiedStreamChunk {
+            id: String::new(),
+            model: String::new(),
+            choices: vec![StreamChoice {
+                index: 0,
+                delta: Some(StreamDelta {
+                    role: None,
+                    content: None,
+                    tool_calls: vec![StreamToolCall {
+                        index: 3,
+                        id: Some(String::new()),
+                        name: Some("lookup".into()),
+                        arguments: None,
+                    }],
+                }),
+                finish_reason: None,
+            }],
+            usage: None,
+        };
+
+        let frames = converter().encode_stream_chunk(&chunk).unwrap();
+
+        assert!(frames.contains("\"id\":\"toolu_3\""));
+        assert!(frames.contains("\"name\":\"lookup\""));
+        assert!(!frames.contains("\"id\":null"));
+        assert!(!frames.contains("\"name\":null"));
     }
 
     #[test]
