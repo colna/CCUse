@@ -65,6 +65,7 @@ pub fn run() {
             commands::switch::update_strategy_params,
             // Health (T1.0.2.21)
             commands::health::get_health_snapshot,
+            commands::health::refresh_health_snapshot,
             // Model mapping (T1.0.3.12)
             commands::model_mapping::get_model_mappings,
             commands::model_mapping::set_model_mapping,

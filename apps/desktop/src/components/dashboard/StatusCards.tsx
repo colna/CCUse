@@ -7,8 +7,12 @@ import { cn } from "@/lib/utils";
 import {
   getHealthSnapshot,
   getMetricsTimeseries,
+  getStrategy,
+  onProviderStatusChanged,
+  refreshHealthSnapshot,
   type HealthSnapshot,
   type MetricsBucket,
+  type SwitchStrategy,
 } from "@/lib/tauri";
 
 interface CardData {
@@ -19,6 +23,37 @@ interface CardData {
 }
 
 const REFRESH_INTERVAL = 10_000;
+
+async function loadHealthSnapshot(forceRefresh: boolean) {
+  return forceRefresh ? refreshHealthSnapshot() : getHealthSnapshot();
+}
+
+function selectCurrentProvider(
+  providers: HealthSnapshot[],
+  strategy: SwitchStrategy,
+): HealthSnapshot | null {
+  const aliveProviders = providers.filter((p) => p.status !== "down");
+  if (aliveProviders.length === 0) {
+    return null;
+  }
+
+  if (strategy === "fastest") {
+    const providersWithLatency = aliveProviders.filter(
+      (p): p is HealthSnapshot & { response_time_us: number } =>
+        p.response_time_us != null,
+    );
+
+    if (providersWithLatency.length > 0) {
+      return providersWithLatency.reduce((best, provider) =>
+        provider.response_time_us < best.response_time_us ? provider : best,
+      );
+    }
+  }
+
+  return (
+    aliveProviders.find((p) => p.status === "healthy") ?? aliveProviders[0]
+  );
+}
 
 export function StatusCards() {
   const { t } = useTranslation("monitor");
@@ -32,17 +67,19 @@ export function StatusCards() {
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (forceRefresh = false) => {
     try {
-      const [healthRes, metrics] = await Promise.all([
-        getHealthSnapshot(),
+      const [healthRes, metrics, strategy] = await Promise.all([
+        loadHealthSnapshot(forceRefresh),
         getMetricsTimeseries(),
+        getStrategy(),
       ]);
 
       const providers: HealthSnapshot[] = healthRes.providers;
-
-      const activeProvider =
-        providers.find((p) => p.status === "healthy") ?? providers[0] ?? null;
+      const activeProvider = selectCurrentProvider(
+        providers,
+        strategy.strategy,
+      );
 
       const totalRequests = metrics.reduce(
         (sum: number, b: MetricsBucket) => sum + b.request_count,
@@ -87,7 +124,7 @@ export function StatusCards() {
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await fetchData();
+      await fetchData(true);
     } finally {
       setRefreshing(false);
     }
@@ -100,6 +137,16 @@ export function StatusCards() {
   useEffect(() => {
     const id = setInterval(fetchData, REFRESH_INTERVAL);
     return () => clearInterval(id);
+  }, [fetchData]);
+
+  useEffect(() => {
+    const unlistenPromise = onProviderStatusChanged(() => {
+      void fetchData();
+    }).catch(() => null);
+
+    return () => {
+      void unlistenPromise.then((unlisten) => unlisten?.());
+    };
   }, [fetchData]);
 
   if (error) {

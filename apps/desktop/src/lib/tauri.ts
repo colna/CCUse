@@ -120,6 +120,10 @@ export async function getHealthSnapshot(): Promise<HealthSnapshotResponse> {
   return invoke<HealthSnapshotResponse>("get_health_snapshot");
 }
 
+export async function refreshHealthSnapshot(): Promise<HealthSnapshotResponse> {
+  return invoke<HealthSnapshotResponse>("refresh_health_snapshot");
+}
+
 export interface ProviderStatusChangedEvent {
   provider_id: string;
   provider_name: string;

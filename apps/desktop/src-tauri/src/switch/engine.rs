@@ -654,6 +654,22 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn dispatch_fastest_uses_lowest_rolling_response_time() {
+        let (engine, counters) = make_engine(vec![("p2".into(), true), ("p1".into(), true)]).await;
+        let p2 = engine.manager.get("p2").await.expect("p2");
+        let p1 = engine.manager.get("p1").await.expect("p1");
+        p2.state.record_response_us(20_000);
+        p1.state.record_response_us(1_000);
+        engine.set_strategy(SwitchStrategy::Fastest).await;
+
+        let result = engine.dispatch(sample_request()).await.expect("dispatch");
+
+        assert_eq!(result.provider_id, "p1");
+        assert_eq!(counters[0].load(AtomicOrdering::Relaxed), 0);
+        assert_eq!(counters[1].load(AtomicOrdering::Relaxed), 1);
+    }
+
+    #[tokio::test]
     async fn failover_marks_degraded() {
         let (engine, _) = make_engine(vec![("p1".into(), false), ("p2".into(), true)]).await;
         engine.dispatch(sample_request()).await.unwrap();
