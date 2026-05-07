@@ -61,6 +61,19 @@ impl AnthropicConverter {
         }
     }
 
+    fn response_usage_value(usage: Option<&UnifiedUsage>) -> Value {
+        json!({
+            "input_tokens": usage.map_or(0, |u| u.prompt_tokens),
+            "output_tokens": usage.map_or(0, |u| u.completion_tokens),
+        })
+    }
+
+    fn delta_usage_value(usage: Option<&UnifiedUsage>) -> Value {
+        json!({
+            "output_tokens": usage.map_or(0, |u| u.completion_tokens),
+        })
+    }
+
     fn parse_content_blocks(blocks: &[Value]) -> Vec<ContentPart> {
         let mut parts = Vec::new();
         for block in blocks {
@@ -163,6 +176,17 @@ impl AnthropicConverter {
 
     fn parse_message_start(val: &Value) -> UnifiedStreamChunk {
         let msg = &val["message"];
+        let usage = if msg["usage"].is_object() {
+            let input_t = json_u32(&msg["usage"]["input_tokens"]);
+            let output_t = json_u32(&msg["usage"]["output_tokens"]);
+            Some(UnifiedUsage {
+                prompt_tokens: input_t,
+                completion_tokens: output_t,
+                total_tokens: input_t.saturating_add(output_t),
+            })
+        } else {
+            None
+        };
         UnifiedStreamChunk {
             id: msg["id"].as_str().unwrap_or("").to_string(),
             model: msg["model"].as_str().unwrap_or("").to_string(),
@@ -175,7 +199,7 @@ impl AnthropicConverter {
                 }),
                 finish_reason: None,
             }],
-            usage: None,
+            usage,
         }
     }
 
@@ -478,21 +502,15 @@ impl FormatConverter for AnthropicConverter {
             .finish_reason
             .map_or("end_turn", Self::stop_reason_str);
 
-        let mut body = json!({
+        let body = json!({
             "id": resp.id,
             "type": "message",
             "role": "assistant",
             "model": resp.model,
             "content": content,
             "stop_reason": stop_reason,
+            "usage": Self::response_usage_value(resp.usage.as_ref()),
         });
-
-        if let Some(u) = &resp.usage {
-            body["usage"] = json!({
-                "input_tokens": u.prompt_tokens,
-                "output_tokens": u.completion_tokens,
-            });
-        }
 
         Ok(body)
     }
@@ -531,6 +549,7 @@ impl FormatConverter for AnthropicConverter {
                         "role": "assistant",
                         "model": chunk.model,
                         "content": [],
+                        "usage": Self::response_usage_value(chunk.usage.as_ref()),
                     }
                 });
                 let _ = write!(
@@ -594,9 +613,7 @@ impl FormatConverter for AnthropicConverter {
                     "type": "message_delta",
                     "delta": { "stop_reason": Self::stop_reason_str(fr) }
                 });
-                if let Some(u) = &chunk.usage {
-                    delta_event["usage"] = json!({"output_tokens": u.completion_tokens});
-                }
+                delta_event["usage"] = Self::delta_usage_value(chunk.usage.as_ref());
                 let _ = write!(
                     frames,
                     "event: message_delta\ndata: {}\n\n",
@@ -703,6 +720,25 @@ mod tests {
     }
 
     #[test]
+    fn response_includes_zero_usage_when_unified_usage_is_missing() {
+        let response = UnifiedResponse {
+            id: "msg_no_usage".into(),
+            model: "claude-3-5-sonnet-20241022".into(),
+            choices: vec![UnifiedChoice {
+                index: 0,
+                message: UnifiedMessage::text(Role::Assistant, "Hello!"),
+                finish_reason: Some(FinishReason::Stop),
+            }],
+            usage: None,
+        };
+
+        let body = converter().unified_to_response(&response).unwrap();
+
+        assert_eq!(body["usage"]["input_tokens"], 0);
+        assert_eq!(body["usage"]["output_tokens"], 0);
+    }
+
+    #[test]
     fn stream_message_start() {
         let data = json!({
             "type": "message_start",
@@ -723,6 +759,69 @@ mod tests {
             chunk.choices[0].delta.as_ref().unwrap().role,
             Some(Role::Assistant)
         );
+    }
+
+    #[test]
+    fn stream_message_start_parses_usage_when_present() {
+        let data = json!({
+            "type": "message_start",
+            "message": {
+                "id": "msg_1",
+                "type": "message",
+                "role": "assistant",
+                "model": "claude-3-5-sonnet-20241022",
+                "content": [],
+                "usage": {"input_tokens": 7, "output_tokens": 0}
+            }
+        });
+
+        let chunk = converter()
+            .parse_stream_chunk(&data.to_string())
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(chunk.usage.as_ref().unwrap().prompt_tokens, 7);
+        assert_eq!(chunk.usage.as_ref().unwrap().completion_tokens, 0);
+    }
+
+    #[test]
+    fn stream_encoder_includes_zero_usage_when_missing() {
+        let chunk = UnifiedStreamChunk {
+            id: "msg_stream".into(),
+            model: "claude-3-5-sonnet-20241022".into(),
+            choices: vec![StreamChoice {
+                index: 0,
+                delta: Some(StreamDelta {
+                    role: Some(Role::Assistant),
+                    content: None,
+                    tool_calls: vec![],
+                }),
+                finish_reason: None,
+            }],
+            usage: None,
+        };
+
+        let frames = converter().encode_stream_chunk(&chunk).unwrap();
+
+        assert!(frames.contains("\"usage\":{\"input_tokens\":0,\"output_tokens\":0}"));
+    }
+
+    #[test]
+    fn stream_delta_includes_zero_output_usage_when_missing() {
+        let chunk = UnifiedStreamChunk {
+            id: String::new(),
+            model: String::new(),
+            choices: vec![StreamChoice {
+                index: 0,
+                delta: None,
+                finish_reason: Some(FinishReason::Stop),
+            }],
+            usage: None,
+        };
+
+        let frames = converter().encode_stream_chunk(&chunk).unwrap();
+
+        assert!(frames.contains("\"usage\":{\"output_tokens\":0}"));
     }
 
     #[test]

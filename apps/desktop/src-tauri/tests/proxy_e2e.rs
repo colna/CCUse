@@ -303,6 +303,14 @@ fn openai_text_response(content: &str) -> Value {
     })
 }
 
+fn openai_text_response_without_usage(content: &str) -> Value {
+    let mut body = openai_text_response(content);
+    body.as_object_mut()
+        .expect("openai text response is an object")
+        .remove("usage");
+    body
+}
+
 fn request_log_database_with_provider(provider_id: &str) -> (TempDir, Database) {
     monitoring_database_with_providers(&[provider_id])
 }
@@ -759,6 +767,41 @@ async fn anthropic_messages_dispatches_non_streaming_request_to_upstream() {
 }
 
 #[tokio::test]
+async fn anthropic_messages_returns_zero_usage_when_upstream_omits_usage() {
+    let upstream = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(openai_text_response_without_usage("pong")),
+        )
+        .expect(1)
+        .mount(&upstream)
+        .await;
+    let proxy = start_proxy_with_providers(&[ProviderSpec {
+        id: "anthropic-missing-usage",
+        name: "Anthropic Missing Usage",
+        priority: 1,
+        server: &upstream,
+    }])
+    .await;
+
+    let response = reqwest::Client::new()
+        .post(format!("{}/v1/messages", proxy.base_url))
+        .json(&anthropic_messages_request())
+        .send()
+        .await
+        .expect("proxy request");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = response.json().await.expect("response json");
+    assert_eq!(body["content"][0]["text"], "pong");
+    assert_eq!(body["usage"]["input_tokens"], 0);
+    assert_eq!(body["usage"]["output_tokens"], 0);
+
+    proxy.shutdown().await;
+}
+
+#[tokio::test]
 async fn anthropic_messages_converts_image_content_to_openai_upstream_shape() {
     let upstream = MockServer::start().await;
     Mock::given(method("POST"))
@@ -981,6 +1024,8 @@ async fn anthropic_messages_streams_anthropic_sse_events() {
     assert!(body.contains("event: message_stop"));
     assert!(body.contains("\"text\":\"Hel\""));
     assert!(body.contains("\"text\":\"lo\""));
+    assert!(body.contains("\"usage\":{\"input_tokens\":0,\"output_tokens\":0}"));
+    assert!(body.contains("\"usage\":{\"output_tokens\":0}"));
     assert!(body.contains("\"stop_reason\":\"end_turn\""));
     assert!(!body.contains("data: [DONE]"));
     assert_contains_in_order(
