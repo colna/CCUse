@@ -5,7 +5,8 @@
 //! 2. `Authorization: Bearer <key>` is forwarded verbatim,
 //! 3. `stream` is forced to `false` even if the caller set `true`,
 //! 4. 401 / 429 / 500 / 400 land in the right `ProviderError` variant,
-//! 5. `health_check` and `list_models` read `GET /v1/models`.
+//! 5. `health_check` uses the shared cc-switch style stream probe,
+//!    while `list_models` still reads `GET /v1/models`.
 
 use ccuse_desktop_lib::providers::api::ProviderError;
 use ccuse_desktop_lib::providers::api::{
@@ -14,7 +15,7 @@ use ccuse_desktop_lib::providers::api::{
 use ccuse_desktop_lib::providers::OpenAIProvider;
 use futures::StreamExt;
 use serde_json::Value;
-use wiremock::matchers::{header, method, path};
+use wiremock::matchers::{body_json, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 fn sample_request(stream: bool) -> ApiRequest {
@@ -147,7 +148,7 @@ async fn send_request_forces_stream_false_on_the_wire() {
     let received = &server.received_requests().await.expect("requests")[0];
     let body: Value = serde_json::from_slice(&received.body).expect("json");
     assert_eq!(body["stream"], serde_json::json!(false));
-    assert_eq!(body["model"], serde_json::json!("gpt-4o"));
+    assert!(body.get("model").is_none());
 }
 
 #[tokio::test]
@@ -245,11 +246,29 @@ async fn malformed_success_body_yields_decode_error() {
 }
 
 #[tokio::test]
-async fn health_check_calls_v1_models_and_maps_status() {
+async fn health_check_uses_stream_probe_and_maps_success_status() {
     let server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/v1/models"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"data": []})))
+        .respond_with(ResponseTemplate::new(500))
+        .expect(0)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .and(header("authorization", "Bearer sk-test"))
+        .and(body_json(serde_json::json!({
+            "model": "gpt-5.4",
+            "messages": [{ "role": "user", "content": "Who are you?" }],
+            "max_tokens": 1,
+            "stream": true,
+        })))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string("data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\n")
+                .insert_header("content-type", "text/event-stream"),
+        )
+        .expect(1)
         .mount(&server)
         .await;
     let provider =
@@ -404,15 +423,15 @@ async fn streaming_401_yields_unauthorized_before_any_chunks() {
 }
 
 #[tokio::test]
-async fn health_check_reports_degraded_on_429() {
+async fn health_check_reports_down_on_429_stream_probe_failure() {
     let server = MockServer::start().await;
-    Mock::given(method("GET"))
-        .and(path("/v1/models"))
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
         .respond_with(ResponseTemplate::new(429))
         .mount(&server)
         .await;
     let provider =
         OpenAIProvider::new("p1", "Mock", server.uri(), "sk-test").expect("build provider");
     let status = provider.health_check().await.expect("ok");
-    assert_eq!(status, HealthStatus::Degraded);
+    assert_eq!(status, HealthStatus::Down);
 }

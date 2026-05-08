@@ -9,7 +9,7 @@ use futures::StreamExt;
 use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
 use reqwest::{Client, StatusCode};
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::Value;
 
 use crate::converter::{
     AnthropicConverter, ContentPart, FinishReason, FormatConverter, Role, UnifiedMessage,
@@ -21,7 +21,9 @@ use super::api::{
     ChatContentPart, HealthStatus, Provider, ProviderError, StreamingResponse,
 };
 use super::error_format::format_reqwest_error;
+use super::model;
 use super::openai::DEFAULT_REQUEST_TIMEOUT;
+use super::stream_check::{check_provider_with_default_config, health_status_from_stream_result};
 
 const ANTHROPIC_VERSION: &str = "2023-06-01";
 
@@ -135,20 +137,11 @@ impl Provider for AnthropicProvider {
     }
 
     async fn health_check(&self) -> Result<HealthStatus, ProviderError> {
-        let response = self
-            .client
-            .post(self.endpoint("/v1/messages"))
-            .headers(self.auth_headers()?)
-            .json(&minimal_health_body())
-            .send()
+        let provider = self.stream_check_provider();
+        let result = check_provider_with_default_config(&provider, &self.api_key)
             .await
-            .map_err(|e| ProviderError::Network(format_reqwest_error(e)))?;
-
-        match response.status() {
-            s if s.is_success() => Ok(HealthStatus::Healthy),
-            StatusCode::TOO_MANY_REQUESTS => Ok(HealthStatus::Degraded),
-            _ => Ok(HealthStatus::Down),
-        }
+            .map_err(|err| ProviderError::Network(err.to_string()))?;
+        Ok(health_status_from_stream_result(&result))
     }
 
     async fn list_models(&self) -> Result<Vec<ApiModel>, ProviderError> {
@@ -234,6 +227,24 @@ impl Provider for AnthropicProvider {
             .bytes_stream()
             .map(|chunk| chunk.map_err(|e| ProviderError::Network(format_reqwest_error(e))));
         Ok(Box::pin(upstream))
+    }
+}
+
+impl AnthropicProvider {
+    fn stream_check_provider(&self) -> model::Provider {
+        model::Provider {
+            id: self.id.clone(),
+            name: self.name.clone(),
+            kind: model::ProviderKind::Anthropic,
+            base_url: self.base_url.clone(),
+            priority: self.priority,
+            enabled: true,
+            monthly_quota: None,
+            rate_limit_rpm: None,
+            cost_per_1k_tokens: self.cost_per_token.map(|cost| cost * 1000.0),
+            created_at: String::new(),
+            updated_at: String::new(),
+        }
     }
 }
 
@@ -414,13 +425,6 @@ fn finish_reason_to_openai(reason: FinishReason) -> &'static str {
     }
 }
 
-fn minimal_health_body() -> Value {
-    json!({
-        "max_tokens": 1,
-        "messages": [{"role": "user", "content": "ping"}],
-    })
-}
-
 fn map_http_error(status: StatusCode, body: String) -> ProviderError {
     match status {
         StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => ProviderError::Unauthorized(body),
@@ -444,6 +448,7 @@ mod tests {
     use super::super::api::{ApiToolDefinition, ChatMessage};
     use super::*;
     use crate::converter::{UnifiedChoice, UnifiedUsage};
+    use serde_json::json;
 
     fn provider() -> AnthropicProvider {
         AnthropicProvider::new(

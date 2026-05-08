@@ -11,6 +11,7 @@ use tokio::sync::RwLock;
 
 use super::anthropic::AnthropicProvider;
 use super::api::{Provider as ProviderTrait, ProviderError};
+use super::gemini::GeminiProvider;
 use super::model::ProviderKind;
 use super::openai::OpenAIProvider;
 use super::repository::{ProviderRepository, RepositoryError};
@@ -160,7 +161,7 @@ fn build_runtime_provider(
         ProviderKind::Anthropic => Ok(Box::new(AnthropicProvider::new(
             id, name, base_url, api_key,
         )?)),
-        ProviderKind::Gemini => Ok(Box::new(OpenAIProvider::new(id, name, base_url, api_key)?)),
+        ProviderKind::Gemini => Ok(Box::new(GeminiProvider::new(id, name, base_url, api_key)?)),
     }
 }
 
@@ -350,6 +351,26 @@ mod tests {
 
         assert!(rendered.contains("AnthropicProvider"));
         assert!(!rendered.contains("sk-ant"), "api key leaked: {rendered}");
+    }
+
+    #[test]
+    fn build_runtime_provider_uses_native_gemini_for_gemini_kind() {
+        let provider = build_runtime_provider(
+            "gemini",
+            "Gemini",
+            ProviderKind::Gemini,
+            "https://generativelanguage.googleapis.com",
+            "sk-gemini",
+        )
+        .expect("build gemini provider");
+
+        let rendered = format!("{provider:?}");
+
+        assert!(rendered.contains("GeminiProvider"));
+        assert!(
+            !rendered.contains("sk-gemini"),
+            "api key leaked: {rendered}"
+        );
     }
 
     #[tokio::test]

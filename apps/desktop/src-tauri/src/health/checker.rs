@@ -287,6 +287,7 @@ mod tests {
         id: String,
         should_succeed: Arc<AtomicBool>,
         degraded_when_succeeding: bool,
+        stream_probe_count: Option<Arc<std::sync::atomic::AtomicUsize>>,
     }
 
     #[async_trait]
@@ -307,6 +308,9 @@ mod tests {
             None
         }
         async fn health_check(&self) -> Result<HealthStatus, ProviderError> {
+            if let Some(count) = &self.stream_probe_count {
+                count.fetch_add(1, Ordering::Relaxed);
+            }
             if self.should_succeed.load(Ordering::Relaxed) {
                 if self.degraded_when_succeeding {
                     Ok(HealthStatus::Degraded)
@@ -361,6 +365,7 @@ mod tests {
             id: "mock1".into(),
             should_succeed: Arc::clone(&flag),
             degraded_when_succeeding,
+            stream_probe_count: None,
         };
         let wrapper = Arc::new(ProviderWrapper::new(
             "mock1",
@@ -374,6 +379,30 @@ mod tests {
         let mgr = Arc::new(ProviderManager::new());
         mgr.add(wrapper).await.unwrap();
         (mgr, flag)
+    }
+
+    async fn make_manager_with_stream_probe_counter(
+        count: Arc<std::sync::atomic::AtomicUsize>,
+    ) -> Arc<ProviderManager> {
+        let flag = Arc::new(AtomicBool::new(true));
+        let mock = ConfigurableMockProvider {
+            id: "mock1".into(),
+            should_succeed: flag,
+            degraded_when_succeeding: false,
+            stream_probe_count: Some(count),
+        };
+        let wrapper = Arc::new(ProviderWrapper::new(
+            "mock1",
+            "Mock Provider",
+            ProviderKind::Openai,
+            10,
+            None,
+            true,
+            Box::new(mock),
+        ));
+        let mgr = Arc::new(ProviderManager::new());
+        mgr.add(wrapper).await.unwrap();
+        mgr
     }
 
     #[test]
@@ -446,6 +475,17 @@ mod tests {
         assert_eq!(snap[0].provider_id, "mock1");
         assert_eq!(snap[0].status, HealthStatus::Healthy);
         assert_eq!(snap[0].success_rate, 1.0);
+    }
+
+    #[tokio::test]
+    async fn probe_once_uses_provider_stream_check_contract() {
+        let count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let mgr = make_manager_with_stream_probe_counter(Arc::clone(&count)).await;
+        let checker = HealthChecker::new(mgr);
+
+        checker.probe_once().await;
+
+        assert_eq!(count.load(Ordering::Relaxed), 1);
     }
 
     #[tokio::test]

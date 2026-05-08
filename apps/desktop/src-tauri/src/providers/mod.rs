@@ -11,11 +11,13 @@
 pub mod anthropic;
 pub mod api;
 mod error_format;
+pub mod gemini;
 pub mod manager;
 pub mod model;
 pub mod openai;
 pub mod repository;
 pub mod startup;
+pub mod stream_check;
 pub mod wrapper;
 
 pub use anthropic::AnthropicProvider;
@@ -24,11 +26,15 @@ pub use api::{
     ApiToolDefinition, ApiUsage, ChatContent, ChatContentPart, ChatImageUrl, ChatMessage,
     HealthStatus, Provider as RuntimeProvider, ProviderError, StreamChunk, StreamingResponse,
 };
+pub use gemini::GeminiProvider;
 pub use manager::{ManagerError, ProviderManager};
 pub use model::{Provider, ProviderInput, ProviderKind};
 pub use openai::{OpenAIProvider, DEFAULT_REQUEST_TIMEOUT};
 pub use repository::{ProviderRepository, RepositoryError};
 pub use startup::load_initial_providers;
+pub use stream_check::{
+    check_provider_with_default_config, StreamCheckConfig, StreamCheckResult, StreamCheckService,
+    StreamCheckStatus, DEFAULT_DEGRADED_THRESHOLD_MS, DEFAULT_STREAM_CHECK_MAX_RETRIES,
+    DEFAULT_STREAM_CHECK_TIMEOUT_SECS,
+};
 pub use wrapper::{ProviderWrapper, RuntimeState};
-
-pub(crate) use error_format::format_reqwest_error;

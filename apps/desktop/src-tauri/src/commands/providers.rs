@@ -6,41 +6,12 @@
 //! the IPC boundary.
 
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
-
-use futures::StreamExt;
 use tauri::State;
 
 use crate::health::HealthChecker;
 use crate::providers::model::{Provider, ProviderInput};
 use crate::providers::repository::ProviderRepository;
-use crate::providers::{format_reqwest_error, ManagerError, ProviderManager, RepositoryError};
-use serde::{Deserialize, Serialize};
-
-const PROVIDER_CONNECTION_TEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum StreamCheckStatus {
-    Operational,
-    Degraded,
-    Failed,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct StreamCheckResult {
-    pub status: StreamCheckStatus,
-    pub success: bool,
-    pub message: String,
-    pub response_time_ms: Option<u64>,
-    pub http_status: Option<u16>,
-    pub model_used: String,
-    pub tested_at: i64,
-    pub retry_count: u32,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error_category: Option<String>,
-}
+use crate::providers::{ManagerError, ProviderManager, RepositoryError, StreamCheckResult};
 
 /// Managed state type for the provider repository.
 pub type ProviderRepoHandle = Arc<ProviderRepository>;
@@ -261,248 +232,9 @@ pub(crate) async fn test_provider_connection_with_repo(
         .ok_or_else(|| format!("provider {id} not found"))?;
     let api_key = repo.get_decrypted_api_key(id).map_err(|e| e.to_string())?;
 
-    let start = std::time::Instant::now();
-    let client = reqwest::Client::builder()
-        .timeout(PROVIDER_CONNECTION_TEST_TIMEOUT)
-        .build()
-        .map_err(format_reqwest_error)?;
-
-    let model_used = if matches!(
-        provider.kind,
-        crate::providers::model::ProviderKind::Anthropic
-    ) {
-        "claude-3-5-sonnet-20241022"
-    } else {
-        "gpt-4o-mini"
-    }
-    .to_string();
-
-    let request = match provider.kind {
-        crate::providers::model::ProviderKind::Anthropic => client
-            .post(format!(
-                "{}/v1/messages",
-                provider.base_url.trim_end_matches('/')
-            ))
-            .header("x-api-key", &api_key)
-            .header("anthropic-version", "2023-06-01")
-            .header("content-type", "application/json")
-            .header("accept", "text/event-stream")
-            .header("accept-encoding", "identity")
-            .json(&anthropic_probe_body(&model_used)),
-        crate::providers::model::ProviderKind::Openai
-        | crate::providers::model::ProviderKind::Custom
-        | crate::providers::model::ProviderKind::Relay => client
-            .post(format!(
-                "{}/v1/chat/completions",
-                provider.base_url.trim_end_matches('/')
-            ))
-            .header("Authorization", format!("Bearer {api_key}"))
-            .header("content-type", "application/json")
-            .header("accept", "text/event-stream")
-            .header("accept-encoding", "identity")
-            .json(&openai_probe_body(&model_used)),
-        crate::providers::model::ProviderKind::Gemini => client
-            .post(format!(
-                "{}/v1beta/models/{model_used}:streamGenerateContent",
-                provider.base_url.trim_end_matches('/')
-            ))
-            .query(&[("key", &api_key)])
-            .header("content-type", "application/json")
-            .header("accept", "text/event-stream")
-            .header("accept-encoding", "identity")
-            .json(&gemini_probe_body()),
-    };
-
-    match request.send().await {
-        Ok(resp) => build_stream_check_result(resp, start, &model_used).await,
-        Err(err) => Ok(request_error_result(&err, start, &model_used)),
-    }
-}
-
-async fn build_stream_check_result(
-    resp: reqwest::Response,
-    start: std::time::Instant,
-    model_used: &str,
-) -> Result<StreamCheckResult, String> {
-    let tested_at = unix_timestamp_now();
-    let http_status = resp.status().as_u16();
-    if !resp.status().is_success() {
-        let body_text = resp.text().await.map_err(format_reqwest_error)?;
-        let body_text = body_text.trim();
-        let error_category =
-            detect_error_category(http_status, body_text).map(std::string::ToString::to_string);
-        #[allow(clippy::cast_possible_truncation)]
-        let response_time_ms = Some(start.elapsed().as_millis() as u64);
-        return Ok(StreamCheckResult {
-            status: StreamCheckStatus::Failed,
-            success: false,
-            message: classify_http_status(http_status).to_string(),
-            response_time_ms,
-            http_status: Some(http_status),
-            model_used: model_used.to_string(),
-            tested_at,
-            retry_count: 0,
-            error_category,
-        });
-    }
-
-    let mut stream = resp.bytes_stream();
-    let first_chunk = stream.next().await;
-    #[allow(clippy::cast_possible_truncation)]
-    let response_time_ms_value = start.elapsed().as_millis() as u64;
-    let response_time_ms = Some(response_time_ms_value);
-
-    match first_chunk {
-        Some(Ok(_)) => {
-            let stream_status = if response_time_ms_value > 6000 {
-                StreamCheckStatus::Degraded
-            } else {
-                StreamCheckStatus::Operational
-            };
-            Ok(StreamCheckResult {
-                status: stream_status,
-                success: true,
-                message: "Check succeeded".to_string(),
-                response_time_ms,
-                http_status: Some(http_status),
-                model_used: model_used.to_string(),
-                tested_at,
-                retry_count: 0,
-                error_category: None,
-            })
-        }
-        Some(Err(err)) => Ok(StreamCheckResult {
-            status: StreamCheckStatus::Failed,
-            success: false,
-            message: err.to_string(),
-            response_time_ms,
-            http_status: Some(http_status),
-            model_used: model_used.to_string(),
-            tested_at,
-            retry_count: 0,
-            error_category: None,
-        }),
-        None => Ok(StreamCheckResult {
-            status: StreamCheckStatus::Failed,
-            success: false,
-            message: "No response data received".to_string(),
-            response_time_ms,
-            http_status: Some(http_status),
-            model_used: model_used.to_string(),
-            tested_at,
-            retry_count: 0,
-            error_category: None,
-        }),
-    }
-}
-
-fn request_error_result(
-    err: &reqwest::Error,
-    start: std::time::Instant,
-    model_used: &str,
-) -> StreamCheckResult {
-    let message = if err.is_timeout() {
-        "Request timeout"
-    } else if err.is_connect() {
-        "Connection failed"
-    } else {
-        "Request failed"
-    };
-
-    #[allow(clippy::cast_possible_truncation)]
-    let response_time_ms = Some(start.elapsed().as_millis() as u64);
-
-    StreamCheckResult {
-        status: StreamCheckStatus::Failed,
-        success: false,
-        message: format!("{message}: {err}"),
-        response_time_ms,
-        http_status: None,
-        model_used: model_used.to_string(),
-        tested_at: unix_timestamp_now(),
-        retry_count: 0,
-        error_category: None,
-    }
-}
-
-fn unix_timestamp_now() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| i64::try_from(duration.as_secs()).unwrap_or(i64::MAX))
-        .unwrap_or_default()
-}
-
-fn anthropic_probe_body(model: &str) -> serde_json::Value {
-    serde_json::json!({
-        "model": model,
-        "max_tokens": 1,
-        "messages": [{"role": "user", "content": "ping"}],
-        "stream": true
-    })
-}
-
-fn openai_probe_body(model: &str) -> serde_json::Value {
-    serde_json::json!({
-        "model": model,
-        "messages": [{"role": "user", "content": "ping"}],
-        "max_tokens": 1,
-        "stream": true
-    })
-}
-
-fn gemini_probe_body() -> serde_json::Value {
-    serde_json::json!({
-        "contents": [{
-            "role": "user",
-            "parts": [{"text": "ping"}]
-        }],
-        "generationConfig": {
-            "maxOutputTokens": 1
-        }
-    })
-}
-
-fn detect_error_category(status: u16, body: &str) -> Option<&'static str> {
-    if !(400..500).contains(&status) {
-        return None;
-    }
-    let lower = body.to_lowercase();
-    if !lower.contains("model") {
-        return None;
-    }
-    let indicators = [
-        "model_not_found",
-        "model not found",
-        "does not exist",
-        "invalid_model",
-        "invalid model",
-        "unknown_model",
-        "unknown model",
-        "is not a valid model",
-        "not_found_error",
-    ];
-    if indicators.iter().any(|s| lower.contains(s)) {
-        Some("modelNotFound")
-    } else {
-        None
-    }
-}
-
-fn classify_http_status(status: u16) -> &'static str {
-    match status {
-        400 => "Bad request (400)",
-        401 => "Auth rejected (401)",
-        402 => "Payment required (402)",
-        403 => "Access denied (403)",
-        404 => "Not found (404)",
-        429 => "Rate limited (429)",
-        500 => "Internal server error (500)",
-        502 => "Bad gateway (502)",
-        503 => "Service unavailable (503)",
-        504 => "Gateway timeout (504)",
-        s if (500..600).contains(&s) => "Server error",
-        _ => "HTTP error",
-    }
+    crate::providers::check_provider_with_default_config(&provider, &api_key)
+        .await
+        .map_err(|err| err.to_string())
 }
 
 #[cfg(test)]
@@ -854,7 +586,12 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/v1/chat/completions"))
-            .and(body_json(openai_probe_body("gpt-4o-mini")))
+            .and(body_json(serde_json::json!({
+                "model": "gpt-5.4",
+                "messages": [{"role": "user", "content": "Who are you?"}],
+                "max_tokens": 1,
+                "stream": true,
+            })))
             .respond_with(
                 ResponseTemplate::new(200)
                     .set_body_string("data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\n"),
@@ -876,20 +613,18 @@ mod tests {
 
         assert!(err.success);
         assert_eq!(err.http_status, Some(200));
-        assert_eq!(err.model_used, "gpt-4o-mini");
+        assert_eq!(err.model_used, "gpt-5.4");
         assert!(matches!(
             err.status,
-            StreamCheckStatus::Operational | StreamCheckStatus::Degraded
+            crate::providers::StreamCheckStatus::Operational
+                | crate::providers::StreamCheckStatus::Degraded
         ));
         assert!(err.response_time_ms.is_some());
     }
 
     #[test]
-    fn provider_connection_test_timeout_is_30_seconds() {
-        assert_eq!(
-            PROVIDER_CONNECTION_TEST_TIMEOUT,
-            std::time::Duration::from_secs(30),
-        );
+    fn provider_connection_test_uses_cc_switch_timeout() {
+        assert_eq!(crate::providers::DEFAULT_STREAM_CHECK_TIMEOUT_SECS, 45,);
     }
 
     #[tokio::test]
@@ -898,10 +633,15 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/v1/messages"))
-            .and(body_json(anthropic_probe_body("claude-3-5-sonnet-20241022")))
+            .and(body_json(serde_json::json!({
+                "model": "claude-haiku-4-5-20251001",
+                "max_tokens": 1,
+                "messages": [{"role": "user", "content": "Who are you?"}],
+                "stream": true,
+            })))
             .respond_with(
                 ResponseTemplate::new(404).set_body_string(
-                    r#"{"type":"error","error":{"type":"not_found_error","message":"model: claude-3-5-sonnet-20241022"}}"#,
+                    r#"{"type":"error","error":{"type":"not_found_error","message":"model: claude-haiku-4-5-20251001"}}"#,
                 ),
             )
             .expect(1)
@@ -923,7 +663,7 @@ mod tests {
         assert_eq!(result.http_status, Some(404));
         assert_eq!(result.error_category.as_deref(), Some("modelNotFound"));
         assert_eq!(result.message, "Not found (404)");
-        assert_eq!(result.model_used, "claude-3-5-sonnet-20241022");
+        assert_eq!(result.model_used, "claude-haiku-4-5-20251001");
         assert!(result.response_time_ms.is_some());
     }
 }

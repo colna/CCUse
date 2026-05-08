@@ -740,8 +740,8 @@ mod fault_injection {
     }
 
     #[tokio::test]
-    async fn health_check_connection_refused_maps_to_network_error() {
-        use ccuse_desktop_lib::providers::api::{Provider, ProviderError};
+    async fn health_check_connection_refused_maps_to_down_status() {
+        use ccuse_desktop_lib::providers::api::{HealthStatus, Provider};
         use ccuse_desktop_lib::providers::OpenAIProvider;
 
         let provider = OpenAIProvider::new(
@@ -752,11 +752,8 @@ mod fault_injection {
         )
         .expect("build");
 
-        let err = provider.health_check().await.expect_err("must fail");
-        assert!(
-            matches!(err, ProviderError::Network(_)),
-            "expected Network error, got {err:?}"
-        );
+        let status = provider.health_check().await.expect("status");
+        assert_eq!(status, HealthStatus::Down);
     }
 
     // ── Mixed fault scenarios ────────────────────────────────────
