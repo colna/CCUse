@@ -1722,6 +1722,55 @@ async fn anthropic_messages_stream_error_returns_sse_error_frame_without_socket_
 }
 
 #[tokio::test]
+async fn anthropic_messages_preserves_sub2api_account_pool_exhaustion_semantics() {
+    let upstream = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/messages"))
+        .respond_with(ResponseTemplate::new(503).set_body_json(json!({
+            "type": "error",
+            "error": {
+                "type": "api_error",
+                "message": "No available accounts: no available accounts"
+            }
+        })))
+        .expect(1)
+        .mount(&upstream)
+        .await;
+    let proxy = start_proxy_with_native_anthropic_provider(&ProviderSpec {
+        id: "native-anthropic-exhausted-pool",
+        name: "Native Anthropic Exhausted Pool",
+        priority: 1,
+        server: &upstream,
+    })
+    .await;
+
+    let response = reqwest::Client::new()
+        .post(format!("{}/v1/messages", proxy.base_url))
+        .json(&anthropic_messages_stream_request())
+        .send()
+        .await
+        .expect("proxy request");
+
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(
+        response
+            .headers()
+            .get("x-should-retry")
+            .and_then(|value| value.to_str().ok()),
+        Some("false"),
+    );
+    let body: Value = response.json().await.expect("response json");
+    assert_eq!(body["type"], "error");
+    assert_eq!(body["error"]["type"], "api_error");
+    assert_eq!(
+        body["error"]["message"],
+        "No available accounts: no available accounts"
+    );
+
+    proxy.shutdown().await;
+}
+
+#[tokio::test]
 async fn chat_completions_dispatches_text_request_to_upstream() {
     let upstream = MockServer::start().await;
     Mock::given(method("POST"))

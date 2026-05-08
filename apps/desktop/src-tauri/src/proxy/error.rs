@@ -12,7 +12,7 @@
 //! { "type": "error", "error": { "type": "...", "message": "..." } }
 //! ```
 
-use axum::http::StatusCode;
+use axum::http::{HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde_json::json;
@@ -116,6 +116,7 @@ pub struct ApiError {
     pub kind: ApiErrorKind,
     pub message: String,
     protocol: ErrorProtocol,
+    should_retry: Option<bool>,
 }
 
 impl ApiError {
@@ -124,12 +125,19 @@ impl ApiError {
             kind,
             message: message.into(),
             protocol: ErrorProtocol::OpenAi,
+            should_retry: None,
         }
     }
 
     #[must_use]
     pub fn with_protocol(mut self, protocol: ErrorProtocol) -> Self {
         self.protocol = protocol;
+        self
+    }
+
+    #[must_use]
+    pub fn with_should_retry(mut self, should_retry: bool) -> Self {
+        self.should_retry = Some(should_retry);
         self
     }
 
@@ -167,16 +175,59 @@ impl From<ProviderError> for ApiError {
     fn from(err: ProviderError) -> Self {
         match err {
             ProviderError::Network(msg) => Self::new(ApiErrorKind::UpstreamError, msg),
-            ProviderError::Upstream { status, body } => Self::new(
-                ApiErrorKind::UpstreamError,
-                format!("upstream returned {status}: {body}"),
-            ),
+            ProviderError::Upstream { status, body } => {
+                if upstream_body_indicates_exhausted_pool(status, &body) {
+                    Self::new(
+                        ApiErrorKind::NoProvider,
+                        extract_upstream_error_message(&body),
+                    )
+                    .with_should_retry(false)
+                } else {
+                    Self::new(
+                        ApiErrorKind::UpstreamError,
+                        format!("upstream returned {status}: {body}"),
+                    )
+                }
+            }
             ProviderError::Unauthorized(msg) => Self::new(ApiErrorKind::Unauthorized, msg),
             ProviderError::RateLimited(msg) => Self::new(ApiErrorKind::TooManyRequests, msg),
             ProviderError::BadRequest(msg) => Self::new(ApiErrorKind::BadRequest, msg),
             ProviderError::Decode(msg) => Self::new(ApiErrorKind::Internal, msg),
         }
     }
+}
+
+fn upstream_body_indicates_exhausted_pool(status: u16, body: &str) -> bool {
+    if status < 500 {
+        return false;
+    }
+
+    let lower = body.to_ascii_lowercase();
+    [
+        "no available account",
+        "no available accounts",
+        "all available accounts exhausted",
+        "no available channel",
+        "no available channels",
+        "no available provider",
+        "no available providers",
+    ]
+    .iter()
+    .any(|needle| lower.contains(needle))
+}
+
+fn extract_upstream_error_message(body: &str) -> String {
+    serde_json::from_str::<serde_json::Value>(body)
+        .ok()
+        .and_then(|json| {
+            json.pointer("/error/message")
+                .or_else(|| json.get("message"))
+                .and_then(|value| value.as_str())
+                .map(str::trim)
+                .filter(|message| !message.is_empty())
+                .map(ToOwned::to_owned)
+        })
+        .unwrap_or_else(|| body.trim().to_owned())
 }
 
 impl From<ConvertError> for ApiError {
@@ -188,6 +239,7 @@ impl From<ConvertError> for ApiError {
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let status = self.kind.status();
+        let should_retry = self.should_retry;
         let body = match self.protocol {
             ErrorProtocol::OpenAi => Json(json!({
                 "error": {
@@ -203,7 +255,14 @@ impl IntoResponse for ApiError {
                 }
             })),
         };
-        (status, body).into_response()
+        let mut response = (status, body).into_response();
+        if let Some(should_retry) = should_retry {
+            let value = if should_retry { "true" } else { "false" };
+            response
+                .headers_mut()
+                .insert("x-should-retry", HeaderValue::from_static(value));
+        }
+        response
     }
 }
 
@@ -347,6 +406,36 @@ mod tests {
         .into();
         assert_eq!(err.kind, ApiErrorKind::UpstreamError);
         assert!(err.message.contains("502"));
+    }
+
+    #[tokio::test]
+    async fn exhausted_upstream_account_pool_maps_to_service_unavailable_without_retry() {
+        let err: ApiError = ProviderError::Upstream {
+            status: 503,
+            body: r#"{"type":"error","error":{"type":"api_error","message":"No available accounts: no available accounts"}}"#.into(),
+        }
+        .into();
+
+        assert_eq!(err.kind, ApiErrorKind::NoProvider);
+        assert_eq!(err.message, "No available accounts: no available accounts");
+        let response = err.anthropic().into_response();
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(
+            response
+                .headers()
+                .get("x-should-retry")
+                .and_then(|value| value.to_str().ok()),
+            Some("false"),
+        );
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body bytes");
+        let body: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
+        assert_eq!(body["error"]["type"], "api_error");
+        assert_eq!(
+            body["error"]["message"],
+            "No available accounts: no available accounts"
+        );
     }
 
     #[test]
