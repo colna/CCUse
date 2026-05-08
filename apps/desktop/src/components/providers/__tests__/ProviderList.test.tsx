@@ -32,8 +32,20 @@ const provider = {
   updated_at: "2026-04-29T00:00:00.000Z",
 };
 
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 beforeEach(() => {
+  vi.clearAllMocks();
   vi.mocked(listProviders).mockResolvedValue([provider]);
+  vi.mocked(deleteProvider).mockResolvedValue(undefined);
   vi.mocked(getHealthSnapshot).mockResolvedValue({
     providers: [
       {
@@ -170,6 +182,39 @@ describe("ProviderList", () => {
     );
   });
 
+  it("shows a loading state while saving provider edits", async () => {
+    const deferred =
+      createDeferred<Awaited<ReturnType<typeof updateProvider>>>();
+    vi.mocked(updateProvider).mockReturnValueOnce(deferred.promise);
+
+    render(<ProviderList />);
+    const user = userEvent.setup();
+
+    await user.click(
+      await screen.findByRole("button", { name: /编辑 Claude Prod/ }),
+    );
+    const saveButton = screen.getByRole("button", { name: "保存修改" });
+    const cancelButton = screen.getByRole("button", { name: "取消编辑" });
+    await user.click(saveButton);
+
+    await waitFor(() => expect(updateProvider).toHaveBeenCalledTimes(1));
+    expect(saveButton).toBeDisabled();
+    expect(cancelButton).toBeDisabled();
+    expect(saveButton.querySelector(".animate-spin")).not.toBeNull();
+    expect(screen.getByLabelText("名称")).toBeDisabled();
+
+    deferred.resolve({
+      ...provider,
+      updated_at: "2026-05-08T00:00:00.000Z",
+    });
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: "保存修改" }),
+      ).not.toBeInTheDocument(),
+    );
+  });
+
   it("submits a replacement api key when editing the provider", async () => {
     render(<ProviderList />);
     const user = userEvent.setup();
@@ -192,6 +237,36 @@ describe("ProviderList", () => {
         rate_limit_rpm: null,
         cost_per_1k_tokens: null,
       }),
+    );
+  });
+
+  it("shows a loading state while deleting a provider", async () => {
+    const deferred =
+      createDeferred<Awaited<ReturnType<typeof deleteProvider>>>();
+    vi.mocked(deleteProvider).mockReturnValueOnce(deferred.promise);
+
+    render(<ProviderList />);
+    const user = userEvent.setup();
+
+    await user.click(
+      await screen.findByRole("button", { name: /删除 Claude Prod/ }),
+    );
+    const dialog = await screen.findByRole("alertdialog");
+    await user.click(within(dialog).getByRole("button", { name: "删除" }));
+
+    await waitFor(() =>
+      expect(deleteProvider).toHaveBeenCalledWith("provider-1"),
+    );
+    const deletingButton = within(dialog).getByRole("button", {
+      name: "删除中...",
+    });
+    expect(deletingButton).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "取消" })).toBeDisabled();
+
+    deferred.resolve(undefined);
+
+    await waitFor(() =>
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument(),
     );
   });
 });

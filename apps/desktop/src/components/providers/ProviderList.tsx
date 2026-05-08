@@ -20,6 +20,7 @@ import {
   Check,
   FlaskConical,
   GripVertical,
+  Loader2,
   Pencil,
   RefreshCw,
   Trash2,
@@ -78,12 +79,14 @@ function streamStatusLabel(status?: StreamCheckResult["status"]): string {
 
 interface DeleteDialogProps {
   providerName: string;
+  deleting: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }
 
 function DeleteDialog({
   providerName,
+  deleting,
   onConfirm,
   onCancel,
 }: DeleteDialogProps) {
@@ -91,19 +94,41 @@ function DeleteDialog({
   const { t: tc } = useTranslation("common");
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="mx-4 w-full max-w-sm rounded-2xl border border-border bg-card p-6 shadow-lg">
-        <h3 className="text-base font-semibold">{t("delete_title")}</h3>
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="delete-provider-dialog-title"
+        aria-busy={deleting}
+        className="mx-4 w-full max-w-sm rounded-2xl border border-border bg-card p-6 shadow-lg"
+      >
+        <h3
+          id="delete-provider-dialog-title"
+          className="text-base font-semibold"
+        >
+          {t("delete_title")}
+        </h3>
         <p className="mt-2 text-sm text-muted-foreground">
           {t("delete_confirm")}{" "}
           <span className="font-medium text-foreground">{providerName}</span>?{" "}
           {t("delete_undone")}
         </p>
         <div className="mt-5 flex justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={onCancel}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onCancel}
+            disabled={deleting}
+          >
             {tc("cancel")}
           </Button>
-          <Button variant="destructive" size="sm" onClick={onConfirm}>
-            {tc("delete")}
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={onConfirm}
+            disabled={deleting}
+          >
+            {deleting && <Loader2 className="mr-2 size-3.5 animate-spin" />}
+            {deleting ? t("deleting") : tc("delete")}
           </Button>
         </div>
       </div>
@@ -172,6 +197,7 @@ interface SortableProviderItemProps {
   provider: Provider;
   health?: HealthSnapshot;
   testing?: boolean;
+  deleting?: boolean;
   onDelete: (id: string, name: string) => void;
   onToggleEnabled: (id: string, enabled: boolean) => void;
   onTestConnection: (id: string) => Promise<void>;
@@ -182,6 +208,7 @@ function SortableProviderItem({
   provider,
   health,
   testing,
+  deleting,
   onDelete,
   onToggleEnabled,
   onTestConnection,
@@ -231,6 +258,7 @@ function SortableProviderItem({
   }, []);
 
   const handleSaveEdit = useCallback(async () => {
+    if (saving) return;
     setSaving(true);
     try {
       await onSaveEdit(provider.id, editValues);
@@ -238,13 +266,14 @@ function SortableProviderItem({
     } finally {
       setSaving(false);
     }
-  }, [provider.id, editValues, onSaveEdit]);
+  }, [provider.id, editValues, saving, onSaveEdit]);
 
   if (editing) {
     return (
       <div
         ref={setNodeRef}
         style={style}
+        aria-busy={saving}
         className="space-y-3 rounded-xl border border-primary/40 bg-card px-4 py-3 shadow-sm"
       >
         <div className="flex items-center gap-2">
@@ -258,10 +287,11 @@ function SortableProviderItem({
             id={`edit-name-${provider.id}`}
             type="text"
             value={editValues.name}
+            disabled={saving}
             onChange={(e) =>
               setEditValues((s) => ({ ...s, name: e.target.value }))
             }
-            className="flex-1 rounded-md border border-border bg-background px-2 py-1 text-sm outline-none focus-visible:border-primary"
+            className="flex-1 rounded-md border border-border bg-background px-2 py-1 text-sm outline-none focus-visible:border-primary disabled:cursor-not-allowed disabled:opacity-60"
           />
         </div>
         <div className="flex items-center gap-2">
@@ -274,13 +304,14 @@ function SortableProviderItem({
           <select
             id={`edit-kind-${provider.id}`}
             value={editValues.kind}
+            disabled={saving}
             onChange={(e) =>
               setEditValues((s) => ({
                 ...s,
                 kind: e.target.value as ProviderInput["kind"],
               }))
             }
-            className="w-40 rounded-md border border-border bg-background px-2 py-1 text-sm outline-none focus-visible:border-primary"
+            className="w-40 rounded-md border border-border bg-background px-2 py-1 text-sm outline-none focus-visible:border-primary disabled:cursor-not-allowed disabled:opacity-60"
           >
             {PROVIDER_KIND_OPTIONS.map((option) => (
               <option
@@ -304,10 +335,11 @@ function SortableProviderItem({
             id={`edit-url-${provider.id}`}
             type="text"
             value={editValues.base_url}
+            disabled={saving}
             onChange={(e) =>
               setEditValues((s) => ({ ...s, base_url: e.target.value }))
             }
-            className="flex-1 rounded-md border border-border bg-background px-2 py-1 text-sm outline-none focus-visible:border-primary"
+            className="flex-1 rounded-md border border-border bg-background px-2 py-1 text-sm outline-none focus-visible:border-primary disabled:cursor-not-allowed disabled:opacity-60"
           />
         </div>
         <div className="flex items-center gap-2">
@@ -322,10 +354,11 @@ function SortableProviderItem({
             type="password"
             value={editValues.api_key}
             placeholder={t("edit_api_key_placeholder")}
+            disabled={saving}
             onChange={(e) =>
               setEditValues((s) => ({ ...s, api_key: e.target.value }))
             }
-            className="flex-1 rounded-md border border-border bg-background px-2 py-1 text-sm outline-none focus-visible:border-primary"
+            className="flex-1 rounded-md border border-border bg-background px-2 py-1 text-sm outline-none focus-visible:border-primary disabled:cursor-not-allowed disabled:opacity-60"
           />
         </div>
         <div className="flex items-center gap-2">
@@ -340,15 +373,17 @@ function SortableProviderItem({
             type="text"
             inputMode="numeric"
             value={editValues.priority}
+            disabled={saving}
             onChange={(e) =>
               setEditValues((s) => ({ ...s, priority: e.target.value }))
             }
-            className="w-20 rounded-md border border-border bg-background px-2 py-1 text-sm outline-none focus-visible:border-primary"
+            className="w-20 rounded-md border border-border bg-background px-2 py-1 text-sm outline-none focus-visible:border-primary disabled:cursor-not-allowed disabled:opacity-60"
           />
           <label className="ml-4 flex items-center gap-1 text-xs">
             <input
               type="checkbox"
               checked={editValues.enabled}
+              disabled={saving}
               onChange={(e) =>
                 setEditValues((s) => ({ ...s, enabled: e.target.checked }))
               }
@@ -365,7 +400,11 @@ function SortableProviderItem({
               disabled={saving}
               aria-label={t("save_changes_aria")}
             >
-              <Check className="size-3.5" />
+              {saving ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Check className="size-3.5" />
+              )}
             </Button>
             <Button
               variant="ghost"
@@ -491,9 +530,14 @@ function SortableProviderItem({
         size="icon"
         className="size-7 text-muted-foreground hover:text-destructive"
         onClick={() => onDelete(provider.id, provider.name)}
+        disabled={deleting}
         aria-label={t("delete_provider_aria", { name: provider.name })}
       >
-        <Trash2 className="size-3.5" />
+        {deleting ? (
+          <Loader2 className="size-3.5 animate-spin" />
+        ) : (
+          <Trash2 className="size-3.5" />
+        )}
       </Button>
     </div>
   );
@@ -530,6 +574,7 @@ export function ProviderList({ refreshKey }: ProviderListProps) {
     {},
   );
   const [testingIds, setTestingIds] = useState<Record<string, boolean>>({});
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{
     id: string;
@@ -636,20 +681,23 @@ export function ProviderList({ refreshKey }: ProviderListProps) {
   }, []);
 
   const handleConfirmDelete = useCallback(async () => {
-    if (!deleteTarget) return;
+    if (!deleteTarget || deletingId) return;
+    setDeletingId(deleteTarget.id);
     try {
       await deleteProvider(deleteTarget.id);
       setProviders((prev) => prev.filter((p) => p.id !== deleteTarget.id));
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
+      setDeletingId(null);
       setDeleteTarget(null);
     }
-  }, [deleteTarget]);
+  }, [deleteTarget, deletingId]);
 
   const handleCancelDelete = useCallback(() => {
+    if (deletingId) return;
     setDeleteTarget(null);
-  }, []);
+  }, [deletingId]);
 
   const handleToggleEnabled = useCallback(
     async (id: string, enabled: boolean) => {
@@ -777,6 +825,7 @@ export function ProviderList({ refreshKey }: ProviderListProps) {
                 provider={provider}
                 health={healthMap[provider.id]}
                 testing={testingIds[provider.id] ?? false}
+                deleting={deletingId === provider.id}
                 onDelete={handleRequestDelete}
                 onToggleEnabled={handleToggleEnabled}
                 onTestConnection={handleTestConnection}
@@ -790,6 +839,7 @@ export function ProviderList({ refreshKey }: ProviderListProps) {
       {deleteTarget && (
         <DeleteDialog
           providerName={deleteTarget.name}
+          deleting={deletingId === deleteTarget.id}
           onConfirm={handleConfirmDelete}
           onCancel={handleCancelDelete}
         />

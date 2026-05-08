@@ -156,6 +156,7 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
   const handleSubmit = useCallback(
     async (event: React.FormEvent<HTMLFormElement>) => {
       event.preventDefault();
+      if (submitting) return;
       setSuccessId(null);
       setServerError(null);
       setTestResult(null);
@@ -193,7 +194,7 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
         setSubmitting(false);
       }
     },
-    [values, onAdded, t],
+    [values, submitting, onAdded, t],
   );
 
   const handleReset = useCallback(() => {
@@ -210,6 +211,7 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
       noValidate
       onSubmit={handleSubmit}
       aria-label={t("add_provider_aria")}
+      aria-busy={submitting}
       className="space-y-5 rounded-2xl border border-border bg-card p-6 shadow-apple-card"
     >
       <header className="space-y-1">
@@ -231,7 +233,7 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
             <button
               key={opt.kind}
               type="button"
-              disabled={!opt.supported}
+              disabled={submitting || !opt.supported}
               onClick={() => handleKindChange(opt.kind)}
               className={cn(
                 "rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:border-border/60 disabled:bg-muted/40 disabled:text-muted-foreground",
@@ -253,6 +255,7 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
         value={values.name}
         onChange={(v) => setValues((s) => ({ ...s, name: v }))}
         error={errors.name}
+        disabled={submitting}
       />
 
       <Field
@@ -265,6 +268,7 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
         value={values.base_url}
         onChange={(v) => setValues((s) => ({ ...s, base_url: v }))}
         error={errors.base_url}
+        disabled={submitting}
       />
 
       <Field
@@ -275,6 +279,7 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
         value={values.api_key}
         onChange={(v) => setValues((s) => ({ ...s, api_key: v }))}
         error={errors.api_key}
+        disabled={submitting}
       />
 
       <Field
@@ -289,12 +294,14 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
           min: PRIORITY_MIN,
           max: PRIORITY_MAX,
         })}
+        disabled={submitting}
       />
 
       <label className="flex items-center gap-2 text-sm">
         <input
           type="checkbox"
           checked={values.enabled}
+          disabled={submitting}
           onChange={(e) =>
             setValues((s) => ({ ...s, enabled: e.target.checked }))
           }
@@ -307,8 +314,9 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
       <div className="rounded-xl border border-border">
         <button
           type="button"
+          disabled={submitting}
           onClick={() => setAdvancedOpen((o) => !o)}
-          className="flex w-full items-center gap-2 px-4 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground"
+          className="flex w-full items-center gap-2 px-4 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
         >
           {advancedOpen ? (
             <ChevronDown className="size-4" />
@@ -328,6 +336,7 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
               onChange={(v) => setValues((s) => ({ ...s, monthly_quota: v }))}
               error={errors.monthly_quota}
               hint={t("field_monthly_quota_hint")}
+              disabled={submitting}
             />
             <Field
               id="provider-rate-limit-rpm"
@@ -338,6 +347,7 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
               onChange={(v) => setValues((s) => ({ ...s, rate_limit_rpm: v }))}
               error={errors.rate_limit_rpm}
               hint={t("field_rate_limit_hint")}
+              disabled={submitting}
             />
             <Field
               id="provider-cost-per-1k"
@@ -350,6 +360,7 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
               }
               error={errors.cost_per_1k_tokens}
               hint={t("field_cost_per_1k_hint")}
+              disabled={submitting}
             />
           </div>
         )}
@@ -386,6 +397,7 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
               </Button>
             )}
             <Button type="submit" disabled={submitting || Boolean(successId)}>
+              {submitting && <Loader2 className="mr-2 size-3.5 animate-spin" />}
               {submitting ? t("adding") : t("add")}
             </Button>
           </div>
@@ -452,6 +464,7 @@ interface FieldProps {
   inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
   placeholder?: string;
   hint?: string;
+  disabled?: boolean;
 }
 
 function Field({
@@ -464,6 +477,7 @@ function Field({
   inputMode,
   placeholder,
   hint,
+  disabled,
 }: FieldProps) {
   const errorId = `${id}-error`;
   const hintId = `${id}-hint`;
@@ -481,11 +495,12 @@ function Field({
         inputMode={inputMode}
         value={value}
         placeholder={placeholder}
+        disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
         aria-invalid={Boolean(error)}
         aria-describedby={cn(error && errorId, hint && hintId) || undefined}
         className={cn(
-          "w-full rounded-md border bg-background px-3 py-2 text-sm leading-snug tracking-apple-tight outline-none transition-colors",
+          "w-full rounded-md border bg-background px-3 py-2 text-sm leading-snug tracking-apple-tight outline-none transition-colors disabled:cursor-not-allowed disabled:opacity-60",
           error
             ? "border-destructive/60 focus-visible:border-destructive"
             : "border-border focus-visible:border-primary",

@@ -10,8 +10,30 @@ vi.mock("@/lib/tauri", () => ({
 import { addProvider, testProviderConnection } from "@/lib/tauri";
 import { AddProviderForm } from "../AddProviderForm";
 
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+const savedProvider = {
+  id: "11111111-2222-3333-4444-555555555555",
+  name: "Work",
+  kind: "openai" as const,
+  base_url: "https://api.openai.com",
+  priority: 50,
+  enabled: true,
+  created_at: "2026-04-29T00:00:00.000Z",
+  updated_at: "2026-04-29T00:00:00.000Z",
+};
+
 beforeEach(() => {
   vi.mocked(addProvider).mockReset();
+  vi.mocked(testProviderConnection).mockReset();
 });
 
 afterEach(() => {
@@ -20,16 +42,7 @@ afterEach(() => {
 
 describe("AddProviderForm", () => {
   it("submits a valid input and shows the new provider id", async () => {
-    vi.mocked(addProvider).mockResolvedValueOnce({
-      id: "11111111-2222-3333-4444-555555555555",
-      name: "Work",
-      kind: "openai",
-      base_url: "https://api.openai.com",
-      priority: 50,
-      enabled: true,
-      created_at: "2026-04-29T00:00:00.000Z",
-      updated_at: "2026-04-29T00:00:00.000Z",
-    });
+    vi.mocked(addProvider).mockResolvedValueOnce(savedProvider);
 
     const onAdded = vi.fn();
     render(<AddProviderForm onAdded={onAdded} />);
@@ -61,6 +74,27 @@ describe("AddProviderForm", () => {
     expect(onAdded).toHaveBeenCalledWith(
       "11111111-2222-3333-4444-555555555555",
     );
+    expect(await screen.findByText(/已添加.*11111111/)).toBeInTheDocument();
+  });
+
+  it("shows a loading state while saving a new provider", async () => {
+    const deferred = createDeferred<Awaited<ReturnType<typeof addProvider>>>();
+    vi.mocked(addProvider).mockReturnValueOnce(deferred.promise);
+
+    render(<AddProviderForm />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText("名称"), "Work");
+    await user.type(screen.getByLabelText("API Key"), "sk-real-1234");
+    await user.click(screen.getByRole("button", { name: "添加" }));
+
+    await waitFor(() => expect(addProvider).toHaveBeenCalledTimes(1));
+    const pendingButton = screen.getByRole("button", { name: "添加中..." });
+    expect(pendingButton).toBeDisabled();
+    expect(screen.getByLabelText("名称")).toBeDisabled();
+    expect(screen.getByLabelText("API Key")).toBeDisabled();
+
+    deferred.resolve(savedProvider);
+
     expect(await screen.findByText(/已添加.*11111111/)).toBeInTheDocument();
   });
 

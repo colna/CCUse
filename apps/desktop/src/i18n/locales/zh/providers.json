@@ -4,6 +4,7 @@
   "delete_title": "删除供应商",
   "delete_confirm": "确定要删除",
   "delete_undone": "此操作无法撤销。",
+  "deleting": "删除中...",
   "edit_name_label": "名称",
   "edit_kind_label": "供应商类型",
   "edit_url_label": "Base URL",
