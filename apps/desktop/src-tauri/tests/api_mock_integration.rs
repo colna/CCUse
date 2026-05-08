@@ -19,7 +19,7 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 
 fn openai_chat_request_body() -> Value {
     json!({
-        "model": "gpt-4o",
+        "model": "gpt-5.5-instant",
         "messages": [{"role": "user", "content": "ping"}],
         "temperature": 0.7,
         "max_tokens": 64,
@@ -29,7 +29,7 @@ fn openai_chat_request_body() -> Value {
 
 fn anthropic_messages_request_body() -> Value {
     json!({
-        "model": "claude-3-5-sonnet-20241022",
+        "model": "claude-sonnet-4-6",
         "max_tokens": 1024,
         "messages": [{"role": "user", "content": "ping"}]
     })
@@ -47,7 +47,7 @@ fn openai_success_response() -> Value {
         "id": "chatcmpl-mock",
         "object": "chat.completion",
         "created": 1_700_000_000_u64,
-        "model": "gpt-4o",
+        "model": "gpt-5.5-instant",
         "choices": [{
             "index": 0,
             "message": {"role": "assistant", "content": "pong"},
@@ -62,7 +62,7 @@ fn anthropic_success_response() -> Value {
         "id": "msg_mock",
         "type": "message",
         "role": "assistant",
-        "model": "claude-3-5-sonnet-20241022",
+        "model": "claude-sonnet-4-6",
         "content": [{"type": "text", "text": "pong"}],
         "stop_reason": "end_turn",
         "usage": {"input_tokens": 4, "output_tokens": 1}
@@ -123,7 +123,7 @@ mod three_provider_mocks {
         assert_eq!(resp.status(), 200);
         let body: Value = resp.json().await.expect("json");
         assert_eq!(body["id"], "chatcmpl-mock");
-        assert_eq!(body["model"], "gpt-4o");
+        assert_eq!(body["model"], "gpt-5.5-instant");
         assert_eq!(body["choices"][0]["message"]["role"], "assistant");
         assert_eq!(body["choices"][0]["message"]["content"], "pong");
         assert_eq!(body["choices"][0]["finish_reason"], "stop");
@@ -153,7 +153,7 @@ mod three_provider_mocks {
         assert_eq!(body["id"], "msg_mock");
         assert_eq!(body["type"], "message");
         assert_eq!(body["role"], "assistant");
-        assert_eq!(body["model"], "claude-3-5-sonnet-20241022");
+        assert_eq!(body["model"], "claude-sonnet-4-6");
         assert_eq!(body["content"][0]["type"], "text");
         assert_eq!(body["content"][0]["text"], "pong");
         assert_eq!(body["stop_reason"], "end_turn");
@@ -276,7 +276,7 @@ mod three_provider_mocks {
             OpenAIProvider::new("oai-1", "MockOpenAI", server.uri(), "sk-test").expect("build");
 
         let request = ApiRequest {
-            model: "gpt-4o".into(),
+            model: "gpt-5.5-instant".into(),
             messages: vec![ChatMessage {
                 role: "user".into(),
                 content: "ping".into(),
@@ -428,7 +428,7 @@ mod fault_injection {
         let provider =
             OpenAIProvider::new("oai-rl", "MockRL", server.uri(), "sk-test").expect("build");
         let request = ApiRequest {
-            model: "gpt-4o".into(),
+            model: "gpt-5.5-instant".into(),
             messages: vec![ChatMessage {
                 role: "user".into(),
                 content: "ping".into(),
@@ -548,7 +548,7 @@ mod fault_injection {
         let provider =
             OpenAIProvider::new("oai-5xx", "Mock5xx", server.uri(), "sk-test").expect("build");
         let request = ApiRequest {
-            model: "gpt-4o".into(),
+            model: "gpt-5.5-instant".into(),
             messages: vec![ChatMessage {
                 role: "user".into(),
                 content: "ping".into(),
@@ -667,7 +667,7 @@ mod fault_injection {
         let provider =
             OpenAIProvider::new("oai-to", "MockTimeout", server.uri(), "sk-test").expect("build");
         let request = ApiRequest {
-            model: "gpt-4o".into(),
+            model: "gpt-5.5-instant".into(),
             messages: vec![ChatMessage {
                 role: "user".into(),
                 content: "ping".into(),
@@ -718,7 +718,7 @@ mod fault_injection {
         .expect("build");
 
         let request = ApiRequest {
-            model: "gpt-4o".into(),
+            model: "gpt-5.5-instant".into(),
             messages: vec![ChatMessage {
                 role: "user".into(),
                 content: "ping".into(),

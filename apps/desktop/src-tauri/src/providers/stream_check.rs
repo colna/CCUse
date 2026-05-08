@@ -18,8 +18,8 @@ use super::model::{Provider, ProviderKind};
 pub const DEFAULT_STREAM_CHECK_TIMEOUT_SECS: u64 = 45;
 pub const DEFAULT_STREAM_CHECK_MAX_RETRIES: u32 = 2;
 pub const DEFAULT_DEGRADED_THRESHOLD_MS: u64 = 6000;
-pub const DEFAULT_CLAUDE_TEST_MODEL: &str = "claude-haiku-4-5-20251001";
-pub const DEFAULT_CODEX_TEST_MODEL: &str = "gpt-5.4@low";
+pub const DEFAULT_CLAUDE_TEST_MODEL: &str = "claude-haiku-4-5";
+pub const DEFAULT_CODEX_TEST_MODEL: &str = "gpt-5.5-instant";
 pub const DEFAULT_GEMINI_TEST_MODEL: &str = "gemini-3-flash-preview";
 pub const DEFAULT_TEST_PROMPT: &str = "Who are you?";
 
@@ -130,7 +130,9 @@ impl StreamCheckService {
             message: "Check failed".to_owned(),
             response_time_ms: None,
             http_status: None,
-            model_used: model_for_provider_kind(provider.kind, &self.config).to_owned(),
+            model_used: model_for_provider_kind(provider.kind, &self.config)
+                .trim()
+                .to_owned(),
             tested_at: unix_timestamp_now(),
             retry_count: self.config.max_retries,
             error_category: None,
@@ -139,7 +141,7 @@ impl StreamCheckService {
 
     async fn check_once(&self, provider: &Provider, api_key: &str) -> StreamCheckResult {
         let start = Instant::now();
-        let model = model_for_provider_kind(provider.kind, &self.config);
+        let model = model_for_provider_kind(provider.kind, &self.config).trim();
         let timeout = Duration::from_secs(self.config.timeout_secs);
         let result = match provider.kind {
             ProviderKind::Anthropic => {
@@ -360,7 +362,7 @@ fn build_result(
         Err(CheckFailure::HttpStatus { status, body }) => StreamCheckResult {
             status: StreamCheckStatus::Failed,
             success: false,
-            message: classify_http_status(status).to_owned(),
+            message: http_error_message(status, &body),
             response_time_ms: Some(response_time),
             http_status: Some(status),
             model_used: model_tested.to_owned(),
@@ -462,6 +464,48 @@ fn classify_http_status(status: u16) -> &'static str {
     }
 }
 
+fn http_error_message(status: u16, body: &str) -> String {
+    let summary = summarize_error_body(body);
+    if summary.is_empty() {
+        return classify_http_status(status).to_owned();
+    }
+    format!("{}: {summary}", classify_http_status(status))
+}
+
+fn summarize_error_body(body: &str) -> String {
+    let trimmed = body.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+
+    if let Ok(value) = serde_json::from_str::<Value>(trimmed) {
+        if let Some(message) = extract_error_message(&value) {
+            return truncate_summary(message.trim());
+        }
+    }
+
+    truncate_summary(&trimmed.split_whitespace().collect::<Vec<_>>().join(" "))
+}
+
+fn extract_error_message(value: &Value) -> Option<&str> {
+    value
+        .pointer("/error/message")
+        .and_then(Value::as_str)
+        .or_else(|| value.pointer("/error").and_then(Value::as_str))
+        .or_else(|| value.pointer("/message").and_then(Value::as_str))
+}
+
+fn truncate_summary(summary: &str) -> String {
+    const MAX_CHARS: usize = 240;
+    let mut chars = summary.chars();
+    let truncated: String = chars.by_ref().take(MAX_CHARS).collect();
+    if chars.next().is_some() {
+        format!("{truncated}...")
+    } else {
+        truncated
+    }
+}
+
 fn map_request_error(err: reqwest::Error) -> CheckFailure {
     if err.is_timeout() {
         return CheckFailure::Message("Request timeout".to_owned());
@@ -500,11 +544,18 @@ fn normalize_gemini_model_id(model: &str) -> &str {
 }
 
 fn parse_model_with_effort(model: &str) -> (String, Option<String>) {
+    let model = model.trim();
     if let Some((actual_model, effort)) = model.split_once('@') {
-        return (actual_model.to_owned(), Some(effort.to_owned()));
+        return (
+            actual_model.trim().to_owned(),
+            Some(effort.trim().to_owned()),
+        );
     }
     if let Some((actual_model, effort)) = model.split_once('#') {
-        return (actual_model.to_owned(), Some(effort.to_owned()));
+        return (
+            actual_model.trim().to_owned(),
+            Some(effort.trim().to_owned()),
+        );
     }
     (model.to_owned(), None)
 }
@@ -573,8 +624,8 @@ mod tests {
         assert_eq!(config.timeout_secs, 45);
         assert_eq!(config.max_retries, 2);
         assert_eq!(config.degraded_threshold_ms, 6000);
-        assert_eq!(config.claude_model, "claude-haiku-4-5-20251001");
-        assert_eq!(config.codex_model, "gpt-5.4@low");
+        assert_eq!(config.claude_model, "claude-haiku-4-5");
+        assert_eq!(config.codex_model, "gpt-5.5-instant");
         assert_eq!(config.gemini_model, "gemini-3-flash-preview");
         assert_eq!(config.test_prompt, "Who are you?");
     }
@@ -606,16 +657,16 @@ mod tests {
     #[test]
     fn model_with_reasoning_effort_is_parsed_like_cc_switch() {
         assert_eq!(
-            parse_model_with_effort("gpt-5.4@low"),
-            ("gpt-5.4".to_owned(), Some("low".to_owned()))
+            parse_model_with_effort(" test-model@low "),
+            ("test-model".to_owned(), Some("low".to_owned()))
         );
         assert_eq!(
             parse_model_with_effort("o1-preview#high"),
             ("o1-preview".to_owned(), Some("high".to_owned()))
         );
         assert_eq!(
-            parse_model_with_effort("gpt-4o-mini"),
-            ("gpt-4o-mini".to_owned(), None)
+            parse_model_with_effort("gpt-5.5-instant"),
+            ("gpt-5.5-instant".to_owned(), None)
         );
     }
 
@@ -650,6 +701,16 @@ mod tests {
         assert!(!should_retry("Auth rejected (401)"));
     }
 
+    #[test]
+    fn http_error_message_includes_sanitized_upstream_summary() {
+        let body = r#"{"error":{"message":"no available channel for model"}}"#;
+
+        assert_eq!(
+            http_error_message(503, body),
+            "Service unavailable (503): no available channel for model"
+        );
+    }
+
     #[tokio::test]
     async fn openai_stream_check_reads_first_chunk_and_uses_chat_api() {
         let service = StreamCheckService::with_default_config().expect("service");
@@ -657,7 +718,10 @@ mod tests {
         Mock::given(method("POST"))
             .and(path("/v1/chat/completions"))
             .and(header("authorization", "Bearer sk-test"))
-            .and(body_json(openai_chat_body("gpt-5.4", DEFAULT_TEST_PROMPT)))
+            .and(body_json(openai_chat_body(
+                "gpt-5.5-instant",
+                DEFAULT_TEST_PROMPT,
+            )))
             .respond_with(
                 ResponseTemplate::new(200)
                     .set_body_string("data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\n"),
@@ -671,7 +735,7 @@ mod tests {
 
         assert!(result.success);
         assert_eq!(result.http_status, Some(200));
-        assert_eq!(result.model_used, "gpt-5.4");
+        assert_eq!(result.model_used, "gpt-5.5-instant");
         assert_eq!(result.retry_count, 0);
     }
 

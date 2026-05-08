@@ -587,7 +587,7 @@ mod tests {
         Mock::given(method("POST"))
             .and(path("/v1/chat/completions"))
             .and(body_json(serde_json::json!({
-                "model": "gpt-5.4",
+                "model": "gpt-5.5-instant",
                 "messages": [{"role": "user", "content": "Who are you?"}],
                 "max_tokens": 1,
                 "stream": true,
@@ -613,7 +613,7 @@ mod tests {
 
         assert!(err.success);
         assert_eq!(err.http_status, Some(200));
-        assert_eq!(err.model_used, "gpt-5.4");
+        assert_eq!(err.model_used, "gpt-5.5-instant");
         assert!(matches!(
             err.status,
             crate::providers::StreamCheckStatus::Operational
@@ -634,14 +634,14 @@ mod tests {
         Mock::given(method("POST"))
             .and(path("/v1/messages"))
             .and(body_json(serde_json::json!({
-                "model": "claude-haiku-4-5-20251001",
+                "model": "claude-haiku-4-5",
                 "max_tokens": 1,
                 "messages": [{"role": "user", "content": "Who are you?"}],
                 "stream": true,
             })))
             .respond_with(
                 ResponseTemplate::new(404).set_body_string(
-                    r#"{"type":"error","error":{"type":"not_found_error","message":"model: claude-haiku-4-5-20251001"}}"#,
+                    r#"{"type":"error","error":{"type":"not_found_error","message":"model: claude-haiku-4-5"}}"#,
                 ),
             )
             .expect(1)
@@ -663,7 +663,7 @@ mod tests {
         assert_eq!(result.http_status, Some(404));
         assert_eq!(result.error_category.as_deref(), Some("modelNotFound"));
         assert_eq!(result.message, "Not found (404)");
-        assert_eq!(result.model_used, "claude-haiku-4-5-20251001");
+        assert_eq!(result.model_used, "claude-haiku-4-5");
         assert!(result.response_time_ms.is_some());
     }
 }

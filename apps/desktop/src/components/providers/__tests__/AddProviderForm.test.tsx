@@ -163,7 +163,7 @@ describe("AddProviderForm", () => {
       message: "Not found (404)",
       response_time_ms: 15,
       http_status: 404,
-      model_used: "claude-3-5-sonnet-20241022",
+      model_used: "claude-sonnet-4-6",
       tested_at: 1_714_000_000,
       retry_count: 0,
       error_category: "modelNotFound",

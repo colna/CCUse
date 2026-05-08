@@ -102,7 +102,7 @@ status=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer ${API_
 
 # /v1/chat/completions with auth = 503 providers_not_configured (Phase 1.0.1 stub).
 body=$(curl -s -H "Authorization: Bearer ${API_KEY}" -H "Content-Type: application/json" \
-  -d '{"model":"gpt-4o","messages":[]}' \
+  -d '{"model":"gpt-5.5-instant","messages":[]}' \
   "${BASE_URL}/v1/chat/completions")
 echo "${body}" | grep -q '"providers_not_configured"' && \
   check "/v1/chat/completions returns 503 stub with OpenAI-shaped error" ok || \

@@ -62,7 +62,7 @@ fn convert_stream(
 
 fn openai_request() -> serde_json::Value {
     json!({
-        "model": "gpt-4o",
+        "model": "gpt-5.5-instant",
         "messages": [
             {"role": "system", "content": "You are helpful."},
             {"role": "user", "content": "Hello!"}
@@ -75,7 +75,7 @@ fn openai_request() -> serde_json::Value {
 
 fn anthropic_request() -> serde_json::Value {
     json!({
-        "model": "claude-3-5-sonnet-20241022",
+        "model": "claude-sonnet-4-6",
         "system": "You are helpful.",
         "messages": [
             {"role": "user", "content": "Hello!"}
@@ -99,7 +99,7 @@ fn openai_response() -> serde_json::Value {
     json!({
         "id": "chatcmpl-abc",
         "object": "chat.completion",
-        "model": "gpt-4o",
+        "model": "gpt-5.5-instant",
         "choices": [{
             "index": 0,
             "message": {"role": "assistant", "content": "Hi there!"},
@@ -114,7 +114,7 @@ fn anthropic_response() -> serde_json::Value {
         "id": "msg_abc",
         "type": "message",
         "role": "assistant",
-        "model": "claude-3-5-sonnet-20241022",
+        "model": "claude-sonnet-4-6",
         "content": [{"type": "text", "text": "Hi there!"}],
         "stop_reason": "end_turn",
         "usage": {"input_tokens": 10, "output_tokens": 5}
@@ -134,7 +134,7 @@ fn gemini_response() -> serde_json::Value {
 fn openai_stream_chunk() -> String {
     json!({
         "id": "chatcmpl-1",
-        "model": "gpt-4o",
+        "model": "gpt-5.5-instant",
         "choices": [{
             "index": 0,
             "delta": {"role": "assistant", "content": "Hi"},
@@ -171,7 +171,7 @@ mod openai_edge_cases {
 
     #[test]
     fn empty_messages_array() {
-        let input = json!({"model": "gpt-4o", "messages": [], "stream": false});
+        let input = json!({"model": "gpt-5.5-instant", "messages": [], "stream": false});
         let u = openai().request_to_unified(&input).unwrap();
         assert!(u.messages.is_empty());
     }
@@ -179,7 +179,7 @@ mod openai_edge_cases {
     #[test]
     fn null_content_field() {
         let input = json!({
-            "model": "gpt-4o",
+            "model": "gpt-5.5-instant",
             "messages": [{"role": "assistant", "content": null}],
             "stream": false
         });
@@ -191,7 +191,7 @@ mod openai_edge_cases {
     fn response_without_usage() {
         let input = json!({
             "id": "x",
-            "model": "gpt-4o",
+            "model": "gpt-5.5-instant",
             "choices": [{"index": 0, "message": {"role": "assistant", "content": "ok"}, "finish_reason": "stop"}]
         });
         let u = openai().response_to_unified(&input).unwrap();
@@ -201,7 +201,7 @@ mod openai_edge_cases {
     #[test]
     fn stream_chunk_with_usage() {
         let data = json!({
-            "id": "c1", "model": "gpt-4o",
+            "id": "c1", "model": "gpt-5.5-instant",
             "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
             "usage": {"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8}
         });
@@ -215,7 +215,7 @@ mod openai_edge_cases {
     #[test]
     fn multiple_tool_calls() {
         let input = json!({
-            "model": "gpt-4o",
+            "model": "gpt-5.5-instant",
             "messages": [{
                 "role": "assistant",
                 "content": null,
@@ -233,7 +233,7 @@ mod openai_edge_cases {
     #[test]
     fn stop_sequences() {
         let input = json!({
-            "model": "gpt-4o",
+            "model": "gpt-5.5-instant",
             "messages": [{"role": "user", "content": "hi"}],
             "stop": ["END", "STOP"],
             "stream": false
@@ -249,7 +249,7 @@ mod anthropic_edge_cases {
     #[test]
     fn system_as_array() {
         let input = json!({
-            "model": "claude-3-5-sonnet-20241022",
+            "model": "claude-sonnet-4-6",
             "max_tokens": 100,
             "system": [{"type": "text", "text": "part1"}, {"type": "text", "text": "part2"}],
             "messages": [{"role": "user", "content": "hi"}]
@@ -261,7 +261,7 @@ mod anthropic_edge_cases {
     #[test]
     fn tool_result_with_array_content() {
         let input = json!({
-            "model": "claude-3-5-sonnet-20241022",
+            "model": "claude-sonnet-4-6",
             "max_tokens": 100,
             "messages": [{
                 "role": "user",
@@ -282,7 +282,7 @@ mod anthropic_edge_cases {
     fn response_tool_use_content() {
         let input = json!({
             "id": "msg_1",
-            "model": "claude-3-5-sonnet-20241022",
+            "model": "claude-sonnet-4-6",
             "content": [
                 {"type": "text", "text": "Let me search."},
                 {"type": "tool_use", "id": "tu_1", "name": "search", "input": {"q": "rust"}}
@@ -641,7 +641,7 @@ fn gemini_stream_to_gemini() {
 
 fn openai_tool_request() -> serde_json::Value {
     json!({
-        "model": "gpt-4o",
+        "model": "gpt-5.5-instant",
         "messages": [
             {"role": "user", "content": "weather?"},
             {
@@ -689,7 +689,7 @@ fn tool_call_openai_to_gemini() {
 #[test]
 fn tool_call_anthropic_to_openai() {
     let input = json!({
-        "model": "claude-3-5-sonnet-20241022",
+        "model": "claude-sonnet-4-6",
         "max_tokens": 100,
         "messages": [
             {"role": "user", "content": "weather?"},

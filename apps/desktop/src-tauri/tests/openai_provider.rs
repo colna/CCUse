@@ -22,7 +22,7 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 
 fn sample_request(stream: bool) -> ApiRequest {
     ApiRequest {
-        model: "gpt-4o".into(),
+        model: "gpt-5.5-instant".into(),
         messages: vec![ChatMessage {
             role: "user".into(),
             content: "ping".into(),
@@ -44,7 +44,7 @@ fn sample_request_without_model(stream: bool) -> ApiRequest {
 
 fn multimodal_request(stream: bool) -> ApiRequest {
     ApiRequest {
-        model: "gpt-4o".into(),
+        model: "gpt-5.5-instant".into(),
         messages: vec![ChatMessage {
             role: "user".into(),
             content: ChatContent::parts(vec![
@@ -73,7 +73,7 @@ fn fixture_response_body() -> Value {
         "id": "chatcmpl-test",
         "object": "chat.completion",
         "created": 1_700_000_000_u64,
-        "model": "gpt-4o",
+        "model": "gpt-5.5-instant",
         "choices": [{
             "index": 0,
             "message": {"role": "assistant", "content": "pong"},
@@ -100,7 +100,7 @@ async fn send_request_round_trips_a_successful_completion() {
         .await
         .expect("ok");
     assert_eq!(response.id, "chatcmpl-test");
-    assert_eq!(response.model, "gpt-4o");
+    assert_eq!(response.model, "gpt-5.5-instant");
     assert_eq!(response.choices.len(), 1);
     assert_eq!(response.choices[0].message.content, "pong");
     assert_eq!(response.usage.expect("usage").total_tokens, 5);
@@ -195,7 +195,9 @@ async fn send_request_tries_next_default_model_when_first_model_is_unavailable()
         .await;
     Mock::given(method("POST"))
         .and(path("/v1/chat/completions"))
-        .and(body_partial_json(serde_json::json!({"model": "gpt-5.4"})))
+        .and(body_partial_json(
+            serde_json::json!({"model": "gpt-5.5-instant"}),
+        ))
         .respond_with(ResponseTemplate::new(200).set_body_json(fixture_response_body()))
         .expect(1)
         .mount(&server)
@@ -206,7 +208,7 @@ async fn send_request_tries_next_default_model_when_first_model_is_unavailable()
         "Mock",
         server.uri(),
         "sk-test",
-        vec!["gpt-5.5".to_owned(), "gpt-5.4".to_owned()],
+        vec!["gpt-5.5".to_owned(), "gpt-5.5-instant".to_owned()],
     )
     .expect("build provider");
     provider
@@ -224,7 +226,7 @@ async fn send_request_tries_next_default_model_when_first_model_is_unavailable()
                 .to_owned()
         })
         .collect::<Vec<_>>();
-    assert_eq!(models, vec!["gpt-5.5", "gpt-5.4"]);
+    assert_eq!(models, vec!["gpt-5.5", "gpt-5.5-instant"]);
 }
 
 #[tokio::test]
@@ -334,7 +336,7 @@ async fn health_check_uses_stream_probe_and_maps_success_status() {
         .and(path("/v1/chat/completions"))
         .and(header("authorization", "Bearer sk-test"))
         .and(body_json(serde_json::json!({
-            "model": "gpt-5.4",
+            "model": "gpt-5.5-instant",
             "messages": [{ "role": "user", "content": "Who are you?" }],
             "max_tokens": 1,
             "stream": true,
@@ -362,8 +364,8 @@ async fn list_models_calls_v1_models_and_decodes_data() {
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "object": "list",
             "data": [
-                {"id": "gpt-4o", "object": "model", "owned_by": "openai"},
-                {"id": "gpt-4o-mini"}
+                {"id": "gpt-5.5-instant", "object": "model", "owned_by": "openai"},
+                {"id": "gpt-5.5-instant"}
             ]
         })))
         .expect(1)
@@ -375,9 +377,9 @@ async fn list_models_calls_v1_models_and_decodes_data() {
     let models = provider.list_models().await.expect("models");
 
     assert_eq!(models.len(), 2);
-    assert_eq!(models[0].id, "gpt-4o");
+    assert_eq!(models[0].id, "gpt-5.5-instant");
     assert_eq!(models[0].owned_by.as_deref(), Some("openai"));
-    assert_eq!(models[1].id, "gpt-4o-mini");
+    assert_eq!(models[1].id, "gpt-5.5-instant");
     assert_eq!(models[1].object, "model");
 }
 

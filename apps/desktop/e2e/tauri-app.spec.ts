@@ -262,7 +262,7 @@ function startMockProvider(): Promise<MockProvider> {
         response.end(
           JSON.stringify({
             object: "list",
-            data: [{ id: "gpt-4o", object: "model" }],
+            data: [{ id: "gpt-5.5-instant", object: "model" }],
           }),
         );
         return;
@@ -275,7 +275,7 @@ function startMockProvider(): Promise<MockProvider> {
             id: "chatcmpl-tauri-e2e",
             object: "chat.completion",
             created: 1_700_000_000,
-            model: "gpt-4o",
+            model: "gpt-5.5-instant",
             choices: [
               {
                 index: 0,
@@ -357,7 +357,7 @@ async function callLocalProxy(
   const response = await request.post(`${baseUrl}/v1/chat/completions`, {
     headers: { authorization: `Bearer ${apiKey}` },
     data: {
-      model: "gpt-4o",
+      model: "gpt-5.5-instant",
       messages: [{ role: "user", content: "ping" }],
       stream: false,
     },

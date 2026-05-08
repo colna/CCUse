@@ -464,7 +464,7 @@ mod tests {
     fn chat_completion_body_omits_none_fields_and_wraps_tools() {
         let body = chat_completion_body(
             ApiRequest {
-                model: "gpt-4o".into(),
+                model: "gpt-5.5-instant".into(),
                 messages: vec![ChatMessage {
                     role: "user".into(),
                     content: "ping".into(),
@@ -485,7 +485,7 @@ mod tests {
         .expect("serialize request body");
 
         assert_eq!(body["stream"], true);
-        assert_eq!(body["model"], "gpt-4o");
+        assert_eq!(body["model"], "gpt-5.5-instant");
         assert!(body.get("temperature").is_none());
         assert!(body.get("max_tokens").is_none());
         assert_eq!(body["tools"][0]["type"], "function");

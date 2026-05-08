@@ -307,7 +307,7 @@ mod tests {
     #[test]
     fn unified_request_serialization() {
         let req = UnifiedRequest {
-            model: "gpt-4o".into(),
+            model: "gpt-5.5-instant".into(),
             messages: vec![UnifiedMessage::text(Role::User, "hi")],
             temperature: Some(0.7),
             max_tokens: Some(100),
@@ -325,7 +325,7 @@ mod tests {
     fn unified_response_serialization() {
         let resp = UnifiedResponse {
             id: "resp_1".into(),
-            model: "gpt-4o".into(),
+            model: "gpt-5.5-instant".into(),
             choices: vec![UnifiedChoice {
                 index: 0,
                 message: UnifiedMessage::text(Role::Assistant, "hi there"),
@@ -356,7 +356,7 @@ mod tests {
     fn stream_chunk_serialization() {
         let chunk = UnifiedStreamChunk {
             id: "chunk_1".into(),
-            model: "gpt-4o".into(),
+            model: "gpt-5.5-instant".into(),
             choices: vec![StreamChoice {
                 index: 0,
                 delta: Some(StreamDelta {

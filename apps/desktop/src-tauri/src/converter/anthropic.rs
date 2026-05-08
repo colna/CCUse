@@ -671,13 +671,13 @@ mod tests {
     #[test]
     fn simple_request_roundtrip() {
         let input = json!({
-            "model": "claude-3-5-sonnet-20241022",
+            "model": "claude-sonnet-4-6",
             "max_tokens": 1024,
             "system": "You are helpful.",
             "messages": [{"role": "user", "content": "hello"}]
         });
         let unified = converter().request_to_unified(&input).unwrap();
-        assert_eq!(unified.model, "claude-3-5-sonnet-20241022");
+        assert_eq!(unified.model, "claude-sonnet-4-6");
         assert_eq!(unified.messages.len(), 2);
         assert_eq!(unified.messages[0].role, Role::System);
         assert_eq!(unified.messages[0].text_content(), "You are helpful.");
@@ -702,7 +702,7 @@ mod tests {
     #[test]
     fn tool_use_roundtrip() {
         let input = json!({
-            "model": "claude-3-5-sonnet-20241022",
+            "model": "claude-sonnet-4-6",
             "max_tokens": 1024,
             "messages": [
                 {"role": "user", "content": "weather in Tokyo?"},
@@ -743,7 +743,7 @@ mod tests {
             "id": "msg_abc",
             "type": "message",
             "role": "assistant",
-            "model": "claude-3-5-sonnet-20241022",
+            "model": "claude-sonnet-4-6",
             "content": [{"type": "text", "text": "Hello!"}],
             "stop_reason": "end_turn",
             "usage": {"input_tokens": 10, "output_tokens": 5}
@@ -764,7 +764,7 @@ mod tests {
     fn response_includes_zero_usage_when_unified_usage_is_missing() {
         let response = UnifiedResponse {
             id: String::new(),
-            model: "claude-3-5-sonnet-20241022".into(),
+            model: "claude-sonnet-4-6".into(),
             choices: vec![UnifiedChoice {
                 index: 0,
                 message: UnifiedMessage::text(Role::Assistant, "Hello!"),
@@ -788,7 +788,7 @@ mod tests {
                 "id": "msg_1",
                 "type": "message",
                 "role": "assistant",
-                "model": "claude-3-5-sonnet-20241022",
+                "model": "claude-sonnet-4-6",
                 "content": []
             }
         });
@@ -811,7 +811,7 @@ mod tests {
                 "id": "msg_1",
                 "type": "message",
                 "role": "assistant",
-                "model": "claude-3-5-sonnet-20241022",
+                "model": "claude-sonnet-4-6",
                 "content": [],
                 "usage": {"input_tokens": 7, "output_tokens": 0}
             }
@@ -830,7 +830,7 @@ mod tests {
     fn stream_encoder_includes_zero_usage_when_missing() {
         let chunk = UnifiedStreamChunk {
             id: "msg_stream".into(),
-            model: "claude-3-5-sonnet-20241022".into(),
+            model: "claude-sonnet-4-6".into(),
             choices: vec![StreamChoice {
                 index: 0,
                 delta: Some(StreamDelta {
@@ -962,7 +962,7 @@ mod tests {
     #[test]
     fn image_base64_roundtrip() {
         let input = json!({
-            "model": "claude-3-5-sonnet-20241022",
+            "model": "claude-sonnet-4-6",
             "max_tokens": 1024,
             "messages": [{
                 "role": "user",
@@ -992,7 +992,7 @@ mod tests {
     #[test]
     fn image_url_roundtrip() {
         let input = json!({
-            "model": "claude-3-5-sonnet-20241022",
+            "model": "claude-sonnet-4-6",
             "max_tokens": 1024,
             "messages": [{
                 "role": "user",

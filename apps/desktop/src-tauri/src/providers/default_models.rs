@@ -3,16 +3,16 @@
 use super::api::ProviderError;
 use super::model::ProviderKind;
 
-pub const OPENAI_DEFAULT_MODELS: &[&str] = &["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"];
+pub const OPENAI_DEFAULT_MODELS: &[&str] = &["gpt-5.5", "gpt-5.5-instant", "gpt-5.5-instant"];
 pub const ANTHROPIC_DEFAULT_MODELS: &[&str] =
-    &["claude-opus-4.7", "claude-sonnet-4.6", "claude-haiku-4.5"];
+    &["claude-opus-4.7", "claude-sonnet-4.6", "claude-haiku-4-5"];
 pub const OPENAI_COMPATIBLE_DEFAULT_MODELS: &[&str] = &[
     "gpt-5.5",
-    "gpt-5.4",
-    "gpt-5.4-mini",
+    "gpt-5.5-instant",
+    "gpt-5.5-instant",
     "claude-opus-4.7",
     "claude-sonnet-4.6",
-    "claude-haiku-4.5",
+    "claude-haiku-4-5",
 ];
 pub const GEMINI_DEFAULT_MODELS: &[&str] = &["gemini-3-flash-preview"];
 
@@ -28,12 +28,20 @@ pub fn default_models_for_kind(kind: ProviderKind) -> &'static [&'static str] {
 
 #[must_use]
 pub fn owned_defaults(defaults: &[&str]) -> Vec<String> {
-    defaults.iter().map(|model| (*model).to_owned()).collect()
+    defaults
+        .iter()
+        .map(|model| model.trim().to_owned())
+        .collect()
 }
 
 #[must_use]
 pub fn model_candidates(_request_model: &str, defaults: &[String]) -> Vec<String> {
-    defaults.to_vec()
+    defaults
+        .iter()
+        .map(|model| model.trim())
+        .filter(|model| !model.is_empty())
+        .map(str::to_owned)
+        .collect()
 }
 
 #[must_use]
@@ -82,7 +90,7 @@ mod tests {
 
         assert_eq!(
             model_candidates("", &defaults),
-            vec!["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"],
+            vec!["gpt-5.5", "gpt-5.5-instant", "gpt-5.5-instant"],
         );
     }
 
@@ -92,7 +100,21 @@ mod tests {
 
         assert_eq!(
             model_candidates(" gpt-custom ", &defaults),
-            vec!["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"],
+            vec!["gpt-5.5", "gpt-5.5-instant", "gpt-5.5-instant"],
+        );
+    }
+
+    #[test]
+    fn default_candidates_trim_accidental_whitespace() {
+        let defaults = vec![
+            " gpt-5.5 ".to_owned(),
+            " ".to_owned(),
+            "gpt-5.5-instant".to_owned(),
+        ];
+
+        assert_eq!(
+            model_candidates("", &defaults),
+            vec!["gpt-5.5", "gpt-5.5-instant"],
         );
     }
 

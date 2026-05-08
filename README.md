@@ -90,7 +90,7 @@ curl -sS http://127.0.0.1:8787/v1/chat/completions \
   -H "Authorization: Bearer sk-local-..." \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "gpt-4o-mini",
+    "model": "gpt-5.5-instant",
     "messages": [
       { "role": "user", "content": "Reply with: CCUse OK" }
     ],

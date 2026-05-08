@@ -164,7 +164,7 @@ async fn start_proxy_with_native_anthropic_provider(spec: &ProviderSpec<'_>) -> 
 
 fn chat_request(stream: bool) -> Value {
     json!({
-        "model": "gpt-4o",
+        "model": "gpt-5.5-instant",
         "messages": [{"role": "user", "content": "ping"}],
         "temperature": 0.7,
         "max_tokens": 64,
@@ -189,7 +189,7 @@ fn chat_request_without_model() -> Value {
 
 fn chat_request_with_image() -> Value {
     json!({
-        "model": "gpt-4o",
+        "model": "gpt-5.5-instant",
         "messages": [{
             "role": "user",
             "content": [
@@ -215,7 +215,7 @@ fn chat_stream_request_with_image() -> Value {
 
 fn chat_request_with_tools() -> Value {
     json!({
-        "model": "gpt-4o",
+        "model": "gpt-5.5-instant",
         "messages": [{"role": "user", "content": "weather in Tokyo?"}],
         "tools": [{
             "type": "function",
@@ -234,7 +234,7 @@ fn chat_request_with_tools() -> Value {
 
 fn anthropic_messages_request() -> Value {
     json!({
-        "model": "claude-3-5-sonnet-20241022",
+        "model": "claude-sonnet-4-6",
         "max_tokens": 128,
         "system": "You are terse.",
         "messages": [{"role": "user", "content": "ping"}],
@@ -261,7 +261,7 @@ fn anthropic_messages_request_without_model() -> Value {
 
 fn anthropic_messages_request_with_base64_image() -> Value {
     json!({
-        "model": "claude-3-5-sonnet-20241022",
+        "model": "claude-sonnet-4-6",
         "max_tokens": 128,
         "messages": [{
             "role": "user",
@@ -289,7 +289,7 @@ fn anthropic_messages_stream_request_with_base64_image() -> Value {
 
 fn anthropic_messages_stream_request() -> Value {
     json!({
-        "model": "claude-3-5-sonnet-20241022",
+        "model": "claude-sonnet-4-6",
         "max_tokens": 128,
         "system": "You are terse.",
         "messages": [{"role": "user", "content": "ping"}],
@@ -299,7 +299,7 @@ fn anthropic_messages_stream_request() -> Value {
 
 fn anthropic_messages_tool_request() -> Value {
     json!({
-        "model": "claude-3-5-sonnet-20241022",
+        "model": "claude-sonnet-4-6",
         "max_tokens": 128,
         "messages": [
             {"role": "user", "content": "weather in Tokyo?"},
@@ -333,7 +333,7 @@ fn openai_text_response(content: &str) -> Value {
         "id": "chatcmpl-proxy-e2e",
         "object": "chat.completion",
         "created": 1_700_000_000_u64,
-        "model": "gpt-4o",
+        "model": "gpt-5.5-instant",
         "choices": [{
             "index": 0,
             "message": {"role": "assistant", "content": content},
@@ -388,7 +388,7 @@ fn openai_text_response_with_finish_reason(content: &str, finish_reason: &str) -
         "id": "chatcmpl-proxy-e2e",
         "object": "chat.completion",
         "created": 1_700_000_000_u64,
-        "model": "gpt-4o",
+        "model": "gpt-5.5-instant",
         "choices": [{
             "index": 0,
             "message": {"role": "assistant", "content": content},
@@ -438,7 +438,7 @@ fn openai_tool_call_response() -> Value {
         "id": "chatcmpl-tool",
         "object": "chat.completion",
         "created": 1_700_000_000_u64,
-        "model": "gpt-4o",
+        "model": "gpt-5.5-instant",
         "choices": [{
             "index": 0,
             "message": {
@@ -476,14 +476,17 @@ async fn models_aggregates_providers_with_namespaced_deduped_ids() {
     Mock::given(method("GET"))
         .and(path("/v1/models"))
         .respond_with(
-            ResponseTemplate::new(200).set_body_json(models_response(&["gpt-4o", "gpt-4o"])),
+            ResponseTemplate::new(200)
+                .set_body_json(models_response(&["gpt-5.5-instant", "gpt-5.5-instant"])),
         )
         .expect(1)
         .mount(&primary)
         .await;
     Mock::given(method("GET"))
         .and(path("/v1/models"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(models_response(&["gpt-4o"])))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(models_response(&["gpt-5.5-instant"])),
+        )
         .expect(1)
         .mount(&backup)
         .await;
@@ -515,7 +518,13 @@ async fn models_aggregates_providers_with_namespaced_deduped_ids() {
         .iter()
         .map(|model| model["id"].as_str().expect("id"))
         .collect::<Vec<_>>();
-    assert_eq!(ids, vec!["models-primary::gpt-4o", "models-backup::gpt-4o"],);
+    assert_eq!(
+        ids,
+        vec![
+            "models-primary::gpt-5.5-instant",
+            "models-backup::gpt-5.5-instant"
+        ],
+    );
     assert_eq!(body["data"][0]["owned_by"], "models-primary");
     assert_eq!(body["data"][1]["owned_by"], "models-backup");
 
@@ -534,7 +543,9 @@ async fn models_returns_partial_results_when_one_provider_fails() {
         .await;
     Mock::given(method("GET"))
         .and(path("/v1/models"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(models_response(&["gpt-4o-mini"])))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(models_response(&["gpt-5.5-instant"])),
+        )
         .expect(1)
         .mount(&healthy)
         .await;
@@ -562,7 +573,7 @@ async fn models_returns_partial_results_when_one_provider_fails() {
     let body: Value = response.json().await.expect("response json");
     let data = body["data"].as_array().expect("data array");
     assert_eq!(data.len(), 1);
-    assert_eq!(data[0]["id"], "models-healthy::gpt-4o-mini");
+    assert_eq!(data[0]["id"], "models-healthy::gpt-5.5-instant");
 
     proxy.shutdown().await;
 }
@@ -679,7 +690,7 @@ async fn chat_completions_without_model_falls_back_to_next_openai_default_model(
         .await;
     Mock::given(method("POST"))
         .and(path("/v1/chat/completions"))
-        .and(body_partial_json(json!({"model": "gpt-5.4"})))
+        .and(body_partial_json(json!({"model": "gpt-5.5-instant"})))
         .respond_with(ResponseTemplate::new(200).set_body_json(openai_text_response("fallback")))
         .expect(1)
         .mount(&upstream)
@@ -714,7 +725,7 @@ async fn chat_completions_without_model_falls_back_to_next_openai_default_model(
                 .to_owned()
         })
         .collect::<Vec<_>>();
-    assert_eq!(models, vec!["gpt-5.5", "gpt-5.4"]);
+    assert_eq!(models, vec!["gpt-5.5", "gpt-5.5-instant"]);
 
     proxy.shutdown().await;
 }
@@ -733,7 +744,7 @@ async fn chat_completions_with_client_model_still_falls_back_to_next_openai_defa
         .await;
     Mock::given(method("POST"))
         .and(path("/v1/chat/completions"))
-        .and(body_partial_json(json!({"model": "gpt-5.4"})))
+        .and(body_partial_json(json!({"model": "gpt-5.5-instant"})))
         .respond_with(ResponseTemplate::new(200).set_body_json(openai_text_response("fallback")))
         .expect(1)
         .mount(&upstream)
@@ -765,7 +776,7 @@ async fn chat_completions_with_client_model_still_falls_back_to_next_openai_defa
                 .to_owned()
         })
         .collect::<Vec<_>>();
-    assert_eq!(models, vec!["gpt-5.5", "gpt-5.4"]);
+    assert_eq!(models, vec!["gpt-5.5", "gpt-5.5-instant"]);
 
     proxy.shutdown().await;
 }
@@ -868,7 +879,7 @@ async fn chat_completions_keeps_upstream_response_model_and_uses_default_model()
 
     assert_eq!(response.status(), StatusCode::OK);
     let response_body: Value = response.json().await.expect("response json");
-    assert_eq!(response_body["model"], "gpt-4o");
+    assert_eq!(response_body["model"], "gpt-5.5-instant");
     let received = upstream.received_requests().await.expect("received");
     let upstream_body: Value = serde_json::from_slice(&received[0].body).expect("json");
     assert_eq!(upstream_body["model"], "gpt-5.5");
@@ -916,7 +927,7 @@ async fn chat_completions_non_streaming_handler_times_out() {
 #[tokio::test]
 async fn chat_completions_streaming_ignores_non_streaming_handler_timeout() {
     let upstream = MockServer::start().await;
-    let sse = "data: {\"id\":\"chatcmpl-timeout-stream\",\"model\":\"gpt-4o\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ok\"},\"finish_reason\":null}]}\n\n\
+    let sse = "data: {\"id\":\"chatcmpl-timeout-stream\",\"model\":\"gpt-5.5-instant\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ok\"},\"finish_reason\":null}]}\n\n\
                data: [DONE]\n\n";
     Mock::given(method("POST"))
         .and(path("/v1/chat/completions"))
@@ -1171,8 +1182,8 @@ async fn anthropic_messages_converts_image_content_to_openai_upstream_shape() {
 #[tokio::test]
 async fn anthropic_messages_streaming_converts_image_content_to_openai_upstream_shape() {
     let upstream = MockServer::start().await;
-    let sse = "data: {\"id\":\"chatcmpl-anthropic-image-stream\",\"model\":\"gpt-4o\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\"},\"finish_reason\":null}]}\n\n\
-               data: {\"id\":\"chatcmpl-anthropic-image-stream\",\"model\":\"gpt-4o\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ok\"},\"finish_reason\":null}]}\n\n\
+    let sse = "data: {\"id\":\"chatcmpl-anthropic-image-stream\",\"model\":\"gpt-5.5-instant\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\"},\"finish_reason\":null}]}\n\n\
+               data: {\"id\":\"chatcmpl-anthropic-image-stream\",\"model\":\"gpt-5.5-instant\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ok\"},\"finish_reason\":null}]}\n\n\
                data: [DONE]\n\n";
     Mock::given(method("POST"))
         .and(path("/v1/chat/completions"))
@@ -1312,10 +1323,10 @@ async fn anthropic_messages_maps_openai_length_to_max_tokens_stop_reason() {
 #[tokio::test]
 async fn anthropic_messages_streams_anthropic_sse_events() {
     let upstream = MockServer::start().await;
-    let sse = "data: {\"id\":\"chatcmpl-anthropic-stream\",\"model\":\"gpt-4o\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\"},\"finish_reason\":null}]}\n\n\
-               data: {\"id\":\"chatcmpl-anthropic-stream\",\"model\":\"gpt-4o\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Hel\"},\"finish_reason\":null}]}\n\n\
-               data: {\"id\":\"chatcmpl-anthropic-stream\",\"model\":\"gpt-4o\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"lo\"},\"finish_reason\":null}]}\n\n\
-               data: {\"id\":\"chatcmpl-anthropic-stream\",\"model\":\"gpt-4o\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n\
+    let sse = "data: {\"id\":\"chatcmpl-anthropic-stream\",\"model\":\"gpt-5.5-instant\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\"},\"finish_reason\":null}]}\n\n\
+               data: {\"id\":\"chatcmpl-anthropic-stream\",\"model\":\"gpt-5.5-instant\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Hel\"},\"finish_reason\":null}]}\n\n\
+               data: {\"id\":\"chatcmpl-anthropic-stream\",\"model\":\"gpt-5.5-instant\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"lo\"},\"finish_reason\":null}]}\n\n\
+               data: {\"id\":\"chatcmpl-anthropic-stream\",\"model\":\"gpt-5.5-instant\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n\
                data: [DONE]\n\n";
     Mock::given(method("POST"))
         .and(path("/v1/chat/completions"))
@@ -1432,8 +1443,8 @@ async fn anthropic_messages_stream_passthroughs_native_anthropic_sse() {
 #[tokio::test]
 async fn anthropic_messages_stream_adds_message_start_when_upstream_omits_role_and_id() {
     let upstream = MockServer::start().await;
-    let sse = "data: {\"model\":\"gpt-4o\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Hi\"},\"finish_reason\":null}]}\n\n\
-               data: {\"model\":\"gpt-4o\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n\
+    let sse = "data: {\"model\":\"gpt-5.5-instant\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Hi\"},\"finish_reason\":null}]}\n\n\
+               data: {\"model\":\"gpt-5.5-instant\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n\
                data: [DONE]\n\n";
     Mock::given(method("POST"))
         .and(path("/v1/chat/completions"))
@@ -1484,13 +1495,13 @@ async fn anthropic_messages_stream_adds_message_start_when_upstream_omits_role_a
 #[tokio::test]
 async fn anthropic_messages_streams_tool_use_events_in_order() {
     let upstream = MockServer::start().await;
-    let sse = r#"data: {"id":"chatcmpl-tool-stream","model":"gpt-4o","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}
+    let sse = r#"data: {"id":"chatcmpl-tool-stream","model":"gpt-5.5-instant","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}
 
-data: {"id":"chatcmpl-tool-stream","model":"gpt-4o","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_weather","type":"function","function":{"name":"get_weather","arguments":"{\"city\":"}}]},"finish_reason":null}]}
+data: {"id":"chatcmpl-tool-stream","model":"gpt-5.5-instant","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_weather","type":"function","function":{"name":"get_weather","arguments":"{\"city\":"}}]},"finish_reason":null}]}
 
-data: {"id":"chatcmpl-tool-stream","model":"gpt-4o","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"Tokyo\"}"}}]},"finish_reason":null}]}
+data: {"id":"chatcmpl-tool-stream","model":"gpt-5.5-instant","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"Tokyo\"}"}}]},"finish_reason":null}]}
 
-data: {"id":"chatcmpl-tool-stream","model":"gpt-4o","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}
+data: {"id":"chatcmpl-tool-stream","model":"gpt-5.5-instant","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}
 
 data: [DONE]
 
@@ -1548,7 +1559,7 @@ data: [DONE]
 #[tokio::test]
 async fn anthropic_messages_stream_error_returns_sse_error_frame_without_socket_reset() {
     let upstream = MockServer::start().await;
-    let sse = "data: {\"id\":\"chatcmpl-stream-error\",\"model\":\"gpt-4o\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\"},\"finish_reason\":null}]}\n\n\
+    let sse = "data: {\"id\":\"chatcmpl-stream-error\",\"model\":\"gpt-5.5-instant\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\"},\"finish_reason\":null}]}\n\n\
                data: {not-json}\n\n";
     Mock::given(method("POST"))
         .and(path("/v1/chat/completions"))
@@ -1711,7 +1722,7 @@ async fn chat_completions_forwards_multimodal_content_to_upstream() {
 #[tokio::test]
 async fn chat_completions_streams_multimodal_content_to_upstream() {
     let upstream = MockServer::start().await;
-    let sse = "data: {\"id\":\"chatcmpl-image-stream\",\"model\":\"gpt-4o\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"ok\"},\"finish_reason\":null}]}\n\n\
+    let sse = "data: {\"id\":\"chatcmpl-image-stream\",\"model\":\"gpt-5.5-instant\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"ok\"},\"finish_reason\":null}]}\n\n\
                data: [DONE]\n\n";
     Mock::given(method("POST"))
         .and(path("/v1/chat/completions"))
@@ -1785,7 +1796,7 @@ async fn chat_completions_writes_request_log_for_monitoring() {
         .expect("request logs");
     assert_eq!(logs.len(), 1);
     assert_eq!(logs[0].provider_id, "monitor-provider");
-    assert_eq!(logs[0].model, "gpt-4o");
+    assert_eq!(logs[0].model, "gpt-5.5-instant");
     assert_eq!(logs[0].status, "ok");
     assert_eq!(logs[0].total_tokens, Some(6));
     assert!(!logs[0].stream);
@@ -1835,8 +1846,8 @@ async fn chat_completions_forwards_tool_definitions_to_upstream() {
 #[tokio::test]
 async fn chat_completions_streams_sse_response_to_client() {
     let upstream = MockServer::start().await;
-    let sse = "data: {\"id\":\"chatcmpl-stream\",\"model\":\"gpt-4o\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"Hel\"},\"finish_reason\":null}]}\n\n\
-               data: {\"id\":\"chatcmpl-stream\",\"model\":\"gpt-4o\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"lo\"},\"finish_reason\":null}]}\n\n\
+    let sse = "data: {\"id\":\"chatcmpl-stream\",\"model\":\"gpt-5.5-instant\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"Hel\"},\"finish_reason\":null}]}\n\n\
+               data: {\"id\":\"chatcmpl-stream\",\"model\":\"gpt-5.5-instant\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"lo\"},\"finish_reason\":null}]}\n\n\
                data: [DONE]\n\n";
     Mock::given(method("POST"))
         .and(path("/v1/chat/completions"))

@@ -202,7 +202,7 @@ test("UI provider add drives a real proxy request into dashboard metrics", async
           authorization: `Bearer ${fixture.config.api_key}`,
         },
         data: {
-          model: "gpt-4o",
+          model: "gpt-5.5-instant",
           messages: [{ role: "user", content: "ping" }],
           stream: false,
         },

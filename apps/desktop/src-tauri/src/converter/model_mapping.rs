@@ -33,7 +33,7 @@ impl ModelMapping {
 
     /// Look up the equivalent model for a target vendor.
     ///
-    /// If `client_model` is `gpt-4o` and `target_vendor` is `anthropic`,
+    /// If `client_model` is `gpt-5.5-instant` and `target_vendor` is `anthropic`,
     /// returns `Some("claude-sonnet-4-20250514")`.
     #[must_use]
     pub fn map_model(&self, client_model: &str, target_vendor: &str) -> Option<String> {
@@ -157,17 +157,17 @@ mod tests {
     #[test]
     fn set_and_get_custom_mapping() {
         let mut mm = ModelMapping::new();
-        mm.set_mapping("my-model", "openai", "gpt-4o");
+        mm.set_mapping("my-model", "openai", "gpt-5.5-instant");
         assert_eq!(
             mm.map_model("my-model", "openai").as_deref(),
-            Some("gpt-4o")
+            Some("gpt-5.5-instant")
         );
     }
 
     #[test]
     fn remove_mapping() {
         let mut mm = ModelMapping::new();
-        mm.set_mapping("test", "openai", "gpt-4o");
+        mm.set_mapping("test", "openai", "gpt-5.5-instant");
         mm.remove_mapping("test", "openai");
         assert!(mm.map_model("test", "openai").is_none());
     }
@@ -178,15 +178,15 @@ mod tests {
         let mut overrides = ModelMapping {
             entries: HashMap::new(),
         };
-        overrides.set_mapping("gpt-4o", "anthropic", "claude-opus-4-20250514");
+        overrides.set_mapping("gpt-5.5-instant", "anthropic", "claude-opus-4-7");
 
         base.merge(&overrides);
         // Override should win.
         assert_eq!(
-            base.map_model("gpt-4o", "anthropic").as_deref(),
-            Some("claude-opus-4-20250514")
+            base.map_model("gpt-5.5-instant", "anthropic").as_deref(),
+            Some("claude-opus-4-7")
         );
-        assert!(base.map_model("gpt-4o", "gemini").is_none());
+        assert!(base.map_model("gpt-5.5-instant", "gemini").is_none());
     }
 
     #[test]
@@ -195,8 +195,8 @@ mod tests {
         let json = serde_json::to_string(&mm).unwrap();
         let back: ModelMapping = serde_json::from_str(&json).unwrap();
         assert_eq!(
-            mm.map_model("gpt-4o", "anthropic"),
-            back.map_model("gpt-4o", "anthropic")
+            mm.map_model("gpt-5.5-instant", "anthropic"),
+            back.map_model("gpt-5.5-instant", "anthropic")
         );
     }
 
