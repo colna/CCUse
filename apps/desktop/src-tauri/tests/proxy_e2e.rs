@@ -328,6 +328,53 @@ fn anthropic_messages_tool_request() -> Value {
     })
 }
 
+fn anthropic_messages_parallel_tool_request() -> Value {
+    json!({
+        "model": "claude-sonnet-4-6",
+        "max_tokens": 128,
+        "messages": [
+            {"role": "user", "content": "run both tools"},
+            {"role": "assistant", "content": [
+                {
+                    "type": "tool_use",
+                    "id": "toolu_read",
+                    "name": "Read",
+                    "input": {"file_path": "README.md"}
+                },
+                {
+                    "type": "tool_use",
+                    "id": "toolu_bash",
+                    "name": "Bash",
+                    "input": {"command": "pwd"}
+                }
+            ]},
+            {"role": "user", "content": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": "toolu_read",
+                    "content": "file contents"
+                },
+                {
+                    "type": "tool_result",
+                    "tool_use_id": "toolu_bash",
+                    "content": "/tmp/project"
+                }
+            ]}
+        ],
+        "tools": [
+            {
+                "name": "Read",
+                "input_schema": {"type": "object"}
+            },
+            {
+                "name": "Bash",
+                "input_schema": {"type": "object"}
+            }
+        ],
+        "stream": false
+    })
+}
+
 fn openai_text_response(content: &str) -> Value {
     json!({
         "id": "chatcmpl-proxy-e2e",
@@ -1087,6 +1134,61 @@ async fn anthropic_messages_uses_native_anthropic_provider_request_shape() {
             .get("x-stainless-runtime")
             .and_then(|value| value.to_str().ok()),
         Some("node"),
+    );
+
+    proxy.shutdown().await;
+}
+
+#[tokio::test]
+async fn anthropic_messages_to_native_provider_preserves_parallel_tool_results() {
+    let upstream = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/messages"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(anthropic_text_response("native")))
+        .expect(1)
+        .mount(&upstream)
+        .await;
+    let proxy = start_proxy_with_native_anthropic_provider(&ProviderSpec {
+        id: "native-anthropic-parallel-tools",
+        name: "Native Anthropic Parallel Tools",
+        priority: 1,
+        server: &upstream,
+    })
+    .await;
+
+    let response = reqwest::Client::new()
+        .post(format!("{}/v1/messages", proxy.base_url))
+        .json(&anthropic_messages_parallel_tool_request())
+        .send()
+        .await
+        .expect("proxy request");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let received = upstream.received_requests().await.expect("received");
+    let upstream_body: Value = serde_json::from_slice(&received[0].body).expect("json");
+    assert_eq!(
+        upstream_body["messages"]
+            .as_array()
+            .expect("messages")
+            .len(),
+        3
+    );
+    assert_eq!(
+        upstream_body["messages"][1]["content"][0]["id"],
+        "toolu_read"
+    );
+    assert_eq!(
+        upstream_body["messages"][1]["content"][1]["id"],
+        "toolu_bash"
+    );
+    assert_eq!(upstream_body["messages"][2]["role"], "user");
+    assert_eq!(
+        upstream_body["messages"][2]["content"][0]["tool_use_id"],
+        "toolu_read"
+    );
+    assert_eq!(
+        upstream_body["messages"][2]["content"][1]["tool_use_id"],
+        "toolu_bash"
     );
 
     proxy.shutdown().await;

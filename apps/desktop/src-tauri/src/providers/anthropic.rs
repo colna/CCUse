@@ -12,8 +12,8 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use crate::converter::{
-    AnthropicConverter, ContentPart, FinishReason, FormatConverter, Role, UnifiedMessage,
-    UnifiedRequest, UnifiedResponse,
+    AnthropicConverter, ContentPart, FinishReason, FormatConverter, Role, ToolResult,
+    UnifiedMessage, UnifiedRequest, UnifiedResponse,
 };
 
 use super::anthropic_headers::insert_claude_compatible_headers;
@@ -308,11 +308,7 @@ impl AnthropicProvider {
 fn api_request_to_unified(request: &ApiRequest) -> UnifiedRequest {
     UnifiedRequest {
         model: request.model.clone(),
-        messages: request
-            .messages
-            .iter()
-            .map(chat_message_to_unified)
-            .collect(),
+        messages: chat_messages_to_unified(&request.messages),
         temperature: request.temperature,
         max_tokens: request.max_tokens,
         top_p: None,
@@ -330,6 +326,49 @@ fn api_request_to_unified(request: &ApiRequest) -> UnifiedRequest {
     }
 }
 
+fn chat_messages_to_unified(messages: &[super::api::ChatMessage]) -> Vec<UnifiedMessage> {
+    let mut unified = Vec::new();
+    let mut pending_tool_results = Vec::new();
+
+    for message in messages {
+        if let Some(tool_result) = chat_message_tool_result(message) {
+            pending_tool_results.push(ContentPart::ToolResult(tool_result));
+            continue;
+        }
+
+        flush_pending_tool_results(&mut unified, &mut pending_tool_results);
+        unified.push(chat_message_to_unified(message));
+    }
+
+    flush_pending_tool_results(&mut unified, &mut pending_tool_results);
+    unified
+}
+
+fn flush_pending_tool_results(
+    messages: &mut Vec<UnifiedMessage>,
+    pending_tool_results: &mut Vec<ContentPart>,
+) {
+    if pending_tool_results.is_empty() {
+        return;
+    }
+
+    messages.push(UnifiedMessage {
+        role: Role::Tool,
+        content: std::mem::take(pending_tool_results),
+        name: None,
+    });
+}
+
+fn chat_message_tool_result(message: &super::api::ChatMessage) -> Option<ToolResult> {
+    message
+        .tool_call_id
+        .as_ref()
+        .map(|tool_call_id| ToolResult {
+            tool_call_id: tool_call_id.clone(),
+            output: message.content.text_content(),
+        })
+}
+
 fn request_with_model(request: &ApiRequest, model: &str) -> ApiRequest {
     let mut mapped = request.clone();
     model.clone_into(&mut mapped.model);
@@ -337,13 +376,10 @@ fn request_with_model(request: &ApiRequest, model: &str) -> ApiRequest {
 }
 
 fn chat_message_to_unified(message: &super::api::ChatMessage) -> UnifiedMessage {
-    if let Some(tool_call_id) = &message.tool_call_id {
+    if let Some(result) = chat_message_tool_result(message) {
         return UnifiedMessage {
             role: Role::Tool,
-            content: vec![ContentPart::ToolResult(crate::converter::ToolResult {
-                tool_call_id: tool_call_id.clone(),
-                output: message.content.text_content(),
-            })],
+            content: vec![ContentPart::ToolResult(result)],
             name: None,
         };
     }
@@ -572,6 +608,70 @@ mod tests {
         assert_eq!(body["messages"][0]["content"][0]["text"], "ping");
         assert_eq!(body["tools"][0]["input_schema"]["type"], "object");
         assert_eq!(body["stream"], true);
+    }
+
+    #[test]
+    fn anthropic_body_groups_consecutive_tool_results_into_one_user_message() {
+        let body = provider()
+            .anthropic_body(
+                &ApiRequest {
+                    model: "claude-sonnet-4-20250514".to_owned(),
+                    messages: vec![
+                        ChatMessage {
+                            role: "assistant".to_owned(),
+                            content: ChatContent::default(),
+                            tool_call_id: None,
+                            tool_calls: vec![
+                                ApiToolCall {
+                                    id: "toolu_one".to_owned(),
+                                    kind: "function".to_owned(),
+                                    function: ApiToolCallFunction {
+                                        name: "first".to_owned(),
+                                        arguments: "{}".to_owned(),
+                                    },
+                                },
+                                ApiToolCall {
+                                    id: "toolu_two".to_owned(),
+                                    kind: "function".to_owned(),
+                                    function: ApiToolCallFunction {
+                                        name: "second".to_owned(),
+                                        arguments: "{}".to_owned(),
+                                    },
+                                },
+                            ],
+                        },
+                        ChatMessage {
+                            role: "tool".to_owned(),
+                            content: "one".into(),
+                            tool_call_id: Some("toolu_one".to_owned()),
+                            tool_calls: vec![],
+                        },
+                        ChatMessage {
+                            role: "tool".to_owned(),
+                            content: "two".into(),
+                            tool_call_id: Some("toolu_two".to_owned()),
+                            tool_calls: vec![],
+                        },
+                    ],
+                    temperature: None,
+                    max_tokens: Some(64),
+                    stream: false,
+                    tools: vec![],
+                },
+                false,
+            )
+            .expect("body");
+
+        assert_eq!(body["messages"].as_array().expect("messages").len(), 2);
+        assert_eq!(body["messages"][1]["role"], "user");
+        assert_eq!(
+            body["messages"][1]["content"][0]["tool_use_id"],
+            "toolu_one"
+        );
+        assert_eq!(
+            body["messages"][1]["content"][1]["tool_use_id"],
+            "toolu_two"
+        );
     }
 
     #[test]

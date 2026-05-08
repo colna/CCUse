@@ -21,7 +21,11 @@ use crate::providers::api::{
 pub fn unified_to_api_request(req: &UnifiedRequest) -> ApiRequest {
     ApiRequest {
         model: req.model.clone(),
-        messages: req.messages.iter().map(unified_message_to_chat).collect(),
+        messages: req
+            .messages
+            .iter()
+            .flat_map(unified_message_to_chat_messages)
+            .collect(),
         temperature: req.temperature,
         max_tokens: req.max_tokens,
         stream: req.stream,
@@ -37,16 +41,40 @@ pub fn unified_to_api_request(req: &UnifiedRequest) -> ApiRequest {
     }
 }
 
-fn unified_message_to_chat(message: &UnifiedMessage) -> ChatMessage {
-    if let Some(result) = first_tool_result(message) {
-        return ChatMessage {
-            role: "tool".to_owned(),
-            content: result.output.as_str().into(),
-            tool_call_id: Some(result.tool_call_id.clone()),
-            tool_calls: vec![],
-        };
+fn unified_message_to_chat_messages(message: &UnifiedMessage) -> Vec<ChatMessage> {
+    let mut messages = Vec::new();
+    let mut has_tool_result = false;
+    let mut has_regular_content = false;
+
+    for part in &message.content {
+        match part {
+            ContentPart::ToolResult(result) => {
+                has_tool_result = true;
+                messages.push(tool_result_to_chat_message(result));
+            }
+            ContentPart::Text { .. } | ContentPart::ImageUrl { .. } | ContentPart::ToolCall(_) => {
+                has_regular_content = true;
+            }
+        }
     }
 
+    if !has_tool_result || has_regular_content {
+        messages.push(regular_unified_message_to_chat(message));
+    }
+
+    messages
+}
+
+fn tool_result_to_chat_message(result: &ToolResult) -> ChatMessage {
+    ChatMessage {
+        role: "tool".to_owned(),
+        content: result.output.as_str().into(),
+        tool_call_id: Some(result.tool_call_id.clone()),
+        tool_calls: vec![],
+    }
+}
+
+fn regular_unified_message_to_chat(message: &UnifiedMessage) -> ChatMessage {
     let tool_calls = message
         .tool_calls()
         .into_iter()
@@ -91,13 +119,6 @@ fn unified_content_to_chat_content(parts: &[ContentPart]) -> ChatContent {
     }
 
     ChatContent::parts(content_parts)
-}
-
-fn first_tool_result(message: &UnifiedMessage) -> Option<&ToolResult> {
-    message.content.iter().find_map(|part| match part {
-        ContentPart::ToolResult(result) => Some(result),
-        _ => None,
-    })
 }
 
 /// Convert an [`ApiResponse`] into a [`UnifiedResponse`].
@@ -378,6 +399,39 @@ mod tests {
             Some("call_weather")
         );
         assert_eq!(api.messages[1].content, "sunny");
+    }
+
+    #[test]
+    fn unified_to_api_request_preserves_multiple_tool_results_from_one_message() {
+        let unified = UnifiedRequest {
+            model: "gpt-5.5-instant".into(),
+            messages: vec![UnifiedMessage {
+                role: Role::User,
+                content: vec![
+                    ContentPart::ToolResult(crate::converter::ToolResult {
+                        tool_call_id: "toolu_one".into(),
+                        output: "one".into(),
+                    }),
+                    ContentPart::ToolResult(crate::converter::ToolResult {
+                        tool_call_id: "toolu_two".into(),
+                        output: "two".into(),
+                    }),
+                ],
+                name: None,
+            }],
+            temperature: None,
+            max_tokens: None,
+            top_p: None,
+            stop: None,
+            stream: false,
+            tools: vec![],
+        };
+
+        let api = unified_to_api_request(&unified);
+
+        assert_eq!(api.messages.len(), 2);
+        assert_eq!(api.messages[0].tool_call_id.as_deref(), Some("toolu_one"));
+        assert_eq!(api.messages[1].tool_call_id.as_deref(), Some("toolu_two"));
     }
 
     #[test]
