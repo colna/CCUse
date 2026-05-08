@@ -21,6 +21,7 @@
   "test_connection_provider_aria": "测试 {{name}} 的健康状态",
   "test_connection_failed_title": "连接测试失败",
   "add_provider_title": "添加供应商",
+  "collapse_add_provider_form": "收起表单",
   "add_provider_desc": "选择供应商类型并填写信息。优先级数值越小越优先。",
   "provider_type": "供应商类型",
   "field_name": "名称",

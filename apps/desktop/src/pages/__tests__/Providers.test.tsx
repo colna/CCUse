@@ -66,6 +66,19 @@ describe("ProvidersPage", () => {
     expect(
       await screen.findByText("暂无供应商，请在下方添加。"),
     ).toBeInTheDocument();
+    expect(screen.queryByLabelText("名称")).not.toBeInTheDocument();
+
+    const addProviderButton = screen.getByRole("button", {
+      name: "添加供应商",
+    });
+    expect(addProviderButton).toHaveAttribute("aria-expanded", "false");
+
+    await user.click(addProviderButton);
+
+    expect(screen.getByRole("button", { name: "收起表单" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
 
     await user.type(screen.getByLabelText("名称"), "Work OpenAI");
     await user.clear(screen.getByLabelText("优先级"));
@@ -77,6 +90,11 @@ describe("ProvidersPage", () => {
     await waitFor(() => expect(listProviders).toHaveBeenCalledTimes(2));
     expect(await screen.findByText("Work OpenAI")).toBeInTheDocument();
     expect(screen.getByText("openai · 优先级 10")).toBeInTheDocument();
+    expect(screen.queryByLabelText("名称")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "添加供应商" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
   });
 
   it("refreshes health status when provider status event arrives", async () => {
