@@ -394,6 +394,47 @@ mod tests {
     }
 
     #[test]
+    fn delete_allows_switch_history_reference_to_be_nullified() {
+        let (_dir, repo) = fresh_repo();
+        let from = repo
+            .add(&ProviderInput {
+                name: "Primary".into(),
+                ..sample_input()
+            })
+            .expect("add primary");
+        let to = repo
+            .add(&ProviderInput {
+                name: "Backup".into(),
+                ..sample_input()
+            })
+            .expect("add backup");
+        repo.db
+            .with_connection(|c| {
+                c.execute(
+                    "INSERT INTO switch_history \
+                     (from_provider, to_provider, strategy, reason, attempts) \
+                     VALUES (?1, ?2, 'priority', 'upstream_500', 2)",
+                    params![&from.id, &to.id],
+                )
+            })
+            .expect("insert switch history");
+
+        repo.delete(&to.id).expect("delete referenced provider");
+
+        let to_provider: Option<String> = repo
+            .db
+            .with_connection(|c| {
+                c.query_row(
+                    "SELECT to_provider FROM switch_history WHERE from_provider=?1",
+                    params![&from.id],
+                    |row| row.get(0),
+                )
+            })
+            .expect("switch history row");
+        assert!(to_provider.is_none());
+    }
+
+    #[test]
     fn delete_unknown_id_returns_not_found() {
         let (_dir, repo) = fresh_repo();
         let err = repo.delete("does-not-exist").expect_err("must fail");

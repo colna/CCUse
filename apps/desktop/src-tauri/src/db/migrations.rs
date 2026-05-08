@@ -47,6 +47,11 @@ const MIGRATIONS: &[Migration] = &[
         name: "provider_quota",
         sql: include_str!("../../migrations/0004_provider_quota.sql"),
     },
+    Migration {
+        version: 5,
+        name: "switch_history_nullable_to_provider",
+        sql: include_str!("../../migrations/0005_switch_history_nullable_to_provider.sql"),
+    },
 ];
 
 /// Apply every migration whose version is newer than the highest
@@ -183,5 +188,72 @@ mod tests {
             )
         });
         assert!(outcome.is_err(), "CHECK (enabled IN (0,1)) should reject 2");
+    }
+
+    #[test]
+    fn switch_history_to_provider_is_nullable_after_migration() {
+        let dir = TempDir::new().expect("tempdir");
+        let db = open_database(dir.path().join("switch-history.db")).expect("open ok");
+        run_migrations(&db).expect("migrate ok");
+
+        let nullable: i64 = db
+            .with_connection(|c| {
+                c.query_row(
+                    "SELECT \"notnull\" FROM pragma_table_info('switch_history') \
+                     WHERE name='to_provider'",
+                    [],
+                    |r| r.get(0),
+                )
+            })
+            .expect("table info");
+
+        assert_eq!(nullable, 0, "to_provider must allow ON DELETE SET NULL");
+    }
+
+    #[test]
+    fn migration_5_repairs_existing_switch_history_delete_constraint() {
+        let dir = TempDir::new().expect("tempdir");
+        let db = open_database(dir.path().join("upgrade.db")).expect("open ok");
+
+        db.with_connection(|conn| {
+            ensure_migrations_table(conn)?;
+            for migration in MIGRATIONS.iter().filter(|m| m.version <= 4) {
+                apply(conn, migration)?;
+            }
+            conn.execute(
+                "INSERT INTO providers (id, name, kind, base_url, encrypted_api_key) \
+                 VALUES ('p1', 'Primary', 'openai', 'https://api', x'00')",
+                [],
+            )?;
+            conn.execute(
+                "INSERT INTO providers (id, name, kind, base_url, encrypted_api_key) \
+                 VALUES ('p2', 'Backup', 'openai', 'https://api', x'00')",
+                [],
+            )?;
+            conn.execute(
+                "INSERT INTO switch_history \
+                 (from_provider, to_provider, strategy, reason, attempts) \
+                 VALUES ('p1', 'p2', 'priority', 'upstream_500', 2)",
+                [],
+            )?;
+            Ok(())
+        })
+        .expect("seed old schema");
+
+        let highest = run_migrations(&db).expect("upgrade to latest");
+        assert_eq!(highest, MIGRATIONS.last().expect("migration").version);
+
+        db.with_connection(|conn| conn.execute("DELETE FROM providers WHERE id='p2'", []))
+            .expect("delete provider referenced by switch history");
+        let to_provider: Option<String> = db
+            .with_connection(|conn| {
+                conn.query_row(
+                    "SELECT to_provider FROM switch_history WHERE from_provider='p1'",
+                    [],
+                    |row| row.get(0),
+                )
+            })
+            .expect("switch history row");
+        assert!(to_provider.is_none());
     }
 }

@@ -8,6 +8,8 @@ use tauri::State;
 
 use crate::db::Database;
 
+const DELETED_PROVIDER_LABEL: &str = "[deleted provider]";
+
 /// One time-bucket row for charts (5-minute buckets).
 #[derive(Debug, Clone, Serialize)]
 pub struct MetricsBucket {
@@ -128,15 +130,19 @@ pub fn query_provider_cost_summary(db: &Database) -> Result<Vec<ProviderCostSumm
 /// Return recent switch events for the timeline.
 #[tauri::command]
 pub async fn get_switch_timeline(db: State<'_, Database>) -> Result<Vec<SwitchEvent>, String> {
+    query_switch_timeline(&db)
+}
+
+pub fn query_switch_timeline(db: &Database) -> Result<Vec<SwitchEvent>, String> {
     db.with_connection(|conn| {
         let mut stmt = conn.prepare(
-            "SELECT id, timestamp, from_provider, to_provider, \
+            "SELECT id, timestamp, from_provider, COALESCE(to_provider, ?1), \
                     strategy, reason, attempts \
              FROM switch_history \
              ORDER BY timestamp DESC \
              LIMIT 50",
         )?;
-        let rows = stmt.query_map([], |row| {
+        let rows = stmt.query_map([DELETED_PROVIDER_LABEL], |row| {
             Ok(SwitchEvent {
                 id: row.get(0)?,
                 timestamp: row.get(1)?,
@@ -325,6 +331,26 @@ mod tests {
             .expect("query");
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].to_provider, "p2");
+    }
+
+    #[test]
+    fn switch_timeline_marks_deleted_to_provider() {
+        let (_dir, db) = setup_db();
+        db.with_connection(|c| {
+            c.execute(
+                "INSERT INTO switch_history \
+                 (from_provider, to_provider, strategy, reason, attempts) \
+                 VALUES ('p1', 'p2', 'priority', 'upstream_500', 2)",
+                [],
+            )?;
+            c.execute("DELETE FROM providers WHERE id='p2'", [])?;
+            Ok(())
+        })
+        .expect("insert and delete");
+
+        let events = super::query_switch_timeline(&db).expect("timeline");
+
+        assert_eq!(events[0].to_provider, super::DELETED_PROVIDER_LABEL);
     }
 
     #[test]

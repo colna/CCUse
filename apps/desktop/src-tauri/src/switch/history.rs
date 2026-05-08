@@ -4,6 +4,8 @@
 
 use crate::db::{Database, DbError};
 
+const DELETED_PROVIDER_LABEL: &str = "[deleted provider]";
+
 /// One row from `switch_history`.
 #[derive(Debug, Clone)]
 pub struct SwitchHistoryEntry {
@@ -61,10 +63,11 @@ impl SwitchHistoryRepository {
     pub fn list_recent(&self, limit: u32) -> Result<Vec<SwitchHistoryEntry>, DbError> {
         self.db.with_connection(|conn| {
             let mut stmt = conn.prepare(
-                "SELECT id, timestamp, from_provider, to_provider, strategy, reason, attempts \
+                "SELECT id, timestamp, from_provider, \
+                        COALESCE(to_provider, ?2), strategy, reason, attempts \
                  FROM switch_history ORDER BY timestamp DESC LIMIT ?1",
             )?;
-            let rows = stmt.query_map(rusqlite::params![limit], |row| {
+            let rows = stmt.query_map(rusqlite::params![limit, DELETED_PROVIDER_LABEL], |row| {
                 Ok(SwitchHistoryEntry {
                     id: row.get(0)?,
                     timestamp: row.get(1)?,
@@ -178,5 +181,25 @@ mod tests {
         let entries = repo.list_recent(1).expect("list");
         assert_eq!(entries[0].id, id);
         assert!(entries[0].from_provider.is_none());
+    }
+
+    #[test]
+    fn list_recent_marks_deleted_to_provider() {
+        let repo = setup();
+        repo.insert(&SwitchHistoryInput {
+            from_provider: Some("p1".into()),
+            to_provider: "p2".into(),
+            strategy: "priority".into(),
+            reason: "upstream_500".into(),
+            attempts: 2,
+        })
+        .expect("insert");
+        repo.db
+            .with_connection(|conn| conn.execute("DELETE FROM providers WHERE id='p2'", []))
+            .expect("delete referenced provider");
+
+        let entries = repo.list_recent(1).expect("list");
+
+        assert_eq!(entries[0].to_provider, DELETED_PROVIDER_LABEL);
     }
 }
