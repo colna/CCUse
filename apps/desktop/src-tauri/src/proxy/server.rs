@@ -32,7 +32,8 @@ use crate::converter::{
 };
 use crate::db::Database;
 use crate::providers::{
-    ProviderError, ProviderManager, ProviderWrapper, RuntimeProvider, StreamingResponse,
+    ProviderError, ProviderKind, ProviderManager, ProviderWrapper, RuntimeProvider,
+    StreamingResponse,
 };
 use crate::switch::history::{SwitchHistoryInput, SwitchHistoryRepository};
 use crate::switch::request_log::{RequestLogInput, RequestLogRepository};
@@ -457,11 +458,9 @@ async fn chat_completions(
     Ok(Json(out).into_response())
 }
 
-/// Streaming path for `chat_completions`. All providers currently
-/// speak OpenAI-format SSE, so we forward the byte stream verbatim
-/// with keep-alive injected. Usage-based logging is skipped because
-/// token counts are not available until the stream ends — the
-/// non-streaming path handles that.
+/// Streaming path for `chat_completions`. `OpenAI`-compatible providers
+/// are forwarded verbatim; native Anthropic providers are converted at
+/// the response boundary so `OpenAI` clients still receive `OpenAI` SSE.
 async fn handle_streaming_chat(
     state: ProxyAppState,
     api_req: ApiRequest,
@@ -496,7 +495,16 @@ async fn handle_streaming_chat(
         let _ = log_repo.insert(&input);
     }
 
-    let stream = sse::with_keep_alive(result.response, sse::DEFAULT_KEEP_ALIVE);
+    let stream = if result.provider_kind == ProviderKind::Anthropic {
+        anthropic_sse_to_openai_sse(
+            result.response,
+            state.anthropic_converter,
+            state.openai_converter,
+        )
+    } else {
+        result.response
+    };
+    let stream = sse::with_keep_alive(stream, sse::DEFAULT_KEEP_ALIVE);
     Ok(sse::stream_to_sse_response(stream))
 }
 
@@ -604,11 +612,15 @@ async fn handle_streaming_anthropic_messages(
         let _ = log_repo.insert(&input);
     }
 
-    let stream = openai_sse_to_anthropic_sse(
-        result.response,
-        state.openai_converter,
-        state.anthropic_converter,
-    );
+    let stream = if result.provider_kind == ProviderKind::Anthropic {
+        native_anthropic_sse_with_error_frames(result.response)
+    } else {
+        openai_sse_to_anthropic_sse(
+            result.response,
+            state.openai_converter,
+            state.anthropic_converter,
+        )
+    };
     let stream = sse::with_keep_alive(stream, sse::DEFAULT_KEEP_ALIVE);
     Ok(sse::stream_to_sse_response(stream))
 }
@@ -858,6 +870,7 @@ struct AnthropicStreamState {
     buffer: String,
     pending: VecDeque<Result<Bytes, ProviderError>>,
     bridge: AnthropicSseBridge,
+    done: bool,
 }
 
 impl AnthropicStreamState {
@@ -871,6 +884,20 @@ impl AnthropicStreamState {
             buffer: String::new(),
             pending: VecDeque::new(),
             bridge: AnthropicSseBridge::new(openai, anthropic),
+            done: false,
+        }
+    }
+
+    fn finish_with_error(&mut self, error: &ProviderError) -> Bytes {
+        self.done = true;
+        self.pending.clear();
+        anthropic_stream_error_frame(error)
+    }
+
+    fn emit_pending_item(&mut self, item: Result<Bytes, ProviderError>) -> Bytes {
+        match item {
+            Ok(bytes) => bytes,
+            Err(error) => self.finish_with_error(&error),
         }
     }
 
@@ -892,6 +919,17 @@ impl AnthropicStreamState {
     }
 }
 
+fn anthropic_stream_error_frame(error: &ProviderError) -> Bytes {
+    let frame = json!({
+        "type": "error",
+        "error": {
+            "type": "api_error",
+            "message": error.to_string(),
+        }
+    });
+    Bytes::from(format!("event: error\ndata: {frame}\n\n"))
+}
+
 fn openai_sse_to_anthropic_sse(
     upstream: StreamingResponse,
     openai: OpenAIConverter,
@@ -901,8 +939,13 @@ fn openai_sse_to_anthropic_sse(
         AnthropicStreamState::new(upstream, openai, anthropic),
         |mut state| async move {
             loop {
+                if state.done {
+                    return None;
+                }
+
                 if let Some(item) = state.pending.pop_front() {
-                    return Some((item, state));
+                    let bytes = state.emit_pending_item(item);
+                    return Some((Ok(bytes), state));
                 }
 
                 match state.upstream.next().await {
@@ -912,15 +955,205 @@ fn openai_sse_to_anthropic_sse(
                             state.drain_complete_frames();
                         }
                         Err(err) => {
-                            return Some((Err(ProviderError::Decode(err.to_string())), state));
+                            let error = ProviderError::Decode(err.to_string());
+                            let bytes = state.finish_with_error(&error);
+                            return Some((Ok(bytes), state));
                         }
                     },
-                    Some(Err(err)) => return Some((Err(err), state)),
+                    Some(Err(err)) => {
+                        let bytes = state.finish_with_error(&err);
+                        return Some((Ok(bytes), state));
+                    }
                     None => {
                         state.flush_trailing_frame();
-                        return state.pending.pop_front().map(|item| (item, state));
+                        if let Some(item) = state.pending.pop_front() {
+                            let bytes = state.emit_pending_item(item);
+                            return Some((Ok(bytes), state));
+                        }
+                        return None;
                     }
                 }
+            }
+        },
+    ))
+}
+
+struct OpenAiStreamState {
+    upstream: StreamingResponse,
+    buffer: String,
+    pending: VecDeque<Result<Bytes, ProviderError>>,
+    anthropic: AnthropicConverter,
+    openai: OpenAIConverter,
+    last_id: String,
+    last_model: String,
+    done: bool,
+}
+
+impl OpenAiStreamState {
+    fn new(
+        upstream: StreamingResponse,
+        anthropic: AnthropicConverter,
+        openai: OpenAIConverter,
+    ) -> Self {
+        Self {
+            upstream,
+            buffer: String::new(),
+            pending: VecDeque::new(),
+            anthropic,
+            openai,
+            last_id: String::new(),
+            last_model: String::new(),
+            done: false,
+        }
+    }
+
+    fn push_frame_results(
+        &mut self,
+        raw: &str,
+        pending: &mut VecDeque<Result<Bytes, ProviderError>>,
+    ) {
+        for frame in parse_sse_frames(raw) {
+            if frame.event.as_deref() == Some("message_stop") {
+                pending.push_back(Ok(Bytes::from(self.openai.encode_stream_done())));
+                self.done = true;
+                continue;
+            }
+
+            let mut chunk = match self.anthropic.parse_stream_chunk(&frame.data) {
+                Ok(Some(chunk)) => chunk,
+                Ok(None) => continue,
+                Err(err) => {
+                    pending.push_back(Err(ProviderError::Decode(err.to_string())));
+                    continue;
+                }
+            };
+            if chunk.id.is_empty() {
+                chunk.id.clone_from(&self.last_id);
+            } else {
+                self.last_id.clone_from(&chunk.id);
+            }
+            if chunk.model.is_empty() {
+                chunk.model.clone_from(&self.last_model);
+            } else {
+                self.last_model.clone_from(&chunk.model);
+            }
+
+            match self.openai.encode_stream_chunk(&chunk) {
+                Ok(encoded) if !encoded.is_empty() => pending.push_back(Ok(Bytes::from(encoded))),
+                Ok(_) => {}
+                Err(err) => pending.push_back(Err(ProviderError::Decode(err.to_string()))),
+            }
+        }
+    }
+
+    fn finish_with_error(&mut self, error: &ProviderError) -> Bytes {
+        self.done = true;
+        self.pending.clear();
+        openai_stream_error_frame(error)
+    }
+
+    fn emit_pending_item(&mut self, item: Result<Bytes, ProviderError>) -> Bytes {
+        match item {
+            Ok(bytes) => bytes,
+            Err(error) => self.finish_with_error(&error),
+        }
+    }
+
+    fn drain_complete_frames(&mut self) {
+        while let Some(end) = self.buffer.find("\n\n") {
+            let raw = self.buffer[..end + 2].to_owned();
+            self.buffer.drain(..end + 2);
+            let mut pending = std::mem::take(&mut self.pending);
+            self.push_frame_results(&raw, &mut pending);
+            self.pending = pending;
+        }
+    }
+
+    fn flush_trailing_frame(&mut self) {
+        if self.buffer.trim().is_empty() {
+            self.buffer.clear();
+            return;
+        }
+        let raw = std::mem::take(&mut self.buffer);
+        let mut pending = std::mem::take(&mut self.pending);
+        self.push_frame_results(&raw, &mut pending);
+        self.pending = pending;
+    }
+}
+
+fn openai_stream_error_frame(error: &ProviderError) -> Bytes {
+    let frame = json!({
+        "error": {
+            "type": "api_error",
+            "message": error.to_string(),
+        }
+    });
+    Bytes::from(format!("data: {frame}\n\n"))
+}
+
+fn anthropic_sse_to_openai_sse(
+    upstream: StreamingResponse,
+    anthropic: AnthropicConverter,
+    openai: OpenAIConverter,
+) -> StreamingResponse {
+    Box::pin(futures::stream::unfold(
+        OpenAiStreamState::new(upstream, anthropic, openai),
+        |mut state| async move {
+            loop {
+                if let Some(item) = state.pending.pop_front() {
+                    let bytes = state.emit_pending_item(item);
+                    return Some((Ok(bytes), state));
+                }
+
+                if state.done {
+                    return None;
+                }
+
+                match state.upstream.next().await {
+                    Some(Ok(bytes)) => match std::str::from_utf8(&bytes) {
+                        Ok(text) => {
+                            state.buffer.push_str(text);
+                            state.drain_complete_frames();
+                        }
+                        Err(err) => {
+                            let error = ProviderError::Decode(err.to_string());
+                            let bytes = state.finish_with_error(&error);
+                            return Some((Ok(bytes), state));
+                        }
+                    },
+                    Some(Err(err)) => {
+                        let bytes = state.finish_with_error(&err);
+                        return Some((Ok(bytes), state));
+                    }
+                    None => {
+                        state.flush_trailing_frame();
+                        if let Some(item) = state.pending.pop_front() {
+                            let bytes = state.emit_pending_item(item);
+                            return Some((Ok(bytes), state));
+                        }
+                        return None;
+                    }
+                }
+            }
+        },
+    ))
+}
+
+fn native_anthropic_sse_with_error_frames(upstream: StreamingResponse) -> StreamingResponse {
+    Box::pin(futures::stream::unfold(
+        (upstream, false),
+        |(mut upstream, done)| async move {
+            if done {
+                return None;
+            }
+
+            match upstream.next().await {
+                Some(Ok(bytes)) => Some((Ok(bytes), (upstream, false))),
+                Some(Err(error)) => {
+                    let frame = anthropic_stream_error_frame(&error);
+                    Some((Ok(frame), (upstream, true)))
+                }
+                None => None,
             }
         },
     ))

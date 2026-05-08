@@ -38,6 +38,20 @@ export interface Provider {
   updated_at: string;
 }
 
+export type StreamCheckStatus = "operational" | "degraded" | "failed";
+
+export interface StreamCheckResult {
+  status: StreamCheckStatus;
+  success: boolean;
+  message: string;
+  response_time_ms: number | null;
+  http_status: number | null;
+  model_used: string;
+  tested_at: number;
+  retry_count: number;
+  error_category?: string | null;
+}
+
 // ─── Provider CRUD (T1.0.2.19) ───────────────────────────────
 
 export async function listProviders(): Promise<Provider[]> {
@@ -208,8 +222,10 @@ export async function restartProxy(): Promise<LocalApiConfig> {
 
 // ─── Connection Test (T1.0.4.05) ─────────────────────────────
 
-export async function testProviderConnection(id: string): Promise<number> {
-  return invoke<number>("test_provider_connection", { id });
+export async function testProviderConnection(
+  id: string,
+): Promise<StreamCheckResult> {
+  return invoke<StreamCheckResult>("test_provider_connection", { id });
 }
 
 // ─── Metrics & Timeline (T1.0.4.10-13) ──────────────────────

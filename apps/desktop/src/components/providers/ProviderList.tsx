@@ -40,6 +40,7 @@ import {
   type Provider,
   type ProviderInput,
   type HealthSnapshot,
+  type StreamCheckResult,
 } from "@/lib/tauri";
 
 function statusColor(status?: string): string {
@@ -58,6 +59,19 @@ function statusColor(status?: string): string {
 function formatSuccessRate(rate?: number): string {
   if (rate == null) return "--";
   return `${(rate * 100).toFixed(1)}%`;
+}
+
+function streamStatusLabel(status?: StreamCheckResult["status"]): string {
+  switch (status) {
+    case "operational":
+      return "正常";
+    case "degraded":
+      return "降级";
+    case "failed":
+      return "失败";
+    default:
+      return "--";
+  }
 }
 
 // ─── Delete Confirmation Dialog ──────────────────────────────
@@ -421,6 +435,18 @@ function SortableProviderItem({
         </span>
       )}
 
+      {health?.status && (
+        <span className="text-xs text-muted-foreground">
+          {streamStatusLabel(
+            health.status === "healthy"
+              ? "operational"
+              : health.status === "degraded"
+                ? "degraded"
+                : "failed",
+          )}
+        </span>
+      )}
+
       <label className="flex items-center gap-1 text-xs">
         <input
           type="checkbox"
@@ -644,19 +670,42 @@ export function ProviderList({ refreshKey }: ProviderListProps) {
     async (id: string) => {
       setTestingIds((current) => ({ ...current, [id]: true }));
       try {
-        const latencyMs = await testProviderConnection(id);
+        const result = await testProviderConnection(id);
         const provider = providers.find((item) => item.id === id);
         setHealthMap((current) => ({
           ...current,
           [id]: {
             provider_id: id,
             provider_name: provider?.name ?? id,
-            status: "healthy",
-            success_rate: current[id]?.success_rate ?? 1,
-            response_time_us: latencyMs * 1000,
+            status: result.success
+              ? result.status === "degraded"
+                ? "degraded"
+                : "healthy"
+              : "down",
+            success_rate: result.success ? 1 : 0,
+            response_time_us:
+              result.response_time_ms != null
+                ? result.response_time_ms * 1000
+                : null,
           },
         }));
-        setError(null);
+        if (!result.success) {
+          setTestErrorDialog({
+            providerName: provider?.name ?? id,
+            message: [
+              result.message,
+              result.http_status != null ? `HTTP ${result.http_status}` : null,
+              result.error_category
+                ? `Category: ${result.error_category}`
+                : null,
+              result.model_used ? `Model: ${result.model_used}` : null,
+            ]
+              .filter(Boolean)
+              .join("\n"),
+          });
+        } else {
+          setError(null);
+        }
       } catch (err: unknown) {
         const provider = providers.find((item) => item.id === id);
         setTestErrorDialog({

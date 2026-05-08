@@ -4,9 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/tauri", () => ({
   addProvider: vi.fn(),
+  testProviderConnection: vi.fn(),
 }));
 
-import { addProvider } from "@/lib/tauri";
+import { addProvider, testProviderConnection } from "@/lib/tauri";
 import { AddProviderForm } from "../AddProviderForm";
 
 beforeEach(() => {
@@ -143,5 +144,45 @@ describe("AddProviderForm", () => {
     expect(vi.mocked(addProvider).mock.calls[0]?.[0].base_url).toBe(
       "https://api.openai.com",
     );
+  });
+
+  it("renders structured test results after add", async () => {
+    vi.mocked(addProvider).mockResolvedValueOnce({
+      id: "abc-123",
+      name: "X",
+      kind: "anthropic",
+      base_url: "https://api.anthropic.com",
+      priority: 100,
+      enabled: true,
+      created_at: "",
+      updated_at: "",
+    });
+    vi.mocked(testProviderConnection).mockResolvedValueOnce({
+      status: "failed",
+      success: false,
+      message: "Not found (404)",
+      response_time_ms: 15,
+      http_status: 404,
+      model_used: "claude-3-5-sonnet-20241022",
+      tested_at: 1_714_000_000,
+      retry_count: 0,
+      error_category: "modelNotFound",
+    });
+
+    render(<AddProviderForm />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText("名称"), "X");
+    await user.type(screen.getByLabelText("API Key"), "sk-x");
+    await user.click(screen.getByRole("button", { name: "添加" }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "测试连接" })).toBeEnabled(),
+    );
+    await user.click(screen.getByRole("button", { name: "测试连接" }));
+
+    await waitFor(() =>
+      expect(testProviderConnection).toHaveBeenCalledWith("abc-123"),
+    );
+    expect(await screen.findByText(/已添加.*abc-123/)).toBeInTheDocument();
+    expect(await screen.findByText(/Not found \(404\)/)).toBeInTheDocument();
   });
 });

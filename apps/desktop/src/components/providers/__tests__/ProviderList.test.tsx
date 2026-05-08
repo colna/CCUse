@@ -46,7 +46,17 @@ beforeEach(() => {
     ],
   });
   vi.mocked(onProviderStatusChanged).mockResolvedValue(() => undefined);
-  vi.mocked(testProviderConnection).mockResolvedValue(88);
+  vi.mocked(testProviderConnection).mockResolvedValue({
+    status: "operational",
+    success: true,
+    message: "Check succeeded",
+    response_time_ms: 88,
+    http_status: 200,
+    model_used: "gpt-4o-mini",
+    tested_at: 1_714_000_000,
+    retry_count: 0,
+    error_category: null,
+  });
   vi.mocked(updateProvider).mockResolvedValue({
     ...provider,
     kind: "openai",
@@ -75,6 +85,34 @@ describe("ProviderList", () => {
       expect(testProviderConnection).toHaveBeenCalledWith("provider-1"),
     );
     expect(deleteProvider).not.toHaveBeenCalled();
+  });
+
+  it("shows structured model test failure details", async () => {
+    vi.mocked(testProviderConnection).mockResolvedValueOnce({
+      status: "failed",
+      success: false,
+      message: "Not found (404)",
+      response_time_ms: 12,
+      http_status: 404,
+      model_used: "claude-3-5-sonnet-20241022",
+      tested_at: 1_714_000_000,
+      retry_count: 0,
+      error_category: "modelNotFound",
+    });
+
+    render(<ProviderList />);
+    const user = userEvent.setup();
+    await user.click(
+      await screen.findByRole("button", {
+        name: /测试 Claude Prod 的健康状态/,
+      }),
+    );
+
+    await waitFor(() =>
+      expect(testProviderConnection).toHaveBeenCalledWith("provider-1"),
+    );
+    expect(await screen.findByText("失败")).toBeInTheDocument();
+    expect(await screen.findByText(/modelNotFound/)).toBeInTheDocument();
   });
 
   it("keeps the provider list visible and shows a dialog when health test fails", async () => {

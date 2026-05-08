@@ -8,6 +8,7 @@
 //! T1.0.1.19 adds the runtime [`Provider`] trait (HTTP dispatch); the
 //! domain [`Provider`] here is the persistence shape, not the trait.
 
+pub mod anthropic;
 pub mod api;
 mod error_format;
 pub mod manager;
@@ -17,6 +18,7 @@ pub mod repository;
 pub mod startup;
 pub mod wrapper;
 
+pub use anthropic::AnthropicProvider;
 pub use api::{
     ApiChoice, ApiModel, ApiRequest, ApiResponse, ApiToolCall, ApiToolCallFunction,
     ApiToolDefinition, ApiUsage, ChatContent, ChatContentPart, ChatImageUrl, ChatMessage,

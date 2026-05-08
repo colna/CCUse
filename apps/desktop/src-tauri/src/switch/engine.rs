@@ -14,6 +14,7 @@ use crate::providers::api::{
     StreamingResponse,
 };
 use crate::providers::manager::ProviderManager;
+use crate::providers::model::ProviderKind;
 use crate::providers::wrapper::ProviderWrapper;
 
 use super::strategy::{select, RoundRobinState, SmartWeights, SwitchStrategy};
@@ -27,6 +28,7 @@ pub struct DispatchResult<T> {
     /// The provider that actually served the request.
     pub provider_id: String,
     pub provider_name: String,
+    pub provider_kind: ProviderKind,
     /// Number of attempts before success (1 = no retry).
     pub attempts: usize,
     /// Strategy snapshot used for this dispatch.
@@ -162,6 +164,7 @@ impl SwitchEngine {
                     return Ok(DispatchResult {
                         provider_id: provider.id().to_owned(),
                         provider_name: provider.name().to_owned(),
+                        provider_kind: provider.kind(),
                         attempts: attempt + 1,
                         strategy: config.strategy,
                         switched_from_provider_id: last_failed_provider_id,
@@ -243,6 +246,7 @@ impl SwitchEngine {
                     return Ok(DispatchResult {
                         provider_id: provider.id().to_owned(),
                         provider_name: provider.name().to_owned(),
+                        provider_kind: provider.kind(),
                         attempts: attempt + 1,
                         strategy: config.strategy,
                         switched_from_provider_id: last_failed_provider_id,
@@ -504,20 +508,38 @@ mod tests {
                 call_count: Arc::clone(&count),
                 seen_models: Arc::clone(&models),
             };
-            let wrapper = Arc::new(ProviderWrapper::new(
-                &id,
-                &id,
-                ProviderKind::Openai,
-                10,
-                None,
-                true,
-                Box::new(mock),
-            ));
+            let wrapper = mock_wrapper(&id, ProviderKind::Openai, mock);
             mgr.add(wrapper).await.unwrap();
             counters.push(count);
             seen_models.push(models);
         }
         (SwitchEngine::new(mgr), counters, seen_models)
+    }
+
+    fn mock_wrapper(
+        id: &str,
+        kind: ProviderKind,
+        inner: MockDispatchProvider,
+    ) -> Arc<ProviderWrapper> {
+        Arc::new(ProviderWrapper::new(
+            id,
+            id,
+            kind,
+            10,
+            None,
+            true,
+            Box::new(inner),
+        ))
+    }
+
+    fn mock_provider(id: &str, should_succeed: bool) -> MockDispatchProvider {
+        MockDispatchProvider {
+            id: id.to_owned(),
+            should_succeed: Arc::new(AtomicBool::new(should_succeed)),
+            failure: MockFailure::Upstream,
+            call_count: Arc::new(AtomicUsize::new(0)),
+            seen_models: Arc::new(Mutex::new(Vec::new())),
+        }
     }
 
     #[tokio::test]
@@ -627,6 +649,23 @@ mod tests {
         let result = engine.dispatch_stream(sample_request()).await.unwrap();
         assert_eq!(result.provider_id, "p1");
         assert_eq!(result.attempts, 1);
+    }
+
+    #[tokio::test]
+    async fn dispatch_result_includes_selected_provider_kind() {
+        let mgr = Arc::new(ProviderManager::new());
+        mgr.add(mock_wrapper(
+            "anthropic",
+            ProviderKind::Anthropic,
+            mock_provider("anthropic", true),
+        ))
+        .await
+        .expect("register provider");
+        let engine = SwitchEngine::new(mgr);
+
+        let result = engine.dispatch(sample_request()).await.unwrap();
+
+        assert_eq!(result.provider_kind, ProviderKind::Anthropic);
     }
 
     #[tokio::test]

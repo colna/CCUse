@@ -11,7 +11,7 @@ use std::time::Duration;
 use ccuse_desktop_lib::converter::ModelMapping;
 use ccuse_desktop_lib::db::{open_database, run_migrations, Database};
 use ccuse_desktop_lib::providers::{
-    HealthStatus, OpenAIProvider, ProviderKind, ProviderManager, ProviderWrapper,
+    AnthropicProvider, HealthStatus, OpenAIProvider, ProviderKind, ProviderManager, ProviderWrapper,
 };
 use ccuse_desktop_lib::proxy::{ProxyAppState, ProxyServer, ServerError};
 use ccuse_desktop_lib::switch::history::SwitchHistoryRepository;
@@ -97,7 +97,7 @@ async fn start_proxy_with_providers_mapping_timeout_and_request_log(
             spec.priority,
             None,
         )
-        .expect("build provider");
+        .expect("build openai-compatible provider");
         let wrapper = Arc::new(ProviderWrapper::new(
             spec.id,
             spec.name,
@@ -119,6 +119,49 @@ async fn start_proxy_with_providers_mapping_timeout_and_request_log(
     if let Some(timeout) = non_streaming_timeout {
         state = state.with_non_streaming_timeout(timeout);
     }
+    let server = ProxyServer::bind(loopback_zero())
+        .await
+        .expect("bind proxy");
+    let base_url = format!("http://{}", server.local_addr());
+    let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
+    let handle = tokio::spawn(server.serve_with_shutdown(state, async move {
+        let _ = shutdown_rx.await;
+    }));
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    RunningProxy {
+        base_url,
+        shutdown_tx,
+        handle,
+        manager,
+    }
+}
+
+async fn start_proxy_with_native_anthropic_provider(spec: &ProviderSpec<'_>) -> RunningProxy {
+    let manager = Arc::new(ProviderManager::new());
+    let provider = AnthropicProvider::with_options(
+        spec.id,
+        spec.name,
+        spec.server.uri(),
+        "sk-upstream-test",
+        spec.priority,
+        None,
+    )
+    .expect("build native anthropic provider");
+    let wrapper = Arc::new(ProviderWrapper::new(
+        spec.id,
+        spec.name,
+        ProviderKind::Anthropic,
+        spec.priority,
+        None,
+        true,
+        Box::new(provider),
+    ));
+    manager.add(wrapper).await.expect("register provider");
+
+    let engine = Arc::new(SwitchEngine::new(Arc::clone(&manager)));
+    let mapping = Arc::new(RwLock::new(ModelMapping::new()));
+    let state = ProxyAppState::new(engine, mapping, Arc::clone(&manager));
     let server = ProxyServer::bind(loopback_zero())
         .await
         .expect("bind proxy");
@@ -356,6 +399,41 @@ fn openai_text_response_with_finish_reason(content: &str, finish_reason: &str) -
         }],
         "usage": {"prompt_tokens": 4, "completion_tokens": 2, "total_tokens": 6}
     })
+}
+
+fn anthropic_text_response(content: &str) -> Value {
+    json!({
+        "id": "msg_native_proxy_e2e",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-sonnet-4-20250514",
+        "content": [{"type": "text", "text": content}],
+        "stop_reason": "end_turn",
+        "stop_sequence": null,
+        "usage": {"input_tokens": 4, "output_tokens": 2}
+    })
+}
+
+fn native_anthropic_sse() -> &'static str {
+    r#"event: message_start
+data: {"type":"message_start","message":{"id":"msg_native_stream","type":"message","role":"assistant","model":"claude-sonnet-4-20250514","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":1,"output_tokens":0}}}
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hi"}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":1}}
+
+event: message_stop
+data: {"type":"message_stop"}
+
+"#
 }
 
 fn openai_tool_call_response() -> Value {
@@ -767,6 +845,66 @@ async fn anthropic_messages_dispatches_non_streaming_request_to_upstream() {
 }
 
 #[tokio::test]
+async fn anthropic_messages_uses_native_anthropic_provider_request_shape() {
+    let upstream = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/messages"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(anthropic_text_response("native")))
+        .expect(1)
+        .mount(&upstream)
+        .await;
+    let proxy = start_proxy_with_native_anthropic_provider(&ProviderSpec {
+        id: "native-anthropic",
+        name: "Native Anthropic",
+        priority: 1,
+        server: &upstream,
+    })
+    .await;
+
+    let response = reqwest::Client::new()
+        .post(format!("{}/v1/messages", proxy.base_url))
+        .json(&anthropic_messages_request())
+        .send()
+        .await
+        .expect("proxy request");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = response.json().await.expect("response json");
+    assert_eq!(body["content"][0]["text"], "native");
+    assert_eq!(body["usage"]["input_tokens"], 4);
+    assert_eq!(body["usage"]["output_tokens"], 2);
+
+    let received = upstream.received_requests().await.expect("received");
+    let request = &received[0];
+    let upstream_body: Value = serde_json::from_slice(&request.body).expect("json");
+    assert_eq!(upstream_body["model"], "claude-3-5-sonnet-20241022");
+    assert_eq!(upstream_body["system"], "You are terse.");
+    assert_eq!(upstream_body["messages"][0]["role"], "user");
+    assert_eq!(upstream_body["messages"][0]["content"][0]["text"], "ping");
+    assert!(upstream_body["messages"]
+        .as_array()
+        .expect("messages array")
+        .iter()
+        .all(|message| message["role"] != "system"));
+    assert_eq!(
+        request
+            .headers
+            .get("x-api-key")
+            .and_then(|value| value.to_str().ok()),
+        Some("sk-upstream-test"),
+    );
+    assert_eq!(
+        request
+            .headers
+            .get("anthropic-version")
+            .and_then(|value| value.to_str().ok()),
+        Some("2023-06-01"),
+    );
+
+    proxy.shutdown().await;
+}
+
+#[tokio::test]
 async fn anthropic_messages_returns_zero_usage_when_upstream_omits_usage() {
     let upstream = MockServer::start().await;
     Mock::given(method("POST"))
@@ -1049,6 +1187,59 @@ async fn anthropic_messages_streams_anthropic_sse_events() {
 }
 
 #[tokio::test]
+async fn anthropic_messages_stream_passthroughs_native_anthropic_sse() {
+    let upstream = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/messages"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string(native_anthropic_sse())
+                .insert_header("content-type", "text/event-stream"),
+        )
+        .expect(1)
+        .mount(&upstream)
+        .await;
+    let proxy = start_proxy_with_native_anthropic_provider(&ProviderSpec {
+        id: "native-anthropic-stream",
+        name: "Native Anthropic Stream",
+        priority: 1,
+        server: &upstream,
+    })
+    .await;
+
+    let response = reqwest::Client::new()
+        .post(format!("{}/v1/messages", proxy.base_url))
+        .json(&anthropic_messages_stream_request())
+        .send()
+        .await
+        .expect("proxy request");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.text().await.expect("sse text");
+    assert_contains_in_order(
+        &body,
+        &[
+            "event: message_start",
+            "event: content_block_start",
+            "event: content_block_delta",
+            "\"text\":\"hi\"",
+            "event: content_block_stop",
+            "event: message_delta",
+            "event: message_stop",
+        ],
+    );
+    assert!(!body.contains("data: [DONE]"));
+    assert!(!body.contains("chatcmpl"));
+
+    let received = upstream.received_requests().await.expect("received");
+    let upstream_body: Value = serde_json::from_slice(&received[0].body).expect("json");
+    assert_eq!(upstream_body["stream"], true);
+    assert_eq!(upstream_body["messages"][0]["content"][0]["text"], "ping");
+
+    proxy.shutdown().await;
+}
+
+#[tokio::test]
 async fn anthropic_messages_stream_adds_message_start_when_upstream_omits_role_and_id() {
     let upstream = MockServer::start().await;
     let sse = "data: {\"model\":\"gpt-4o\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Hi\"},\"finish_reason\":null}]}\n\n\
@@ -1165,6 +1356,48 @@ data: [DONE]
 }
 
 #[tokio::test]
+async fn anthropic_messages_stream_error_returns_sse_error_frame_without_socket_reset() {
+    let upstream = MockServer::start().await;
+    let sse = "data: {\"id\":\"chatcmpl-stream-error\",\"model\":\"gpt-4o\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\"},\"finish_reason\":null}]}\n\n\
+               data: {not-json}\n\n";
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string(sse)
+                .insert_header("content-type", "text/event-stream"),
+        )
+        .expect(1)
+        .mount(&upstream)
+        .await;
+    let proxy = start_proxy_with_providers(&[ProviderSpec {
+        id: "anthropic-stream-error",
+        name: "Anthropic Stream Error",
+        priority: 1,
+        server: &upstream,
+    }])
+    .await;
+
+    let response = reqwest::Client::new()
+        .post(format!("{}/v1/messages", proxy.base_url))
+        .json(&anthropic_messages_stream_request())
+        .send()
+        .await
+        .expect("proxy request");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response
+        .text()
+        .await
+        .expect("sse text must not reset socket");
+    assert_contains_in_order(&body, &["event: message_start", "event: error"]);
+    assert!(body.contains("\"type\":\"error\""));
+    assert!(body.contains("\"type\":\"api_error\""));
+
+    proxy.shutdown().await;
+}
+
+#[tokio::test]
 async fn chat_completions_dispatches_text_request_to_upstream() {
     let upstream = MockServer::start().await;
     Mock::given(method("POST"))
@@ -1198,6 +1431,46 @@ async fn chat_completions_dispatches_text_request_to_upstream() {
     assert_eq!(upstream_body["model"], "gpt-4o");
     assert_eq!(upstream_body["messages"][0]["content"], "ping");
     assert_eq!(upstream_body["stream"], false);
+
+    proxy.shutdown().await;
+}
+
+#[tokio::test]
+async fn chat_completions_uses_native_anthropic_provider_request_shape() {
+    let upstream = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/messages"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(anthropic_text_response("native")))
+        .expect(1)
+        .mount(&upstream)
+        .await;
+    let proxy = start_proxy_with_native_anthropic_provider(&ProviderSpec {
+        id: "chat-native-anthropic",
+        name: "Chat Native Anthropic",
+        priority: 1,
+        server: &upstream,
+    })
+    .await;
+
+    let response = reqwest::Client::new()
+        .post(format!("{}/v1/chat/completions", proxy.base_url))
+        .json(&chat_request(false))
+        .send()
+        .await
+        .expect("proxy request");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = response.json().await.expect("response json");
+    assert_eq!(body["choices"][0]["message"]["content"], "native");
+    assert_eq!(body["usage"]["prompt_tokens"], 4);
+    assert_eq!(body["usage"]["completion_tokens"], 2);
+
+    let received = upstream.received_requests().await.expect("received");
+    let upstream_body: Value = serde_json::from_slice(&received[0].body).expect("json");
+    assert_eq!(upstream_body["model"], "claude-sonnet-4-20250514");
+    assert_eq!(upstream_body["messages"][0]["role"], "user");
+    assert_eq!(upstream_body["messages"][0]["content"][0]["text"], "ping");
+    assert_eq!(upstream_body["stream"], Value::Null);
 
     proxy.shutdown().await;
 }
@@ -1413,6 +1686,55 @@ async fn chat_completions_streams_sse_response_to_client() {
     assert!(body.contains("\"Hel\""));
     assert!(body.contains("\"lo\""));
     assert!(body.contains("data: [DONE]"));
+
+    let received = upstream.received_requests().await.expect("received");
+    let upstream_body: Value = serde_json::from_slice(&received[0].body).expect("json");
+    assert_eq!(upstream_body["stream"], true);
+
+    proxy.shutdown().await;
+}
+
+#[tokio::test]
+async fn chat_completions_stream_converts_native_anthropic_sse_to_openai_sse() {
+    let upstream = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/messages"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string(native_anthropic_sse())
+                .insert_header("content-type", "text/event-stream"),
+        )
+        .expect(1)
+        .mount(&upstream)
+        .await;
+    let proxy = start_proxy_with_native_anthropic_provider(&ProviderSpec {
+        id: "chat-native-anthropic-stream",
+        name: "Chat Native Anthropic Stream",
+        priority: 1,
+        server: &upstream,
+    })
+    .await;
+
+    let response = reqwest::Client::new()
+        .post(format!("{}/v1/chat/completions", proxy.base_url))
+        .json(&chat_request(true))
+        .send()
+        .await
+        .expect("proxy request");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.text().await.expect("sse text");
+    assert_contains_in_order(
+        &body,
+        &[
+            "data: {",
+            "\"role\":\"assistant\"",
+            "\"content\":\"hi\"",
+            "data: [DONE]",
+        ],
+    );
+    assert!(body.contains("\"object\":\"chat.completion.chunk\""));
+    assert!(!body.contains("event: message_start"));
 
     let received = upstream.received_requests().await.expect("received");
     let upstream_body: Value = serde_json::from_slice(&received[0].body).expect("json");

@@ -9,6 +9,7 @@ import {
   addProvider,
   testProviderConnection,
   type ProviderInput,
+  type StreamCheckResult,
 } from "@/lib/tauri";
 
 // ─── Form values & validation ────────────────────────────────
@@ -122,9 +123,7 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
   const [serverError, setServerError] = useState<string | null>(null);
   const [successId, setSuccessId] = useState<string | null>(null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  const [testResult, setTestResult] = useState<{ latency: number } | null>(
-    null,
-  );
+  const [testResult, setTestResult] = useState<StreamCheckResult | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
 
@@ -145,8 +144,8 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
     setTestResult(null);
     setTestError(null);
     try {
-      const latencyMs = await testProviderConnection(successId);
-      setTestResult({ latency: latencyMs });
+      const result = await testProviderConnection(successId);
+      setTestResult(result);
     } catch (err: unknown) {
       setTestError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -410,9 +409,24 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
               {t("test_connection")}
             </Button>
             {testResult && (
-              <span className="text-xs text-green-600">
-                {t("test_connected", { latency: testResult.latency })}
-              </span>
+              <div className="text-xs text-muted-foreground">
+                <span
+                  className={
+                    testResult.success ? "text-green-600" : "text-destructive"
+                  }
+                >
+                  {testResult.success
+                    ? t("test_connected", {
+                        latency: testResult.response_time_ms ?? 0,
+                      })
+                    : testResult.message}
+                </span>
+                <span className="ml-2">
+                  {testResult.http_status != null
+                    ? `HTTP ${testResult.http_status}`
+                    : ""}
+                </span>
+              </div>
             )}
             {testError && (
               <span className="text-xs text-destructive">
