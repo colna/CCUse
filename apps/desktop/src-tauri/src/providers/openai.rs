@@ -18,6 +18,9 @@ use serde_json::{json, Value};
 use super::api::{
     ApiModel, ApiRequest, ApiResponse, HealthStatus, Provider, ProviderError, StreamingResponse,
 };
+use super::default_models::{
+    model_candidates, should_try_next_default_model, OPENAI_DEFAULT_MODELS,
+};
 use super::error_format::format_reqwest_error;
 use super::model;
 use super::stream_check::{check_provider_with_default_config, health_status_from_stream_result};
@@ -35,6 +38,7 @@ pub struct OpenAIProvider {
     api_key: String,
     priority: i32,
     cost_per_token: Option<f64>,
+    default_models: Vec<String>,
     client: Client,
 }
 
@@ -77,6 +81,47 @@ impl OpenAIProvider {
         priority: i32,
         cost_per_token: Option<f64>,
     ) -> Result<Self, ProviderError> {
+        Self::with_default_models_and_options(
+            id,
+            name,
+            base_url,
+            api_key,
+            priority,
+            cost_per_token,
+            OPENAI_DEFAULT_MODELS
+                .iter()
+                .map(|model| (*model).to_owned())
+                .collect(),
+        )
+    }
+
+    pub fn with_default_models(
+        id: impl Into<String>,
+        name: impl Into<String>,
+        base_url: impl Into<String>,
+        api_key: impl Into<String>,
+        default_models: Vec<String>,
+    ) -> Result<Self, ProviderError> {
+        Self::with_default_models_and_options(
+            id,
+            name,
+            base_url,
+            api_key,
+            100,
+            None,
+            default_models,
+        )
+    }
+
+    fn with_default_models_and_options(
+        id: impl Into<String>,
+        name: impl Into<String>,
+        base_url: impl Into<String>,
+        api_key: impl Into<String>,
+        priority: i32,
+        cost_per_token: Option<f64>,
+        default_models: Vec<String>,
+    ) -> Result<Self, ProviderError> {
         let client = Client::builder()
             .timeout(DEFAULT_REQUEST_TIMEOUT)
             .build()
@@ -88,6 +133,7 @@ impl OpenAIProvider {
             api_key: api_key.into(),
             priority,
             cost_per_token,
+            default_models,
             client,
         })
     }
@@ -170,26 +216,37 @@ impl Provider for OpenAIProvider {
     async fn send_request(&self, request: ApiRequest) -> Result<ApiResponse, ProviderError> {
         // Force non-streaming on the wire — the streaming path goes
         // through `send_stream_request`.
-        let body = chat_completion_body(request, false)?;
-        let response = self
-            .client
-            .post(self.endpoint("/v1/chat/completions"))
-            .headers(self.auth_headers()?)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| ProviderError::Network(format_reqwest_error(e)))?;
-
-        let status = response.status();
-        if status.is_success() {
-            return response
-                .json::<ApiResponse>()
+        let candidates = model_candidates(&request.model, &self.default_models);
+        let mut last_error = None;
+        for model in candidates {
+            let body = chat_completion_body(request_with_model(&request, &model), false)?;
+            let response = self
+                .client
+                .post(self.endpoint("/v1/chat/completions"))
+                .headers(self.auth_headers()?)
+                .json(&body)
+                .send()
                 .await
-                .map_err(|e| ProviderError::Decode(format_reqwest_error(e)));
-        }
+                .map_err(|e| ProviderError::Network(format_reqwest_error(e)))?;
 
-        let body_text = response.text().await.unwrap_or_default();
-        Err(map_http_error(status, body_text))
+            let status = response.status();
+            if status.is_success() {
+                return response
+                    .json::<ApiResponse>()
+                    .await
+                    .map_err(|e| ProviderError::Decode(format_reqwest_error(e)));
+            }
+
+            let body_text = response.text().await.unwrap_or_default();
+            let error = map_http_error(status, body_text);
+            if should_try_next_default_model(&error) {
+                last_error = Some(error);
+                continue;
+            }
+            return Err(error);
+        }
+        Err(last_error
+            .unwrap_or_else(|| ProviderError::BadRequest("no default model candidates".into())))
     }
 
     async fn send_stream_request(
@@ -199,27 +256,36 @@ impl Provider for OpenAIProvider {
         // Force `stream: true` regardless of caller input — the
         // non-streaming path is `send_request`. Splitting the wire
         // override here mirrors `send_request` which forces `false`.
-        let body = chat_completion_body(request, true)?;
-        let response = self
-            .client
-            .post(self.endpoint("/v1/chat/completions"))
-            .headers(self.auth_headers()?)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| ProviderError::Network(format_reqwest_error(e)))?;
+        let candidates = model_candidates(&request.model, &self.default_models);
+        let mut last_error = None;
+        for model in candidates {
+            let body = chat_completion_body(request_with_model(&request, &model), true)?;
+            let response = self
+                .client
+                .post(self.endpoint("/v1/chat/completions"))
+                .headers(self.auth_headers()?)
+                .json(&body)
+                .send()
+                .await
+                .map_err(|e| ProviderError::Network(format_reqwest_error(e)))?;
 
-        let status = response.status();
-        if !status.is_success() {
-            let body_text = response.text().await.unwrap_or_default();
-            return Err(map_http_error(status, body_text));
+            let status = response.status();
+            if !status.is_success() {
+                let body_text = response.text().await.unwrap_or_default();
+                let error = map_http_error(status, body_text);
+                if should_try_next_default_model(&error) {
+                    last_error = Some(error);
+                    continue;
+                }
+                return Err(error);
+            }
+            let upstream = response
+                .bytes_stream()
+                .map(|chunk| chunk.map_err(|e| ProviderError::Network(format_reqwest_error(e))));
+            return Ok(Box::pin(upstream));
         }
-        // Forward chunks verbatim; the proxy layer will repackage
-        // them as SSE in T1.0.1.22 (`axum::response::Sse`).
-        let upstream = response
-            .bytes_stream()
-            .map(|chunk| chunk.map_err(|e| ProviderError::Network(format_reqwest_error(e))));
-        Ok(Box::pin(upstream))
+        Err(last_error
+            .unwrap_or_else(|| ProviderError::BadRequest("no default model candidates".into())))
     }
 }
 
@@ -249,6 +315,12 @@ fn chat_completion_body(mut request: ApiRequest, stream: bool) -> Result<Value, 
     })?;
     add_tools_to_body(&mut body, &tools);
     Ok(body)
+}
+
+fn request_with_model(request: &ApiRequest, model: &str) -> ApiRequest {
+    let mut mapped = request.clone();
+    model.clone_into(&mut mapped.model);
+    mapped
 }
 
 /// Map an upstream HTTP status to the appropriate `ProviderError`.
@@ -413,6 +485,7 @@ mod tests {
         .expect("serialize request body");
 
         assert_eq!(body["stream"], true);
+        assert_eq!(body["model"], "gpt-4o");
         assert!(body.get("temperature").is_none());
         assert!(body.get("max_tokens").is_none());
         assert_eq!(body["tools"][0]["type"], "function");

@@ -10,6 +10,7 @@
 
 pub mod anthropic;
 pub mod api;
+pub mod default_models;
 mod error_format;
 pub mod gemini;
 pub mod manager;

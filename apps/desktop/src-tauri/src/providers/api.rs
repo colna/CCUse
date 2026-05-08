@@ -22,10 +22,8 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 /// before dispatch.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApiRequest {
-    /// Client-supplied model name retained for logs and response fallback.
-    /// Provider requests intentionally omit this field so the upstream
-    /// account / relay can apply its default model.
-    #[serde(skip_serializing)]
+    /// Client-supplied model name. Empty means the selected provider
+    /// should apply its default fallback model chain.
     pub model: String,
     /// Conversation history in `OpenAI` chat-completions form.
     pub messages: Vec<ChatMessage>,
@@ -445,10 +443,7 @@ mod tests {
             tools: vec![],
         };
         let json = serde_json::to_value(&req).expect("serialise");
-        // `model`, `temperature`, and `max_tokens` should be omitted
-        // from upstream provider JSON. The proxy retains `model`
-        // internally for logs / response fallback only.
-        assert!(json.get("model").is_none());
+        assert_eq!(json["model"], "gpt-4o");
         assert!(json.get("temperature").is_none());
         assert!(json.get("max_tokens").is_none());
         assert_eq!(json["stream"], false);

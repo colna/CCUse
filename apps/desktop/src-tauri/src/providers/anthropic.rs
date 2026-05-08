@@ -20,6 +20,9 @@ use super::api::{
     ApiChoice, ApiModel, ApiRequest, ApiResponse, ApiToolCall, ApiToolCallFunction, ChatContent,
     ChatContentPart, HealthStatus, Provider, ProviderError, StreamingResponse,
 };
+use super::default_models::{
+    model_candidates, should_try_next_default_model, ANTHROPIC_DEFAULT_MODELS,
+};
 use super::error_format::format_reqwest_error;
 use super::model;
 use super::openai::DEFAULT_REQUEST_TIMEOUT;
@@ -35,6 +38,7 @@ pub struct AnthropicProvider {
     api_key: String,
     priority: i32,
     cost_per_token: Option<f64>,
+    default_models: Vec<String>,
     client: Client,
     converter: AnthropicConverter,
 }
@@ -79,6 +83,29 @@ impl AnthropicProvider {
         priority: i32,
         cost_per_token: Option<f64>,
     ) -> Result<Self, ProviderError> {
+        Self::with_default_models_and_options(
+            id,
+            name,
+            base_url,
+            api_key,
+            priority,
+            cost_per_token,
+            ANTHROPIC_DEFAULT_MODELS
+                .iter()
+                .map(|model| (*model).to_owned())
+                .collect(),
+        )
+    }
+
+    fn with_default_models_and_options(
+        id: impl Into<String>,
+        name: impl Into<String>,
+        base_url: impl Into<String>,
+        api_key: impl Into<String>,
+        priority: i32,
+        cost_per_token: Option<f64>,
+        default_models: Vec<String>,
+    ) -> Result<Self, ProviderError> {
         let client = Client::builder()
             .timeout(DEFAULT_REQUEST_TIMEOUT)
             .build()
@@ -90,6 +117,7 @@ impl AnthropicProvider {
             api_key: api_key.into(),
             priority,
             cost_per_token,
+            default_models,
             client,
             converter: AnthropicConverter::new(),
         })
@@ -176,57 +204,79 @@ impl Provider for AnthropicProvider {
     }
 
     async fn send_request(&self, request: ApiRequest) -> Result<ApiResponse, ProviderError> {
-        let body = self.anthropic_body(&request, false)?;
-        let response = self
-            .client
-            .post(self.endpoint("/v1/messages"))
-            .headers(self.auth_headers()?)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| ProviderError::Network(format_reqwest_error(e)))?;
-
-        let status = response.status();
-        if status.is_success() {
-            let body = response
-                .json::<Value>()
+        let candidates = model_candidates(&request.model, &self.default_models);
+        let mut last_error = None;
+        for model in candidates {
+            let body = self.anthropic_body(&request_with_model(&request, &model), false)?;
+            let response = self
+                .client
+                .post(self.endpoint("/v1/messages"))
+                .headers(self.auth_headers()?)
+                .json(&body)
+                .send()
                 .await
-                .map_err(|e| ProviderError::Decode(format_reqwest_error(e)))?;
-            let unified = self
-                .converter
-                .response_to_unified(&body)
-                .map_err(|e| ProviderError::Decode(e.to_string()))?;
-            return Ok(unified_response_to_api_response(&unified));
-        }
+                .map_err(|e| ProviderError::Network(format_reqwest_error(e)))?;
 
-        let body_text = response.text().await.unwrap_or_default();
-        Err(map_http_error(status, body_text))
+            let status = response.status();
+            if status.is_success() {
+                let body = response
+                    .json::<Value>()
+                    .await
+                    .map_err(|e| ProviderError::Decode(format_reqwest_error(e)))?;
+                let unified = self
+                    .converter
+                    .response_to_unified(&body)
+                    .map_err(|e| ProviderError::Decode(e.to_string()))?;
+                return Ok(unified_response_to_api_response(&unified));
+            }
+
+            let body_text = response.text().await.unwrap_or_default();
+            let error = map_http_error(status, body_text);
+            if should_try_next_default_model(&error) {
+                last_error = Some(error);
+                continue;
+            }
+            return Err(error);
+        }
+        Err(last_error
+            .unwrap_or_else(|| ProviderError::BadRequest("no default model candidates".into())))
     }
 
     async fn send_stream_request(
         &self,
         request: ApiRequest,
     ) -> Result<StreamingResponse, ProviderError> {
-        let body = self.anthropic_body(&request, true)?;
-        let response = self
-            .client
-            .post(self.endpoint("/v1/messages"))
-            .headers(self.auth_headers()?)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| ProviderError::Network(format_reqwest_error(e)))?;
+        let candidates = model_candidates(&request.model, &self.default_models);
+        let mut last_error = None;
+        for model in candidates {
+            let body = self.anthropic_body(&request_with_model(&request, &model), true)?;
+            let response = self
+                .client
+                .post(self.endpoint("/v1/messages"))
+                .headers(self.auth_headers()?)
+                .json(&body)
+                .send()
+                .await
+                .map_err(|e| ProviderError::Network(format_reqwest_error(e)))?;
 
-        let status = response.status();
-        if !status.is_success() {
-            let body_text = response.text().await.unwrap_or_default();
-            return Err(map_http_error(status, body_text));
+            let status = response.status();
+            if !status.is_success() {
+                let body_text = response.text().await.unwrap_or_default();
+                let error = map_http_error(status, body_text);
+                if should_try_next_default_model(&error) {
+                    last_error = Some(error);
+                    continue;
+                }
+                return Err(error);
+            }
+
+            let upstream = response
+                .bytes_stream()
+                .map(|chunk| chunk.map_err(|e| ProviderError::Network(format_reqwest_error(e))));
+            return Ok(Box::pin(upstream));
         }
-
-        let upstream = response
-            .bytes_stream()
-            .map(|chunk| chunk.map_err(|e| ProviderError::Network(format_reqwest_error(e))));
-        Ok(Box::pin(upstream))
+        Err(last_error
+            .unwrap_or_else(|| ProviderError::BadRequest("no default model candidates".into())))
     }
 }
 
@@ -252,13 +302,10 @@ impl AnthropicProvider {
     fn anthropic_body(&self, request: &ApiRequest, stream: bool) -> Result<Value, ProviderError> {
         let mut unified = api_request_to_unified(request);
         unified.stream = stream;
-        let mut body = self
+        let body = self
             .converter
             .unified_to_request(&unified)
             .map_err(|e| ProviderError::BadRequest(e.to_string()))?;
-        if let Some(object) = body.as_object_mut() {
-            object.remove("model");
-        }
         Ok(body)
     }
 }
@@ -286,6 +333,12 @@ fn api_request_to_unified(request: &ApiRequest) -> UnifiedRequest {
             })
             .collect(),
     }
+}
+
+fn request_with_model(request: &ApiRequest, model: &str) -> ApiRequest {
+    let mut mapped = request.clone();
+    model.clone_into(&mut mapped.model);
+    mapped
 }
 
 fn chat_message_to_unified(message: &super::api::ChatMessage) -> UnifiedMessage {
@@ -501,7 +554,7 @@ mod tests {
             )
             .expect("body");
 
-        assert_eq!(body.get("model"), None);
+        assert_eq!(body["model"], "claude-sonnet-4-20250514");
         assert_eq!(body["system"], "You are terse.");
         assert_eq!(body["messages"][0]["role"], "user");
         assert_eq!(body["messages"][0]["content"][0]["text"], "ping");

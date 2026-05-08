@@ -11,6 +11,7 @@ use tokio::sync::RwLock;
 
 use super::anthropic::AnthropicProvider;
 use super::api::{Provider as ProviderTrait, ProviderError};
+use super::default_models::{default_models_for_kind, owned_defaults};
 use super::gemini::GeminiProvider;
 use super::model::ProviderKind;
 use super::openai::OpenAIProvider;
@@ -156,7 +157,13 @@ fn build_runtime_provider(
 ) -> Result<Box<dyn super::api::Provider>, ProviderError> {
     match kind {
         ProviderKind::Openai | ProviderKind::Custom | ProviderKind::Relay => {
-            Ok(Box::new(OpenAIProvider::new(id, name, base_url, api_key)?))
+            Ok(Box::new(OpenAIProvider::with_default_models(
+                id,
+                name,
+                base_url,
+                api_key,
+                owned_defaults(default_models_for_kind(kind)),
+            )?))
         }
         ProviderKind::Anthropic => Ok(Box::new(AnthropicProvider::new(
             id, name, base_url, api_key,

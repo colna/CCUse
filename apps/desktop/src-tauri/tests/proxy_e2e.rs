@@ -21,7 +21,7 @@ use serde_json::{json, Value};
 use tempfile::TempDir;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
-use wiremock::matchers::{method, path};
+use wiremock::matchers::{body_partial_json, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 struct ProviderSpec<'a> {
@@ -180,6 +180,13 @@ fn chat_request_with_model(model: &str) -> Value {
     })
 }
 
+fn chat_request_without_model() -> Value {
+    json!({
+        "messages": [{"role": "user", "content": "ping"}],
+        "stream": false
+    })
+}
+
 fn chat_request_with_image() -> Value {
     json!({
         "model": "gpt-4o",
@@ -238,6 +245,14 @@ fn anthropic_messages_request() -> Value {
 fn anthropic_messages_request_with_model(model: &str) -> Value {
     json!({
         "model": model,
+        "max_tokens": 128,
+        "messages": [{"role": "user", "content": "ping"}],
+        "stream": false
+    })
+}
+
+fn anthropic_messages_request_without_model() -> Value {
+    json!({
         "max_tokens": 128,
         "messages": [{"role": "user", "content": "ping"}],
         "stream": false
@@ -585,7 +600,7 @@ async fn models_returns_empty_list_when_upstream_has_no_models() {
 }
 
 #[tokio::test]
-async fn chat_completions_omits_model_from_openai_provider_request() {
+async fn chat_completions_uses_openai_default_model_when_client_model_is_present() {
     let upstream = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/v1/chat/completions"))
@@ -612,13 +627,151 @@ async fn chat_completions_omits_model_from_openai_provider_request() {
     assert_eq!(response.status(), StatusCode::OK);
     let received = upstream.received_requests().await.expect("received");
     let upstream_body: Value = serde_json::from_slice(&received[0].body).expect("json");
-    assert_eq!(upstream_body.get("model"), None);
+    assert_eq!(upstream_body["model"], "gpt-5.5");
 
     proxy.shutdown().await;
 }
 
 #[tokio::test]
-async fn anthropic_messages_to_openai_provider_omits_model() {
+async fn chat_completions_without_model_uses_openai_default_model() {
+    let upstream = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(openai_text_response("default")))
+        .expect(1)
+        .mount(&upstream)
+        .await;
+
+    let proxy = start_proxy_with_providers(&[ProviderSpec {
+        id: "missing-model-openai",
+        name: "Missing Model OpenAI",
+        priority: 1,
+        server: &upstream,
+    }])
+    .await;
+
+    let response = reqwest::Client::new()
+        .post(format!("{}/v1/chat/completions", proxy.base_url))
+        .json(&chat_request_without_model())
+        .send()
+        .await
+        .expect("proxy request");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let received = upstream.received_requests().await.expect("received");
+    let upstream_body: Value = serde_json::from_slice(&received[0].body).expect("json");
+    assert_eq!(upstream_body["model"], "gpt-5.5");
+
+    proxy.shutdown().await;
+}
+
+#[tokio::test]
+async fn chat_completions_without_model_falls_back_to_next_openai_default_model() {
+    let upstream = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .and(body_partial_json(json!({"model": "gpt-5.5"})))
+        .respond_with(ResponseTemplate::new(400).set_body_json(json!({
+            "error": {"message": "The model `gpt-5.5` does not exist"}
+        })))
+        .expect(1)
+        .mount(&upstream)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .and(body_partial_json(json!({"model": "gpt-5.4"})))
+        .respond_with(ResponseTemplate::new(200).set_body_json(openai_text_response("fallback")))
+        .expect(1)
+        .mount(&upstream)
+        .await;
+
+    let proxy = start_proxy_with_providers(&[ProviderSpec {
+        id: "fallback-model-openai",
+        name: "Fallback Model OpenAI",
+        priority: 1,
+        server: &upstream,
+    }])
+    .await;
+
+    let response = reqwest::Client::new()
+        .post(format!("{}/v1/chat/completions", proxy.base_url))
+        .json(&chat_request_without_model())
+        .send()
+        .await
+        .expect("proxy request");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = response.json().await.expect("response json");
+    assert_eq!(body["choices"][0]["message"]["content"], "fallback");
+
+    let received = upstream.received_requests().await.expect("received");
+    let models = received
+        .iter()
+        .map(|request| {
+            serde_json::from_slice::<Value>(&request.body).expect("json")["model"]
+                .as_str()
+                .expect("model")
+                .to_owned()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(models, vec!["gpt-5.5", "gpt-5.4"]);
+
+    proxy.shutdown().await;
+}
+
+#[tokio::test]
+async fn chat_completions_with_client_model_still_falls_back_to_next_openai_default_model() {
+    let upstream = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .and(body_partial_json(json!({"model": "gpt-5.5"})))
+        .respond_with(ResponseTemplate::new(400).set_body_json(json!({
+            "error": {"message": "The model `gpt-5.5` does not exist"}
+        })))
+        .expect(1)
+        .mount(&upstream)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .and(body_partial_json(json!({"model": "gpt-5.4"})))
+        .respond_with(ResponseTemplate::new(200).set_body_json(openai_text_response("fallback")))
+        .expect(1)
+        .mount(&upstream)
+        .await;
+
+    let proxy = start_proxy_with_providers(&[ProviderSpec {
+        id: "fallback-model-ignores-client",
+        name: "Fallback Model Ignores Client",
+        priority: 1,
+        server: &upstream,
+    }])
+    .await;
+
+    let response = reqwest::Client::new()
+        .post(format!("{}/v1/chat/completions", proxy.base_url))
+        .json(&chat_request_with_model("client-custom-model"))
+        .send()
+        .await
+        .expect("proxy request");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let received = upstream.received_requests().await.expect("received");
+    let models = received
+        .iter()
+        .map(|request| {
+            serde_json::from_slice::<Value>(&request.body).expect("json")["model"]
+                .as_str()
+                .expect("model")
+                .to_owned()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(models, vec!["gpt-5.5", "gpt-5.4"]);
+
+    proxy.shutdown().await;
+}
+
+#[tokio::test]
+async fn anthropic_messages_to_openai_provider_uses_default_model() {
     let upstream = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/v1/chat/completions"))
@@ -649,13 +802,48 @@ async fn anthropic_messages_to_openai_provider_omits_model() {
     assert_eq!(body["content"][0]["text"], "anthropic default");
     let received = upstream.received_requests().await.expect("received");
     let upstream_body: Value = serde_json::from_slice(&received[0].body).expect("json");
-    assert_eq!(upstream_body.get("model"), None);
+    assert_eq!(upstream_body["model"], "gpt-5.5");
 
     proxy.shutdown().await;
 }
 
 #[tokio::test]
-async fn chat_completions_keeps_client_model_in_response_fallback_only() {
+async fn anthropic_messages_without_model_to_openai_provider_uses_default_model() {
+    let upstream = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(openai_text_response("anthropic default")),
+        )
+        .expect(1)
+        .mount(&upstream)
+        .await;
+
+    let proxy = start_proxy_with_providers(&[ProviderSpec {
+        id: "missing-model-anthropic-openai",
+        name: "Missing Model Anthropic OpenAI",
+        priority: 1,
+        server: &upstream,
+    }])
+    .await;
+
+    let response = reqwest::Client::new()
+        .post(format!("{}/v1/messages", proxy.base_url))
+        .json(&anthropic_messages_request_without_model())
+        .send()
+        .await
+        .expect("proxy request");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let received = upstream.received_requests().await.expect("received");
+    let upstream_body: Value = serde_json::from_slice(&received[0].body).expect("json");
+    assert_eq!(upstream_body["model"], "gpt-5.5");
+
+    proxy.shutdown().await;
+}
+
+#[tokio::test]
+async fn chat_completions_keeps_upstream_response_model_and_uses_default_model() {
     let upstream = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/v1/chat/completions"))
@@ -683,7 +871,7 @@ async fn chat_completions_keeps_client_model_in_response_fallback_only() {
     assert_eq!(response_body["model"], "gpt-4o");
     let received = upstream.received_requests().await.expect("received");
     let upstream_body: Value = serde_json::from_slice(&received[0].body).expect("json");
-    assert_eq!(upstream_body.get("model"), None);
+    assert_eq!(upstream_body["model"], "gpt-5.5");
 
     proxy.shutdown().await;
 }
@@ -801,7 +989,7 @@ async fn anthropic_messages_dispatches_non_streaming_request_to_upstream() {
 
     let received = upstream.received_requests().await.expect("received");
     let upstream_body: Value = serde_json::from_slice(&received[0].body).expect("json");
-    assert_eq!(upstream_body.get("model"), None);
+    assert_eq!(upstream_body["model"], "gpt-5.5");
     assert_eq!(upstream_body["messages"][0]["role"], "system");
     assert_eq!(upstream_body["messages"][0]["content"], "You are terse.");
     assert_eq!(upstream_body["messages"][1]["role"], "user");
@@ -845,7 +1033,7 @@ async fn anthropic_messages_uses_native_anthropic_provider_request_shape() {
     let received = upstream.received_requests().await.expect("received");
     let request = &received[0];
     let upstream_body: Value = serde_json::from_slice(&request.body).expect("json");
-    assert_eq!(upstream_body.get("model"), None);
+    assert_eq!(upstream_body["model"], "claude-opus-4.7");
     assert_eq!(upstream_body["system"], "You are terse.");
     assert_eq!(upstream_body["messages"][0]["role"], "user");
     assert_eq!(upstream_body["messages"][0]["content"][0]["text"], "ping");
@@ -868,6 +1056,40 @@ async fn anthropic_messages_uses_native_anthropic_provider_request_shape() {
             .and_then(|value| value.to_str().ok()),
         Some("2023-06-01"),
     );
+
+    proxy.shutdown().await;
+}
+
+#[tokio::test]
+async fn anthropic_messages_without_model_uses_native_anthropic_default_model() {
+    let upstream = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/messages"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(anthropic_text_response("native default")),
+        )
+        .expect(1)
+        .mount(&upstream)
+        .await;
+    let proxy = start_proxy_with_native_anthropic_provider(&ProviderSpec {
+        id: "native-anthropic-missing-model",
+        name: "Native Anthropic Missing Model",
+        priority: 1,
+        server: &upstream,
+    })
+    .await;
+
+    let response = reqwest::Client::new()
+        .post(format!("{}/v1/messages", proxy.base_url))
+        .json(&anthropic_messages_request_without_model())
+        .send()
+        .await
+        .expect("proxy request");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let received = upstream.received_requests().await.expect("received");
+    let upstream_body: Value = serde_json::from_slice(&received[0].body).expect("json");
+    assert_eq!(upstream_body["model"], "claude-opus-4.7");
 
     proxy.shutdown().await;
 }
@@ -1396,7 +1618,7 @@ async fn chat_completions_dispatches_text_request_to_upstream() {
 
     let received = upstream.received_requests().await.expect("received");
     let upstream_body: Value = serde_json::from_slice(&received[0].body).expect("json");
-    assert_eq!(upstream_body.get("model"), None);
+    assert_eq!(upstream_body["model"], "gpt-5.5");
     assert_eq!(upstream_body["messages"][0]["content"], "ping");
     assert_eq!(upstream_body["stream"], false);
 
@@ -1435,7 +1657,7 @@ async fn chat_completions_uses_native_anthropic_provider_request_shape() {
 
     let received = upstream.received_requests().await.expect("received");
     let upstream_body: Value = serde_json::from_slice(&received[0].body).expect("json");
-    assert_eq!(upstream_body.get("model"), None);
+    assert_eq!(upstream_body["model"], "claude-opus-4.7");
     assert_eq!(upstream_body["messages"][0]["role"], "user");
     assert_eq!(upstream_body["messages"][0]["content"][0]["text"], "ping");
     assert_eq!(upstream_body["stream"], Value::Null);
@@ -1774,7 +1996,7 @@ async fn chat_completions_retries_after_provider_bad_request_and_uses_next_provi
         .and(path("/v1/chat/completions"))
         .respond_with(
             ResponseTemplate::new(400)
-                .set_body_json(json!({"error": {"message": "model not supported here"}})),
+                .set_body_json(json!({"error": {"message": "request shape not supported here"}})),
         )
         .expect(1)
         .mount(&primary)

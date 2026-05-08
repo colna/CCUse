@@ -342,10 +342,7 @@ impl AnthropicConverter {
 
 impl FormatConverter for AnthropicConverter {
     fn request_to_unified(&self, body: &Value) -> Result<UnifiedRequest, ConvertError> {
-        let model = body["model"]
-            .as_str()
-            .ok_or_else(|| ConvertError::MissingField("model".into()))?
-            .to_string();
+        let model = body["model"].as_str().unwrap_or_default().trim().to_owned();
 
         let mut messages = Vec::new();
 
@@ -689,6 +686,17 @@ mod tests {
         let back = converter().unified_to_request(&unified).unwrap();
         assert_eq!(back["system"], "You are helpful.");
         assert_eq!(back["messages"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn missing_model_defaults_to_empty_for_provider_fallback() {
+        let input = json!({
+            "max_tokens": 1024,
+            "messages": [{"role": "user", "content": "hello"}]
+        });
+        let unified = converter().request_to_unified(&input).unwrap();
+
+        assert_eq!(unified.model, "");
     }
 
     #[test]

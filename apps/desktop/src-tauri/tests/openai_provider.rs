@@ -4,18 +4,20 @@
 //! 1. successful chat-completions decodes into `ApiResponse`,
 //! 2. `Authorization: Bearer <key>` is forwarded verbatim,
 //! 3. `stream` is forced to `false` even if the caller set `true`,
-//! 4. 401 / 429 / 500 / 400 land in the right `ProviderError` variant,
-//! 5. `health_check` uses the shared cc-switch style stream probe,
+//! 4. provider default models are used on the upstream request,
+//! 5. 401 / 429 / 500 / 400 land in the right `ProviderError` variant,
+//! 6. `health_check` uses the shared cc-switch style stream probe,
 //!    while `list_models` still reads `GET /v1/models`.
 
 use ccuse_desktop_lib::providers::api::ProviderError;
 use ccuse_desktop_lib::providers::api::{
     ApiRequest, ChatContent, ChatContentPart, ChatImageUrl, ChatMessage, HealthStatus, Provider,
 };
+use ccuse_desktop_lib::providers::default_models::OPENAI_DEFAULT_MODELS;
 use ccuse_desktop_lib::providers::OpenAIProvider;
 use futures::StreamExt;
 use serde_json::Value;
-use wiremock::matchers::{body_json, header, method, path};
+use wiremock::matchers::{body_json, body_partial_json, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 fn sample_request(stream: bool) -> ApiRequest {
@@ -32,6 +34,12 @@ fn sample_request(stream: bool) -> ApiRequest {
         stream,
         tools: vec![],
     }
+}
+
+fn sample_request_without_model(stream: bool) -> ApiRequest {
+    let mut request = sample_request(stream);
+    request.model.clear();
+    request
 }
 
 fn multimodal_request(stream: bool) -> ApiRequest {
@@ -148,7 +156,75 @@ async fn send_request_forces_stream_false_on_the_wire() {
     let received = &server.received_requests().await.expect("requests")[0];
     let body: Value = serde_json::from_slice(&received.body).expect("json");
     assert_eq!(body["stream"], serde_json::json!(false));
-    assert!(body.get("model").is_none());
+    assert_eq!(body["model"], OPENAI_DEFAULT_MODELS[0]);
+}
+
+#[tokio::test]
+async fn send_request_uses_default_model_when_request_model_is_empty() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(fixture_response_body()))
+        .mount(&server)
+        .await;
+
+    let provider =
+        OpenAIProvider::new("p1", "Mock", server.uri(), "sk-test").expect("build provider");
+    provider
+        .send_request(sample_request_without_model(false))
+        .await
+        .expect("ok");
+
+    let received = &server.received_requests().await.expect("requests")[0];
+    let body: Value = serde_json::from_slice(&received.body).expect("json");
+    assert_eq!(body["model"], OPENAI_DEFAULT_MODELS[0]);
+}
+
+#[tokio::test]
+async fn send_request_tries_next_default_model_when_first_model_is_unavailable() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .and(body_partial_json(serde_json::json!({"model": "gpt-5.5"})))
+        .respond_with(
+            ResponseTemplate::new(400)
+                .set_body_string(r#"{"error":{"message":"The model `gpt-5.5` does not exist"}}"#),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .and(body_partial_json(serde_json::json!({"model": "gpt-5.4"})))
+        .respond_with(ResponseTemplate::new(200).set_body_json(fixture_response_body()))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let provider = OpenAIProvider::with_default_models(
+        "p1",
+        "Mock",
+        server.uri(),
+        "sk-test",
+        vec!["gpt-5.5".to_owned(), "gpt-5.4".to_owned()],
+    )
+    .expect("build provider");
+    provider
+        .send_request(sample_request_without_model(false))
+        .await
+        .expect("ok");
+
+    let received = server.received_requests().await.expect("requests");
+    let models = received
+        .iter()
+        .map(|request| {
+            serde_json::from_slice::<Value>(&request.body).expect("json")["model"]
+                .as_str()
+                .expect("model")
+                .to_owned()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(models, vec!["gpt-5.5", "gpt-5.4"]);
 }
 
 #[tokio::test]

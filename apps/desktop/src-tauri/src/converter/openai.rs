@@ -261,10 +261,7 @@ impl OpenAIConverter {
 
 impl FormatConverter for OpenAIConverter {
     fn request_to_unified(&self, body: &Value) -> Result<UnifiedRequest, ConvertError> {
-        let model = body["model"]
-            .as_str()
-            .ok_or_else(|| ConvertError::MissingField("model".into()))?
-            .to_string();
+        let model = body["model"].as_str().unwrap_or_default().trim().to_owned();
 
         let messages = body["messages"]
             .as_array()
@@ -737,8 +734,10 @@ mod tests {
     }
 
     #[test]
-    fn missing_model_returns_error() {
+    fn missing_model_defaults_to_empty_for_provider_fallback() {
         let input = json!({"messages": [{"role": "user", "content": "hi"}]});
-        assert!(converter().request_to_unified(&input).is_err());
+        let unified = converter().request_to_unified(&input).unwrap();
+
+        assert_eq!(unified.model, "");
     }
 }
