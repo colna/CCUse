@@ -5,6 +5,7 @@
 //! candidate, and retries — up to `max_retries` times.
 
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
@@ -159,13 +160,27 @@ impl SwitchEngine {
             tried.push(provider.id().to_owned());
 
             let provider_request = map_request(&request, provider.as_ref());
+            let attempt_number = attempt + 1;
+            let log_context = DispatchLogContext {
+                stream: false,
+                attempt: attempt_number,
+                strategy: config.strategy,
+                provider_id: provider.id().to_owned(),
+                provider_kind: provider.kind(),
+                model: model_for_log(&provider_request.model).to_owned(),
+                message_count: provider_request.messages.len(),
+                tool_count: provider_request.tools.len(),
+            };
+            log_dispatch_attempt(&log_context);
+            let attempt_started_at = Instant::now();
             match provider.send_request(provider_request).await {
                 Ok(response) => {
+                    log_dispatch_success(&log_context, attempt_started_at.elapsed());
                     return Ok(DispatchResult {
                         provider_id: provider.id().to_owned(),
                         provider_name: provider.name().to_owned(),
                         provider_kind: provider.kind(),
-                        attempts: attempt + 1,
+                        attempts: attempt_number,
                         strategy: config.strategy,
                         switched_from_provider_id: last_failed_provider_id,
                         switch_reason: last_failure_reason,
@@ -174,6 +189,12 @@ impl SwitchEngine {
                 }
                 Err(err) => {
                     let should_try_next = should_try_next_provider(&err);
+                    log_dispatch_failure(
+                        &log_context,
+                        attempt_started_at.elapsed(),
+                        &err,
+                        should_try_next,
+                    );
                     if should_try_next {
                         provider.state.set_health(HealthStatus::Degraded).await;
                         last_failed_provider_id = Some(provider.id().to_owned());
@@ -187,8 +208,10 @@ impl SwitchEngine {
             }
         }
 
-        Err(last_error
-            .unwrap_or_else(|| ProviderError::BadRequest("all providers exhausted".into())))
+        let err = last_error
+            .unwrap_or_else(|| ProviderError::BadRequest("all providers exhausted".into()));
+        log_dispatch_exhausted(false, tried.len(), &err);
+        Err(err)
     }
 
     /// Dispatch a streaming request with failover. Retry only
@@ -241,13 +264,27 @@ impl SwitchEngine {
             tried.push(provider.id().to_owned());
 
             let provider_request = map_request(&request, provider.as_ref());
+            let attempt_number = attempt + 1;
+            let log_context = DispatchLogContext {
+                stream: true,
+                attempt: attempt_number,
+                strategy: config.strategy,
+                provider_id: provider.id().to_owned(),
+                provider_kind: provider.kind(),
+                model: model_for_log(&provider_request.model).to_owned(),
+                message_count: provider_request.messages.len(),
+                tool_count: provider_request.tools.len(),
+            };
+            log_dispatch_attempt(&log_context);
+            let attempt_started_at = Instant::now();
             match provider.send_stream_request(provider_request).await {
                 Ok(stream) => {
+                    log_dispatch_success(&log_context, attempt_started_at.elapsed());
                     return Ok(DispatchResult {
                         provider_id: provider.id().to_owned(),
                         provider_name: provider.name().to_owned(),
                         provider_kind: provider.kind(),
-                        attempts: attempt + 1,
+                        attempts: attempt_number,
                         strategy: config.strategy,
                         switched_from_provider_id: last_failed_provider_id,
                         switch_reason: last_failure_reason,
@@ -256,6 +293,12 @@ impl SwitchEngine {
                 }
                 Err(err) => {
                     let should_try_next = should_try_next_provider(&err);
+                    log_dispatch_failure(
+                        &log_context,
+                        attempt_started_at.elapsed(),
+                        &err,
+                        should_try_next,
+                    );
                     if should_try_next {
                         provider.state.set_health(HealthStatus::Degraded).await;
                         last_failed_provider_id = Some(provider.id().to_owned());
@@ -269,8 +312,10 @@ impl SwitchEngine {
             }
         }
 
-        Err(last_error
-            .unwrap_or_else(|| ProviderError::BadRequest("all providers exhausted".into())))
+        let err = last_error
+            .unwrap_or_else(|| ProviderError::BadRequest("all providers exhausted".into()));
+        log_dispatch_exhausted(true, tried.len(), &err);
+        Err(err)
     }
 }
 
@@ -290,6 +335,88 @@ fn should_try_next_provider(error: &ProviderError) -> bool {
 }
 
 fn switch_reason_for_provider_error(error: &ProviderError) -> String {
+    match error {
+        ProviderError::Network(_) => "network".to_owned(),
+        ProviderError::Upstream { status, .. } => format!("upstream_{status}"),
+        ProviderError::RateLimited(_) => "rate_limited".to_owned(),
+        ProviderError::Unauthorized(_) => "unauthorized".to_owned(),
+        ProviderError::Decode(_) => "decode".to_owned(),
+        ProviderError::BadRequest(_) => "bad_request".to_owned(),
+    }
+}
+
+#[derive(Debug)]
+struct DispatchLogContext {
+    stream: bool,
+    attempt: usize,
+    strategy: SwitchStrategy,
+    provider_id: String,
+    provider_kind: ProviderKind,
+    model: String,
+    message_count: usize,
+    tool_count: usize,
+}
+
+fn log_dispatch_attempt(context: &DispatchLogContext) {
+    eprintln!(
+        "CCUse: provider request start stream={} attempt={} strategy={} provider_id={} provider_kind={} model={} messages={} tools={}",
+        context.stream,
+        context.attempt,
+        context.strategy.as_str(),
+        context.provider_id,
+        context.provider_kind.as_str(),
+        context.model,
+        context.message_count,
+        context.tool_count,
+    );
+}
+
+fn log_dispatch_success(context: &DispatchLogContext, elapsed: Duration) {
+    eprintln!(
+        "CCUse: provider request ok stream={} attempt={} provider_id={} elapsed_ms={}",
+        context.stream,
+        context.attempt,
+        context.provider_id,
+        elapsed.as_millis(),
+    );
+}
+
+fn log_dispatch_failure(
+    context: &DispatchLogContext,
+    elapsed: Duration,
+    error: &ProviderError,
+    will_try_next: bool,
+) {
+    eprintln!(
+        "CCUse: provider request failed stream={} attempt={} provider_id={} elapsed_ms={} error_kind={} will_try_next={}",
+        context.stream,
+        context.attempt,
+        context.provider_id,
+        elapsed.as_millis(),
+        provider_error_log_kind(error),
+        will_try_next,
+    );
+}
+
+fn log_dispatch_exhausted(stream: bool, attempts: usize, error: &ProviderError) {
+    eprintln!(
+        "CCUse: provider request exhausted stream={} attempts={} last_error_kind={}",
+        stream,
+        attempts,
+        provider_error_log_kind(error),
+    );
+}
+
+fn model_for_log(model: &str) -> &str {
+    let trimmed = model.trim();
+    if trimmed.is_empty() {
+        "<provider-default>"
+    } else {
+        trimmed
+    }
+}
+
+fn provider_error_log_kind(error: &ProviderError) -> String {
     match error {
         ProviderError::Network(_) => "network".to_owned(),
         ProviderError::Upstream { status, .. } => format!("upstream_{status}"),
@@ -465,6 +592,22 @@ mod tests {
             stream: false,
             tools: vec![],
         }
+    }
+
+    #[test]
+    fn model_for_log_uses_provider_default_placeholder() {
+        assert_eq!(model_for_log("  "), "<provider-default>");
+        assert_eq!(model_for_log("  gpt-5.5  "), "gpt-5.5");
+    }
+
+    #[test]
+    fn provider_error_log_kind_redacts_error_details() {
+        let err = ProviderError::Upstream {
+            status: 503,
+            body: "secret upstream body".into(),
+        };
+
+        assert_eq!(provider_error_log_kind(&err), "upstream_503");
     }
 
     async fn make_engine(providers: Vec<(String, bool)>) -> (SwitchEngine, Vec<Arc<AtomicUsize>>) {
