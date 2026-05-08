@@ -11,6 +11,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+use super::anthropic_headers::apply_claude_compatible_headers;
 use super::api::HealthStatus;
 use super::error_format::format_reqwest_error;
 use super::model::{Provider, ProviderKind};
@@ -215,30 +216,8 @@ async fn check_anthropic_stream(
         "stream": true,
     });
 
-    let response = client
-        .post(url)
+    let response = apply_claude_compatible_headers(client.post(url))
         .header("x-api-key", api_key)
-        .header("anthropic-version", "2023-06-01")
-        .header(
-            "anthropic-beta",
-            "claude-code-20250219,interleaved-thinking-2025-05-14",
-        )
-        .header("anthropic-dangerous-direct-browser-access", "true")
-        .header("content-type", "application/json")
-        .header("accept", "application/json")
-        .header("accept-encoding", "identity")
-        .header("accept-language", "*")
-        .header("user-agent", "claude-cli/2.1.2 (external, cli)")
-        .header("x-app", "cli")
-        .header("x-stainless-lang", "js")
-        .header("x-stainless-package-version", "0.70.0")
-        .header("x-stainless-os", os_name())
-        .header("x-stainless-arch", arch_name())
-        .header("x-stainless-runtime", "node")
-        .header("x-stainless-runtime-version", "v22.20.0")
-        .header("x-stainless-retry-count", "0")
-        .header("x-stainless-timeout", "600")
-        .header("sec-fetch-mode", "cors")
         .timeout(timeout)
         .json(&body)
         .send()
@@ -560,24 +539,6 @@ fn parse_model_with_effort(model: &str) -> (String, Option<String>) {
     (model.to_owned(), None)
 }
 
-fn os_name() -> &'static str {
-    match std::env::consts::OS {
-        "macos" => "MacOS",
-        "linux" => "Linux",
-        "windows" => "Windows",
-        other => other,
-    }
-}
-
-fn arch_name() -> &'static str {
-    match std::env::consts::ARCH {
-        "aarch64" => "arm64",
-        "x86_64" => "x86_64",
-        "x86" => "x86",
-        other => other,
-    }
-}
-
 fn elapsed_millis(start: Instant) -> u64 {
     u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX)
 }
@@ -746,7 +707,6 @@ mod tests {
         Mock::given(method("POST"))
             .and(path("/v1/messages"))
             .and(header("x-api-key", "sk-ant"))
-            .and(header("anthropic-version", "2023-06-01"))
             .and(body_json(json!({
                 "model": DEFAULT_CLAUDE_TEST_MODEL,
                 "max_tokens": 1,
@@ -765,6 +725,35 @@ mod tests {
 
         assert!(result.success);
         assert_eq!(result.model_used, DEFAULT_CLAUDE_TEST_MODEL);
+        let received = server.received_requests().await.expect("received");
+        assert_eq!(
+            received[0]
+                .headers
+                .get("anthropic-version")
+                .and_then(|value| value.to_str().ok()),
+            Some(crate::providers::anthropic_headers::ANTHROPIC_VERSION),
+        );
+        assert_eq!(
+            received[0]
+                .headers
+                .get("user-agent")
+                .and_then(|value| value.to_str().ok()),
+            Some(crate::providers::anthropic_headers::CLAUDE_CLI_USER_AGENT),
+        );
+        assert_eq!(
+            received[0]
+                .headers
+                .get("x-stainless-lang")
+                .and_then(|value| value.to_str().ok()),
+            Some("js"),
+        );
+        assert_eq!(
+            received[0]
+                .headers
+                .get("x-stainless-runtime")
+                .and_then(|value| value.to_str().ok()),
+            Some("node"),
+        );
     }
 
     #[tokio::test]

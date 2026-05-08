@@ -1067,6 +1067,27 @@ async fn anthropic_messages_uses_native_anthropic_provider_request_shape() {
             .and_then(|value| value.to_str().ok()),
         Some("2023-06-01"),
     );
+    assert_eq!(
+        request
+            .headers
+            .get("user-agent")
+            .and_then(|value| value.to_str().ok()),
+        Some("claude-cli/2.1.2 (external, cli)"),
+    );
+    assert_eq!(
+        request
+            .headers
+            .get("x-stainless-lang")
+            .and_then(|value| value.to_str().ok()),
+        Some("js"),
+    );
+    assert_eq!(
+        request
+            .headers
+            .get("x-stainless-runtime")
+            .and_then(|value| value.to_str().ok()),
+        Some("node"),
+    );
 
     proxy.shutdown().await;
 }
@@ -1672,6 +1693,20 @@ async fn chat_completions_uses_native_anthropic_provider_request_shape() {
     assert_eq!(upstream_body["messages"][0]["role"], "user");
     assert_eq!(upstream_body["messages"][0]["content"][0]["text"], "ping");
     assert_eq!(upstream_body["stream"], Value::Null);
+    assert_eq!(
+        received[0]
+            .headers
+            .get("user-agent")
+            .and_then(|value| value.to_str().ok()),
+        Some("claude-cli/2.1.2 (external, cli)"),
+    );
+    assert_eq!(
+        received[0]
+            .headers
+            .get("x-stainless-lang")
+            .and_then(|value| value.to_str().ok()),
+        Some("js"),
+    );
 
     proxy.shutdown().await;
 }

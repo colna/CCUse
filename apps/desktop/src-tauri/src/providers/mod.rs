@@ -9,6 +9,7 @@
 //! domain [`Provider`] here is the persistence shape, not the trait.
 
 pub mod anthropic;
+mod anthropic_headers;
 pub mod api;
 pub mod default_models;
 mod error_format;

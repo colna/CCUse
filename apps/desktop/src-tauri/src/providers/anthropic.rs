@@ -6,7 +6,7 @@
 
 use async_trait::async_trait;
 use futures::StreamExt;
-use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
+use reqwest::header::{HeaderMap, HeaderValue};
 use reqwest::{Client, StatusCode};
 use serde::Deserialize;
 use serde_json::Value;
@@ -16,6 +16,7 @@ use crate::converter::{
     UnifiedRequest, UnifiedResponse,
 };
 
+use super::anthropic_headers::insert_claude_compatible_headers;
 use super::api::{
     ApiChoice, ApiModel, ApiRequest, ApiResponse, ApiToolCall, ApiToolCallFunction, ChatContent,
     ChatContentPart, HealthStatus, Provider, ProviderError, StreamingResponse,
@@ -27,8 +28,6 @@ use super::error_format::format_reqwest_error;
 use super::model;
 use super::openai::DEFAULT_REQUEST_TIMEOUT;
 use super::stream_check::{check_provider_with_default_config, health_status_from_stream_result};
-
-const ANTHROPIC_VERSION: &str = "2023-06-01";
 
 #[derive(Clone)]
 pub struct AnthropicProvider {
@@ -129,11 +128,7 @@ impl AnthropicProvider {
 
     fn auth_headers(&self) -> Result<HeaderMap, ProviderError> {
         let mut headers = HeaderMap::new();
-        headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-        headers.insert(
-            "anthropic-version",
-            HeaderValue::from_static(ANTHROPIC_VERSION),
-        );
+        insert_claude_compatible_headers(&mut headers);
         let value = HeaderValue::from_str(&self.api_key).map_err(|e| {
             ProviderError::BadRequest(format!("api key contains invalid bytes: {e}"))
         })?;
@@ -519,6 +514,23 @@ mod tests {
 
         assert!(!rendered.contains("sk-ant"), "api key leaked: {rendered}");
         assert!(rendered.contains("redacted"));
+    }
+
+    #[test]
+    fn auth_headers_include_claude_cli_compatibility_headers() {
+        let headers = provider().auth_headers().expect("headers");
+
+        assert_eq!(headers.get("x-api-key").expect("x-api-key"), "sk-ant");
+        assert_eq!(
+            headers.get("anthropic-version").expect("anthropic-version"),
+            super::super::anthropic_headers::ANTHROPIC_VERSION,
+        );
+        assert_eq!(
+            headers.get("user-agent").expect("user-agent"),
+            super::super::anthropic_headers::CLAUDE_CLI_USER_AGENT,
+        );
+        assert_eq!(headers.get("x-stainless-lang").expect("lang"), "js");
+        assert_eq!(headers.get("x-stainless-runtime").expect("runtime"), "node");
     }
 
     #[test]
