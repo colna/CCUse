@@ -24,16 +24,13 @@ use tokio::sync::RwLock;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
 use crate::auth::{require_local_api_key, KeyStore};
-use crate::commands::model_mapping::ModelMappingHandle;
 use crate::commands::switch::SwitchEngineHandle;
 use crate::converter::{
-    sse::parse_sse_frames, AnthropicConverter, FormatConverter, ModelMapping, OpenAIConverter,
-    UnifiedRequest,
+    sse::parse_sse_frames, AnthropicConverter, FormatConverter, OpenAIConverter, UnifiedRequest,
 };
 use crate::db::Database;
 use crate::providers::{
-    ProviderError, ProviderKind, ProviderManager, ProviderWrapper, RuntimeProvider,
-    StreamingResponse,
+    ProviderError, ProviderKind, ProviderManager, RuntimeProvider, StreamingResponse,
 };
 use crate::switch::history::{SwitchHistoryInput, SwitchHistoryRepository};
 use crate::switch::request_log::{RequestLogInput, RequestLogRepository};
@@ -94,7 +91,6 @@ pub struct ProxyServer {
 #[derive(Debug, Clone)]
 pub struct ProxyAppState {
     pub engine: SwitchEngineHandle,
-    pub model_mapping: ModelMappingHandle,
     pub manager: Arc<ProviderManager>,
     pub request_log: Option<RequestLogRepository>,
     pub switch_history: Option<SwitchHistoryRepository>,
@@ -112,14 +108,9 @@ struct ModelsCache {
 
 impl ProxyAppState {
     #[must_use]
-    pub fn new(
-        engine: SwitchEngineHandle,
-        model_mapping: Arc<RwLock<ModelMapping>>,
-        manager: Arc<ProviderManager>,
-    ) -> Self {
+    pub fn new(engine: SwitchEngineHandle, manager: Arc<ProviderManager>) -> Self {
         Self {
             engine,
-            model_mapping,
             manager,
             request_log: None,
             switch_history: None,
@@ -412,15 +403,14 @@ async fn chat_completions(
 
     let unified: UnifiedRequest = state.openai_converter.request_to_unified(&body_json)?;
     let api_req = bridge::unified_to_api_request(&unified);
-    let model_mapping = state.model_mapping.read().await.clone();
 
     if unified.stream {
-        return handle_streaming_chat(state, api_req, model_mapping).await;
+        return handle_streaming_chat(state, api_req).await;
     }
 
     let start = std::time::Instant::now();
 
-    let result = dispatch_non_streaming(&state, api_req.clone(), &model_mapping).await?;
+    let result = dispatch_non_streaming(&state, api_req.clone()).await?;
 
     let elapsed = start.elapsed();
     record_switch_if_any(&state, &result);
@@ -464,15 +454,12 @@ async fn chat_completions(
 async fn handle_streaming_chat(
     state: ProxyAppState,
     api_req: ApiRequest,
-    model_mapping: ModelMapping,
 ) -> Result<axum::response::Response, ApiError> {
     let start = std::time::Instant::now();
 
     let result = state
         .engine
-        .dispatch_stream_with_request_mapper(api_req.clone(), |request, provider| {
-            request_with_resolved_model(request, provider, &model_mapping)
-        })
+        .dispatch_stream(api_req.clone())
         .await
         .map_err(ApiError::from)?;
 
@@ -537,13 +524,12 @@ async fn anthropic_messages_inner(
 
     let unified: UnifiedRequest = state.anthropic_converter.request_to_unified(&body_json)?;
     let api_req = bridge::unified_to_api_request(&unified);
-    let model_mapping = state.model_mapping.read().await.clone();
     if unified.stream {
-        return handle_streaming_anthropic_messages(state, api_req, model_mapping).await;
+        return handle_streaming_anthropic_messages(state, api_req).await;
     }
 
     let start = std::time::Instant::now();
-    let result = dispatch_non_streaming(&state, api_req.clone(), &model_mapping).await?;
+    let result = dispatch_non_streaming(&state, api_req.clone()).await?;
     let elapsed = start.elapsed();
     record_switch_if_any(&state, &result);
 
@@ -584,14 +570,11 @@ async fn anthropic_messages_inner(
 async fn handle_streaming_anthropic_messages(
     state: ProxyAppState,
     api_req: ApiRequest,
-    model_mapping: ModelMapping,
 ) -> Result<axum::response::Response, ApiError> {
     let start = std::time::Instant::now();
     let result = state
         .engine
-        .dispatch_stream_with_request_mapper(api_req.clone(), |request, provider| {
-            request_with_resolved_model(request, provider, &model_mapping)
-        })
+        .dispatch_stream(api_req.clone())
         .await
         .map_err(ApiError::from)?;
     let elapsed = start.elapsed();
@@ -625,43 +608,19 @@ async fn handle_streaming_anthropic_messages(
     Ok(sse::stream_to_sse_response(stream))
 }
 
-fn request_with_resolved_model(
-    request: &ApiRequest,
-    provider: &ProviderWrapper,
-    model_mapping: &ModelMapping,
-) -> ApiRequest {
-    let resolved =
-        model_mapping.resolve_for_provider(&request.model, provider.id(), provider.kind().as_str());
-    if resolved == request.model {
-        return request.clone();
-    }
-
-    let mut mapped = request.clone();
-    mapped.model = resolved;
-    mapped
-}
-
 async fn dispatch_non_streaming(
     state: &ProxyAppState,
     api_req: ApiRequest,
-    model_mapping: &ModelMapping,
 ) -> Result<DispatchResult<ApiResponse>, ApiError> {
-    tokio::time::timeout(
-        state.non_streaming_timeout,
-        state
-            .engine
-            .dispatch_with_request_mapper(api_req, |request, provider| {
-                request_with_resolved_model(request, provider, model_mapping)
-            }),
-    )
-    .await
-    .map_err(|_| {
-        ApiError::timeout(format!(
-            "request timed out after {:?}",
-            state.non_streaming_timeout
-        ))
-    })?
-    .map_err(ApiError::from)
+    tokio::time::timeout(state.non_streaming_timeout, state.engine.dispatch(api_req))
+        .await
+        .map_err(|_| {
+            ApiError::timeout(format!(
+                "request timed out after {:?}",
+                state.non_streaming_timeout
+            ))
+        })?
+        .map_err(ApiError::from)
 }
 
 fn record_switch_if_any<T>(state: &ProxyAppState, result: &DispatchResult<T>) {
@@ -1174,24 +1133,6 @@ fn content_block_stop_frame(index: u32) -> Bytes {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::providers::{OpenAIProvider, ProviderKind};
-
-    fn provider_for_model_mapping(id: &str, kind: ProviderKind) -> ProviderWrapper {
-        let inner =
-            OpenAIProvider::new(id, id, "https://example.com", "sk-test").expect("provider");
-        ProviderWrapper::new(id, id, kind, 1, None, true, Box::new(inner))
-    }
-
-    fn api_request_for_model(model: &str) -> ApiRequest {
-        ApiRequest {
-            model: model.to_owned(),
-            messages: vec![],
-            temperature: None,
-            max_tokens: None,
-            stream: false,
-            tools: vec![],
-        }
-    }
 
     #[test]
     fn server_error_bind_renders_address_and_source() {
@@ -1247,28 +1188,5 @@ mod tests {
         let rendered = format!("{err}");
         assert!(rendered.contains(&(u16::MAX - 2).to_string()));
         assert!(rendered.contains('5'));
-    }
-
-    #[test]
-    fn request_with_resolved_model_uses_provider_kind_mapping() {
-        let mut mapping = ModelMapping::new();
-        mapping.set_mapping("client-fast", "anthropic", "claude-kind-wide");
-        let provider = provider_for_model_mapping("anthropic-a", ProviderKind::Anthropic);
-        let request = api_request_for_model("client-fast");
-
-        let mapped = request_with_resolved_model(&request, &provider, &mapping);
-
-        assert_eq!(mapped.model, "claude-kind-wide");
-    }
-
-    #[test]
-    fn request_with_resolved_model_preserves_unmapped_model() {
-        let mapping = ModelMapping::new();
-        let provider = provider_for_model_mapping("custom-a", ProviderKind::Custom);
-        let request = api_request_for_model("client-fast");
-
-        let mapped = request_with_resolved_model(&request, &provider, &mapping);
-
-        assert_eq!(mapped.model, "client-fast");
     }
 }

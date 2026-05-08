@@ -8,7 +8,6 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use ccuse_desktop_lib::converter::ModelMapping;
 use ccuse_desktop_lib::db::{open_database, run_migrations, Database};
 use ccuse_desktop_lib::providers::{
     AnthropicProvider, HealthStatus, OpenAIProvider, ProviderKind, ProviderManager, ProviderWrapper,
@@ -20,7 +19,7 @@ use ccuse_desktop_lib::switch::SwitchEngine;
 use reqwest::StatusCode;
 use serde_json::{json, Value};
 use tempfile::TempDir;
-use tokio::sync::{oneshot, RwLock};
+use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -57,33 +56,18 @@ fn loopback_zero() -> SocketAddr {
 }
 
 async fn start_proxy_with_providers(specs: &[ProviderSpec<'_>]) -> RunningProxy {
-    start_proxy_with_providers_and_mapping(specs, ModelMapping::new()).await
+    start_proxy_with_providers_and_timeout(specs, None).await
 }
 
-async fn start_proxy_with_providers_and_mapping(
+async fn start_proxy_with_providers_and_timeout(
     specs: &[ProviderSpec<'_>],
-    model_mapping: ModelMapping,
-) -> RunningProxy {
-    start_proxy_with_providers_mapping_and_timeout(specs, model_mapping, None).await
-}
-
-async fn start_proxy_with_providers_mapping_and_timeout(
-    specs: &[ProviderSpec<'_>],
-    model_mapping: ModelMapping,
     non_streaming_timeout: Option<Duration>,
 ) -> RunningProxy {
-    start_proxy_with_providers_mapping_timeout_and_request_log(
-        specs,
-        model_mapping,
-        non_streaming_timeout,
-        None,
-    )
-    .await
+    start_proxy_with_providers_timeout_and_request_log(specs, non_streaming_timeout, None).await
 }
 
-async fn start_proxy_with_providers_mapping_timeout_and_request_log(
+async fn start_proxy_with_providers_timeout_and_request_log(
     specs: &[ProviderSpec<'_>],
-    model_mapping: ModelMapping,
     non_streaming_timeout: Option<Duration>,
     request_log_db: Option<Database>,
 ) -> RunningProxy {
@@ -111,8 +95,7 @@ async fn start_proxy_with_providers_mapping_timeout_and_request_log(
     }
 
     let engine = Arc::new(SwitchEngine::new(Arc::clone(&manager)));
-    let mapping = Arc::new(RwLock::new(model_mapping));
-    let mut state = ProxyAppState::new(engine, mapping, Arc::clone(&manager));
+    let mut state = ProxyAppState::new(engine, Arc::clone(&manager));
     if let Some(db) = request_log_db {
         state = state.with_monitoring(db);
     }
@@ -160,8 +143,7 @@ async fn start_proxy_with_native_anthropic_provider(spec: &ProviderSpec<'_>) -> 
     manager.add(wrapper).await.expect("register provider");
 
     let engine = Arc::new(SwitchEngine::new(Arc::clone(&manager)));
-    let mapping = Arc::new(RwLock::new(ModelMapping::new()));
-    let state = ProxyAppState::new(engine, mapping, Arc::clone(&manager));
+    let state = ProxyAppState::new(engine, Arc::clone(&manager));
     let server = ProxyServer::bind(loopback_zero())
         .await
         .expect("bind proxy");
@@ -603,30 +585,21 @@ async fn models_returns_empty_list_when_upstream_has_no_models() {
 }
 
 #[tokio::test]
-async fn chat_completions_applies_exact_provider_model_mapping() {
+async fn chat_completions_omits_model_from_openai_provider_request() {
     let upstream = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/v1/chat/completions"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(openai_text_response("mapped")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(openai_text_response("default")))
         .expect(1)
         .mount(&upstream)
         .await;
 
-    let mut mapping = ModelMapping::new();
-    mapping.set_mapping(
-        "client-fast",
-        "mapping-exact-provider",
-        "provider-exact-model",
-    );
-    let proxy = start_proxy_with_providers_and_mapping(
-        &[ProviderSpec {
-            id: "mapping-exact-provider",
-            name: "Mapping Exact",
-            priority: 1,
-            server: &upstream,
-        }],
-        mapping,
-    )
+    let proxy = start_proxy_with_providers(&[ProviderSpec {
+        id: "default-model-openai",
+        name: "Default Model OpenAI",
+        priority: 1,
+        server: &upstream,
+    }])
     .await;
 
     let response = reqwest::Client::new()
@@ -639,34 +612,29 @@ async fn chat_completions_applies_exact_provider_model_mapping() {
     assert_eq!(response.status(), StatusCode::OK);
     let received = upstream.received_requests().await.expect("received");
     let upstream_body: Value = serde_json::from_slice(&received[0].body).expect("json");
-    assert_eq!(upstream_body["model"], "provider-exact-model");
+    assert_eq!(upstream_body.get("model"), None);
 
     proxy.shutdown().await;
 }
 
 #[tokio::test]
-async fn anthropic_messages_applies_wildcard_model_mapping() {
+async fn anthropic_messages_to_openai_provider_omits_model() {
     let upstream = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/v1/chat/completions"))
         .respond_with(
-            ResponseTemplate::new(200).set_body_json(openai_text_response("anthropic mapped")),
+            ResponseTemplate::new(200).set_body_json(openai_text_response("anthropic default")),
         )
         .expect(1)
         .mount(&upstream)
         .await;
 
-    let mut mapping = ModelMapping::new();
-    mapping.set_mapping("client-slow", "*", "wildcard-upstream-model");
-    let proxy = start_proxy_with_providers_and_mapping(
-        &[ProviderSpec {
-            id: "mapping-wildcard-provider",
-            name: "Mapping Wildcard",
-            priority: 1,
-            server: &upstream,
-        }],
-        mapping,
-    )
+    let proxy = start_proxy_with_providers(&[ProviderSpec {
+        id: "default-model-from-anthropic",
+        name: "Default Model From Anthropic",
+        priority: 1,
+        server: &upstream,
+    }])
     .await;
 
     let response = reqwest::Client::new()
@@ -678,16 +646,16 @@ async fn anthropic_messages_applies_wildcard_model_mapping() {
 
     assert_eq!(response.status(), StatusCode::OK);
     let body: Value = response.json().await.expect("response json");
-    assert_eq!(body["content"][0]["text"], "anthropic mapped");
+    assert_eq!(body["content"][0]["text"], "anthropic default");
     let received = upstream.received_requests().await.expect("received");
     let upstream_body: Value = serde_json::from_slice(&received[0].body).expect("json");
-    assert_eq!(upstream_body["model"], "wildcard-upstream-model");
+    assert_eq!(upstream_body.get("model"), None);
 
     proxy.shutdown().await;
 }
 
 #[tokio::test]
-async fn chat_completions_keeps_original_model_without_mapping() {
+async fn chat_completions_keeps_client_model_in_response_fallback_only() {
     let upstream = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/v1/chat/completions"))
@@ -711,9 +679,11 @@ async fn chat_completions_keeps_original_model_without_mapping() {
         .expect("proxy request");
 
     assert_eq!(response.status(), StatusCode::OK);
+    let response_body: Value = response.json().await.expect("response json");
+    assert_eq!(response_body["model"], "gpt-4o");
     let received = upstream.received_requests().await.expect("received");
     let upstream_body: Value = serde_json::from_slice(&received[0].body).expect("json");
-    assert_eq!(upstream_body["model"], "client-unmapped");
+    assert_eq!(upstream_body.get("model"), None);
 
     proxy.shutdown().await;
 }
@@ -730,14 +700,13 @@ async fn chat_completions_non_streaming_handler_times_out() {
         )
         .mount(&upstream)
         .await;
-    let proxy = start_proxy_with_providers_mapping_and_timeout(
+    let proxy = start_proxy_with_providers_and_timeout(
         &[ProviderSpec {
             id: "timeout-provider",
             name: "Timeout Provider",
             priority: 1,
             server: &upstream,
         }],
-        ModelMapping::new(),
         Some(Duration::from_millis(25)),
     )
     .await;
@@ -772,14 +741,13 @@ async fn chat_completions_streaming_ignores_non_streaming_handler_timeout() {
         .expect(1)
         .mount(&upstream)
         .await;
-    let proxy = start_proxy_with_providers_mapping_and_timeout(
+    let proxy = start_proxy_with_providers_and_timeout(
         &[ProviderSpec {
             id: "stream-timeout-provider",
             name: "Stream Timeout Provider",
             priority: 1,
             server: &upstream,
         }],
-        ModelMapping::new(),
         Some(Duration::from_millis(10)),
     )
     .await;
@@ -833,7 +801,7 @@ async fn anthropic_messages_dispatches_non_streaming_request_to_upstream() {
 
     let received = upstream.received_requests().await.expect("received");
     let upstream_body: Value = serde_json::from_slice(&received[0].body).expect("json");
-    assert_eq!(upstream_body["model"], "claude-3-5-sonnet-20241022");
+    assert_eq!(upstream_body.get("model"), None);
     assert_eq!(upstream_body["messages"][0]["role"], "system");
     assert_eq!(upstream_body["messages"][0]["content"], "You are terse.");
     assert_eq!(upstream_body["messages"][1]["role"], "user");
@@ -877,7 +845,7 @@ async fn anthropic_messages_uses_native_anthropic_provider_request_shape() {
     let received = upstream.received_requests().await.expect("received");
     let request = &received[0];
     let upstream_body: Value = serde_json::from_slice(&request.body).expect("json");
-    assert_eq!(upstream_body["model"], "claude-3-5-sonnet-20241022");
+    assert_eq!(upstream_body.get("model"), None);
     assert_eq!(upstream_body["system"], "You are terse.");
     assert_eq!(upstream_body["messages"][0]["role"], "user");
     assert_eq!(upstream_body["messages"][0]["content"][0]["text"], "ping");
@@ -1428,7 +1396,7 @@ async fn chat_completions_dispatches_text_request_to_upstream() {
 
     let received = upstream.received_requests().await.expect("received");
     let upstream_body: Value = serde_json::from_slice(&received[0].body).expect("json");
-    assert_eq!(upstream_body["model"], "gpt-4o");
+    assert_eq!(upstream_body.get("model"), None);
     assert_eq!(upstream_body["messages"][0]["content"], "ping");
     assert_eq!(upstream_body["stream"], false);
 
@@ -1467,7 +1435,7 @@ async fn chat_completions_uses_native_anthropic_provider_request_shape() {
 
     let received = upstream.received_requests().await.expect("received");
     let upstream_body: Value = serde_json::from_slice(&received[0].body).expect("json");
-    assert_eq!(upstream_body["model"], "claude-sonnet-4-20250514");
+    assert_eq!(upstream_body.get("model"), None);
     assert_eq!(upstream_body["messages"][0]["role"], "user");
     assert_eq!(upstream_body["messages"][0]["content"][0]["text"], "ping");
     assert_eq!(upstream_body["stream"], Value::Null);
@@ -1570,14 +1538,13 @@ async fn chat_completions_writes_request_log_for_monitoring() {
         .mount(&upstream)
         .await;
     let (_dir, db) = request_log_database_with_provider("monitor-provider");
-    let proxy = start_proxy_with_providers_mapping_timeout_and_request_log(
+    let proxy = start_proxy_with_providers_timeout_and_request_log(
         &[ProviderSpec {
             id: "monitor-provider",
             name: "Monitor Provider",
             priority: 1,
             server: &upstream,
         }],
-        ModelMapping::new(),
         None,
         Some(db.clone()),
     )
@@ -1872,7 +1839,7 @@ async fn chat_completions_records_switch_history_after_503_failover() {
         .mount(&backup)
         .await;
     let (_dir, db) = monitoring_database_with_providers(&["primary-503", "backup-after-503"]);
-    let proxy = start_proxy_with_providers_mapping_timeout_and_request_log(
+    let proxy = start_proxy_with_providers_timeout_and_request_log(
         &[
             ProviderSpec {
                 id: "primary-503",
@@ -1887,7 +1854,6 @@ async fn chat_completions_records_switch_history_after_503_failover() {
                 server: &backup,
             },
         ],
-        ModelMapping::new(),
         None,
         Some(db.clone()),
     )

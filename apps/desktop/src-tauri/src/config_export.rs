@@ -20,7 +20,6 @@ use rand::rngs::OsRng;
 use rand::TryRngCore;
 use serde::{Deserialize, Serialize};
 
-use crate::converter::ModelMapping;
 use crate::providers::model::{Provider, ProviderKind};
 use crate::switch::strategy::{SmartWeights, SwitchStrategy};
 
@@ -69,7 +68,6 @@ pub struct ExportData {
     pub providers: Vec<ExportProvider>,
     pub strategy: SwitchStrategy,
     pub smart_weights: SmartWeights,
-    pub model_mapping: ModelMapping,
 }
 
 /// A quick-start template preset.
@@ -287,7 +285,6 @@ mod tests {
             }],
             strategy: SwitchStrategy::Priority,
             smart_weights: SmartWeights::default(),
-            model_mapping: ModelMapping::new(),
         };
         let json = serde_json::to_vec(&data).expect("serialize");
         let back: ExportData = serde_json::from_slice(&json).expect("deserialize");

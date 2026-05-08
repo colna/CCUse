@@ -241,9 +241,14 @@ impl AnthropicProvider {
     fn anthropic_body(&self, request: &ApiRequest, stream: bool) -> Result<Value, ProviderError> {
         let mut unified = api_request_to_unified(request);
         unified.stream = stream;
-        self.converter
+        let mut body = self
+            .converter
             .unified_to_request(&unified)
-            .map_err(|e| ProviderError::BadRequest(e.to_string()))
+            .map_err(|e| ProviderError::BadRequest(e.to_string()))?;
+        if let Some(object) = body.as_object_mut() {
+            object.remove("model");
+        }
+        Ok(body)
     }
 }
 
@@ -411,7 +416,6 @@ fn finish_reason_to_openai(reason: FinishReason) -> &'static str {
 
 fn minimal_health_body() -> Value {
     json!({
-        "model": "claude-haiku-4-5-20251001",
         "max_tokens": 1,
         "messages": [{"role": "user", "content": "ping"}],
     })
@@ -492,7 +496,7 @@ mod tests {
             )
             .expect("body");
 
-        assert_eq!(body["model"], "claude-sonnet-4-20250514");
+        assert_eq!(body.get("model"), None);
         assert_eq!(body["system"], "You are terse.");
         assert_eq!(body["messages"][0]["role"], "user");
         assert_eq!(body["messages"][0]["content"][0]["text"], "ping");

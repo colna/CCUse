@@ -13,8 +13,6 @@ use crate::config_export::{
 };
 use crate::providers::model::ProviderInput;
 
-use super::model_mapping::ModelMappingHandle;
-
 /// Serialise current config and encrypt it with the user-supplied password.
 ///
 /// Returns the raw encrypted blob (frontend saves it as a `.ccuse` file).
@@ -23,20 +21,17 @@ pub async fn export_config_json(
     password: String,
     repo: State<'_, ProviderRepoHandle>,
     engine: State<'_, SwitchEngineHandle>,
-    mapping: State<'_, ModelMappingHandle>,
 ) -> Result<Vec<u8>, String> {
     let providers = repo.list().map_err(|e| e.to_string())?;
     let export_providers: Vec<ExportProvider> =
         providers.iter().map(ExportProvider::from).collect();
 
     let config = engine.config().await;
-    let model_mapping = mapping.read().await.clone();
 
     let data = ExportData {
         providers: export_providers,
         strategy: config.strategy,
         smart_weights: config.smart_weights,
-        model_mapping,
     };
 
     let json = serde_json::to_vec(&data).map_err(|e| e.to_string())?;
@@ -46,14 +41,13 @@ pub async fn export_config_json(
 /// Decrypt an imported blob and apply the config.
 ///
 /// Providers in the import are added (not merged) — duplicates by name
-/// are skipped. Strategy and model mappings are overwritten.
+/// are skipped. Strategy is overwritten.
 #[tauri::command]
 pub async fn import_config_json(
     data: Vec<u8>,
     password: String,
     repo: State<'_, ProviderRepoHandle>,
     engine: State<'_, SwitchEngineHandle>,
-    mapping: State<'_, ModelMappingHandle>,
 ) -> Result<(), String> {
     let plaintext = decrypt_export(&data, &password).map_err(|e| e.to_string())?;
     let export: ExportData = serde_json::from_slice(&plaintext).map_err(|e| e.to_string())?;
@@ -83,11 +77,6 @@ pub async fn import_config_json(
     engine.set_strategy(export.strategy).await;
     engine.set_smart_weights(export.smart_weights).await;
 
-    {
-        let mut mm = mapping.write().await;
-        mm.merge(&export.model_mapping);
-    }
-
     Ok(())
 }
 
@@ -101,7 +90,6 @@ pub async fn get_template_presets() -> Result<Vec<TemplatePreset>, String> {
 mod tests {
     use super::*;
     use crate::config_export::ExportData;
-    use crate::converter::ModelMapping;
     use crate::switch::strategy::SmartWeights;
     use crate::switch::SwitchStrategy;
 
@@ -120,7 +108,6 @@ mod tests {
             }],
             strategy: SwitchStrategy::Priority,
             smart_weights: SmartWeights::default(),
-            model_mapping: ModelMapping::new(),
         };
         let json = serde_json::to_vec(&data).expect("serialize");
         let blob = encrypt_export(&json, "test-pw").expect("encrypt");

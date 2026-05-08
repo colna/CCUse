@@ -10,14 +10,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use ccuse_desktop_lib::auth::key_store;
-use ccuse_desktop_lib::commands::model_mapping::ModelMappingHandle;
 use ccuse_desktop_lib::commands::switch::SwitchEngineHandle;
-use ccuse_desktop_lib::converter::ModelMapping;
 use ccuse_desktop_lib::providers::ProviderManager;
 use ccuse_desktop_lib::proxy::{ProxyAppState, ProxyServer, ServerError};
 use ccuse_desktop_lib::switch::SwitchEngine;
 use serde_json::Value;
-use tokio::sync::{oneshot, RwLock};
+use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 
 fn loopback_zero() -> SocketAddr {
@@ -29,8 +27,7 @@ fn loopback_zero() -> SocketAddr {
 fn test_proxy_state() -> ProxyAppState {
     let manager = Arc::new(ProviderManager::new());
     let engine: SwitchEngineHandle = Arc::new(SwitchEngine::new(Arc::clone(&manager)));
-    let model_mapping: ModelMappingHandle = Arc::new(RwLock::new(ModelMapping::new()));
-    ProxyAppState::new(engine, model_mapping, manager)
+    ProxyAppState::new(engine, manager)
 }
 
 /// Spin up a proxy server bound to an ephemeral port and return

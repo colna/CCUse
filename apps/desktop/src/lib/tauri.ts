@@ -162,38 +162,6 @@ export async function onProviderStatusChanged(
   );
 }
 
-// ─── Model Mapping (T1.0.3.12) ──────────────────────────────
-
-export interface MappingEntry {
-  client_model: string;
-  openai: string | null;
-  anthropic: string | null;
-  gemini: string | null;
-}
-
-export async function getModelMappings(): Promise<MappingEntry[]> {
-  return invoke<MappingEntry[]>("get_model_mappings");
-}
-
-export async function setModelMapping(
-  clientModel: string,
-  vendor: string,
-  vendorModel: string,
-): Promise<void> {
-  return invoke<void>("set_model_mapping", {
-    clientModel,
-    vendor,
-    vendorModel,
-  });
-}
-
-export async function removeModelMapping(
-  clientModel: string,
-  vendor: string,
-): Promise<void> {
-  return invoke<void>("remove_model_mapping", { clientModel, vendor });
-}
-
 /** Stable event name; mirrors `commands::EVENT_LOCAL_API_CONFIG_CHANGED`
  * on the Rust side. Pinned in tests on both sides. */
 export const EVENT_LOCAL_API_CONFIG_CHANGED = "local_api_config_changed";

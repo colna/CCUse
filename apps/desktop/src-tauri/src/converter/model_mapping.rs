@@ -1,14 +1,14 @@
-//! Default model mapping table (T1.0.3.11).
+//! Backward-compatible model mapping type.
 //!
-//! Maps model names across vendors so that a request for `gpt-4o` can
-//! be routed to an Anthropic or Gemini provider with the equivalent
-//! model automatically substituted.
+//! Current product behavior does not apply model mappings. Provider
+//! requests omit `model`, allowing the upstream provider or relay to use
+//! its configured default model.
 
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-/// Bidirectional model mapping between vendors.
+/// Deprecated model mapping container retained for old exports / command ABI.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelMapping {
     /// Key = canonical model name the client sends.
@@ -23,52 +23,12 @@ impl Default for ModelMapping {
 }
 
 impl ModelMapping {
-    /// Create a mapping table with sensible defaults.
+    /// Create an empty mapping table.
     #[must_use]
     pub fn new() -> Self {
-        let mut entries = HashMap::new();
-
-        // GPT-4o family.
-        Self::add_group(
-            &mut entries,
-            &[
-                ("openai", "gpt-4o"),
-                ("anthropic", "claude-sonnet-4-20250514"),
-                ("gemini", "gemini-2.5-flash"),
-            ],
-        );
-
-        // GPT-4o-mini family.
-        Self::add_group(
-            &mut entries,
-            &[
-                ("openai", "gpt-4o-mini"),
-                ("anthropic", "claude-haiku-4-5-20251001"),
-                ("gemini", "gemini-2.0-flash"),
-            ],
-        );
-
-        // GPT-4.1 family.
-        Self::add_group(
-            &mut entries,
-            &[
-                ("openai", "gpt-4.1"),
-                ("anthropic", "claude-opus-4-20250514"),
-                ("gemini", "gemini-2.5-pro"),
-            ],
-        );
-
-        // o3-mini family.
-        Self::add_group(
-            &mut entries,
-            &[
-                ("openai", "o3-mini"),
-                ("anthropic", "claude-sonnet-4-20250514"),
-                ("gemini", "gemini-2.5-flash"),
-            ],
-        );
-
-        Self { entries }
+        Self {
+            entries: HashMap::new(),
+        }
     }
 
     /// Look up the equivalent model for a target vendor.
@@ -136,19 +96,6 @@ impl ModelMapping {
             }
         }
     }
-
-    fn add_group(entries: &mut HashMap<String, HashMap<String, String>>, group: &[(&str, &str)]) {
-        // For every model in the group, create entries mapping to every
-        // other vendor's model.  First-write wins so earlier groups
-        // have higher priority.
-        for &(_, model) in group {
-            let map = entries.entry(model.to_string()).or_default();
-            for &(vendor, vendor_model) in group {
-                map.entry(vendor.to_string())
-                    .or_insert_with(|| vendor_model.to_string());
-            }
-        }
-    }
 }
 
 #[cfg(test)]
@@ -156,24 +103,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_mapping_gpt4o_to_anthropic() {
+    fn default_mapping_is_empty() {
         let mm = ModelMapping::new();
-        let result = mm.map_model("gpt-4o", "anthropic");
-        assert_eq!(result.as_deref(), Some("claude-sonnet-4-20250514"));
-    }
-
-    #[test]
-    fn default_mapping_claude_to_openai() {
-        let mm = ModelMapping::new();
-        let result = mm.map_model("claude-sonnet-4-20250514", "openai");
-        assert_eq!(result.as_deref(), Some("gpt-4o"));
-    }
-
-    #[test]
-    fn default_mapping_gemini_to_anthropic() {
-        let mm = ModelMapping::new();
-        let result = mm.map_model("gemini-2.5-flash", "anthropic");
-        assert_eq!(result.as_deref(), Some("claude-sonnet-4-20250514"));
+        assert!(mm.all_entries().is_empty());
     }
 
     #[test]
@@ -254,11 +186,7 @@ mod tests {
             base.map_model("gpt-4o", "anthropic").as_deref(),
             Some("claude-opus-4-20250514")
         );
-        // Other mappings unaffected.
-        assert_eq!(
-            base.map_model("gpt-4o", "gemini").as_deref(),
-            Some("gemini-2.5-flash")
-        );
+        assert!(base.map_model("gpt-4o", "gemini").is_none());
     }
 
     #[test]
@@ -273,8 +201,8 @@ mod tests {
     }
 
     #[test]
-    fn all_entries_non_empty() {
+    fn all_entries_empty_by_default() {
         let mm = ModelMapping::new();
-        assert!(!mm.all_entries().is_empty());
+        assert!(mm.all_entries().is_empty());
     }
 }

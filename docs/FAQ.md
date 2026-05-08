@@ -112,11 +112,11 @@ The local proxy accepts either `Authorization: Bearer sk-local-...` or `x-api-ke
 
 ### EN: Client gets providers_not_configured
 
-`providers_not_configured` means the proxy is running but no enabled provider can serve the request. Enable at least one provider, verify the upstream API key and Base URL, and confirm the requested model maps to a provider model when model mapping is required.
+`providers_not_configured` means the proxy is running but no enabled provider can serve the request. Enable at least one provider and verify the upstream API key and Base URL. CCUse does not set an upstream model; the provider or relay default model is used.
 
 ### ZH: 客户端返回 providers_not_configured
 
-`providers_not_configured` 表示代理已经启动，但当前没有可处理请求的已启用供应商。请启用至少一个供应商，检查上游 API key 和 Base URL，并在需要时确认请求模型已映射到供应商模型。
+`providers_not_configured` 表示代理已经启动，但当前没有可处理请求的已启用供应商。请启用至少一个供应商，并检查上游 API key 和 Base URL。CCUse 不设置上游模型，实际模型由供应商或中转端默认配置决定。
 
 ---
 

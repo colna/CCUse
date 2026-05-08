@@ -725,13 +725,14 @@ graph TB
 ```rust
 // 定义统一的内部格式
 pub struct UnifiedRequest {
-    model: String,
+    inbound_model: Option<String>,
     messages: Vec<Message>,
     temperature: Option<f32>,
     max_tokens: Option<u32>,
     stream: bool,
 }
 
+// 当前产品决策：转发给供应商时省略 model，依赖供应商默认模型
 // 每个供应商实现转换器
 impl Provider {
     fn convert_request(&self, req: &UnifiedRequest) -> ProviderRequest;
@@ -788,7 +789,7 @@ pub async fn find_available_port(start: u16) -> Result<u16> {
 ### 8.2 高级策略
 
 - 基于时间的切换（白天用 A，晚上用 B）
-- 基于模型的切换（GPT-4 用 OpenAI，Claude 用 Anthropic）
+- 基于模型的切换（已废弃：当前产品决策不根据请求模型名设置供应商模型）
 - 基于成本的自动优化
 
 ### 8.3 监控告警

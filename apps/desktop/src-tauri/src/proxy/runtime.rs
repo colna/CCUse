@@ -8,13 +8,11 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use serde::Serialize;
-use tokio::sync::{oneshot, Mutex, RwLock};
+use tokio::sync::{oneshot, Mutex};
 use tokio::task::JoinHandle;
 
 use crate::auth::{generate_local_api_key, key_store, KeyStore, LocalApiKey};
-use crate::commands::model_mapping::ModelMappingHandle;
 use crate::commands::switch::SwitchEngineHandle;
-use crate::converter::ModelMapping;
 use crate::db::Database;
 use crate::providers::ProviderManager;
 use crate::switch::SwitchEngine;
@@ -97,14 +95,7 @@ impl ProxyRuntime {
     pub fn new(fallback_start: u16, fallback_attempts: u16) -> Self {
         let manager = Arc::new(ProviderManager::new());
         let engine: SwitchEngineHandle = Arc::new(SwitchEngine::new(Arc::clone(&manager)));
-        let model_mapping: ModelMappingHandle = Arc::new(RwLock::new(ModelMapping::new()));
-        Self::with_dependencies(
-            fallback_start,
-            fallback_attempts,
-            engine,
-            model_mapping,
-            manager,
-        )
+        Self::with_dependencies(fallback_start, fallback_attempts, engine, manager)
     }
 
     #[must_use]
@@ -112,14 +103,13 @@ impl ProxyRuntime {
         fallback_start: u16,
         fallback_attempts: u16,
         engine: SwitchEngineHandle,
-        model_mapping: ModelMappingHandle,
         manager: Arc<ProviderManager>,
     ) -> Self {
         Self {
             inner: Mutex::new(None),
             fallback_start,
             fallback_attempts,
-            state: ProxyAppState::new(engine, model_mapping, manager),
+            state: ProxyAppState::new(engine, manager),
         }
     }
 
@@ -128,17 +118,11 @@ impl ProxyRuntime {
         fallback_start: u16,
         fallback_attempts: u16,
         engine: SwitchEngineHandle,
-        model_mapping: ModelMappingHandle,
         manager: Arc<ProviderManager>,
         db: Database,
     ) -> Self {
-        let mut runtime = Self::with_dependencies(
-            fallback_start,
-            fallback_attempts,
-            engine,
-            model_mapping,
-            manager,
-        );
+        let mut runtime =
+            Self::with_dependencies(fallback_start, fallback_attempts, engine, manager);
         runtime.state = runtime.state.with_request_log(db);
         runtime
     }
@@ -148,17 +132,11 @@ impl ProxyRuntime {
         fallback_start: u16,
         fallback_attempts: u16,
         engine: SwitchEngineHandle,
-        model_mapping: ModelMappingHandle,
         manager: Arc<ProviderManager>,
         db: Database,
     ) -> Self {
-        let mut runtime = Self::with_dependencies(
-            fallback_start,
-            fallback_attempts,
-            engine,
-            model_mapping,
-            manager,
-        );
+        let mut runtime =
+            Self::with_dependencies(fallback_start, fallback_attempts, engine, manager);
         runtime.state = runtime.state.with_monitoring(db);
         runtime
     }
@@ -278,17 +256,10 @@ mod tests {
     fn with_dependencies_reuses_injected_handles() {
         let manager = Arc::new(ProviderManager::new());
         let engine: SwitchEngineHandle = Arc::new(SwitchEngine::new(Arc::clone(&manager)));
-        let model_mapping: ModelMappingHandle = Arc::new(RwLock::new(ModelMapping::new()));
-        let runtime = ProxyRuntime::with_dependencies(
-            0,
-            1,
-            Arc::clone(&engine),
-            Arc::clone(&model_mapping),
-            Arc::clone(&manager),
-        );
+        let runtime =
+            ProxyRuntime::with_dependencies(0, 1, Arc::clone(&engine), Arc::clone(&manager));
 
         assert!(Arc::ptr_eq(&runtime.state.engine, &engine));
-        assert!(Arc::ptr_eq(&runtime.state.model_mapping, &model_mapping));
         assert!(Arc::ptr_eq(&runtime.state.manager, &manager));
     }
 

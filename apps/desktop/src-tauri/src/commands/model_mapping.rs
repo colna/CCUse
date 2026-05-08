@@ -1,4 +1,4 @@
-//! Tauri commands for model mapping (T1.0.3.12).
+//! Backward-compatible no-op commands for the removed model mapping UI.
 
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -19,43 +19,27 @@ pub struct MappingEntry {
 
 #[tauri::command]
 pub async fn get_model_mappings(
-    mapping: tauri::State<'_, ModelMappingHandle>,
+    _mapping: tauri::State<'_, ModelMappingHandle>,
 ) -> Result<Vec<MappingEntry>, String> {
-    let mm = mapping.read().await;
-    let entries = mm.all_entries();
-    let mut result: Vec<MappingEntry> = entries
-        .iter()
-        .map(|(model, vendors)| MappingEntry {
-            client_model: model.clone(),
-            openai: vendors.get("openai").cloned(),
-            anthropic: vendors.get("anthropic").cloned(),
-            gemini: vendors.get("gemini").cloned(),
-        })
-        .collect();
-    result.sort_by(|a, b| a.client_model.cmp(&b.client_model));
-    Ok(result)
+    Ok(Vec::new())
 }
 
 #[tauri::command]
 pub async fn set_model_mapping(
-    mapping: tauri::State<'_, ModelMappingHandle>,
-    client_model: String,
-    vendor: String,
-    vendor_model: String,
+    _mapping: tauri::State<'_, ModelMappingHandle>,
+    _client_model: String,
+    _vendor: String,
+    _vendor_model: String,
 ) -> Result<(), String> {
-    let mut mm = mapping.write().await;
-    mm.set_mapping(&client_model, &vendor, &vendor_model);
     Ok(())
 }
 
 #[tauri::command]
 pub async fn remove_model_mapping(
-    mapping: tauri::State<'_, ModelMappingHandle>,
-    client_model: String,
-    vendor: String,
+    _mapping: tauri::State<'_, ModelMappingHandle>,
+    _client_model: String,
+    _vendor: String,
 ) -> Result<(), String> {
-    let mut mm = mapping.write().await;
-    mm.remove_mapping(&client_model, &vendor);
     Ok(())
 }
 
@@ -64,39 +48,14 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn get_default_mappings() {
+    async fn get_model_mappings_returns_empty_after_feature_removal() {
         let handle: ModelMappingHandle = Arc::new(RwLock::new(ModelMapping::new()));
-        let entries = {
-            let mm = handle.read().await;
-            let entries = mm.all_entries();
-            let mut result: Vec<MappingEntry> = entries
-                .iter()
-                .map(|(model, vendors)| MappingEntry {
-                    client_model: model.clone(),
-                    openai: vendors.get("openai").cloned(),
-                    anthropic: vendors.get("anthropic").cloned(),
-                    gemini: vendors.get("gemini").cloned(),
-                })
-                .collect();
-            result.sort_by(|a, b| a.client_model.cmp(&b.client_model));
-            result
-        };
-        assert!(!entries.is_empty());
-        // gpt-4o should exist.
-        assert!(entries.iter().any(|e| e.client_model == "gpt-4o"));
+        assert!(handle.read().await.all_entries().is_empty());
     }
 
     #[tokio::test]
-    async fn set_and_get() {
+    async fn model_mapping_defaults_to_empty() {
         let handle: ModelMappingHandle = Arc::new(RwLock::new(ModelMapping::new()));
-        {
-            let mut mm = handle.write().await;
-            mm.set_mapping("test-model", "openai", "gpt-4o");
-        }
-        let mm = handle.read().await;
-        assert_eq!(
-            mm.map_model("test-model", "openai").as_deref(),
-            Some("gpt-4o")
-        );
+        assert!(handle.read().await.all_entries().is_empty());
     }
 }

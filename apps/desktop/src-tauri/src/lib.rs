@@ -34,12 +34,10 @@ pub fn run() {
     let manager: ProviderManagerHandle = Arc::new(ProviderManager::new());
     let engine: SwitchEngineHandle = Arc::new(SwitchEngine::new(Arc::clone(&manager)));
     let checker: HealthCheckerHandle = Arc::new(health::HealthChecker::new(Arc::clone(&manager)));
-
-    // Model mapping with defaults (T1.0.3.12).
     let model_mapping: ModelMappingHandle =
         Arc::new(tokio::sync::RwLock::new(converter::ModelMapping::new()));
+
     let runtime_engine = Arc::clone(&engine);
-    let runtime_mapping = Arc::clone(&model_mapping);
     let runtime_manager = Arc::clone(&manager);
 
     let builder = tauri::Builder::default()
@@ -66,7 +64,8 @@ pub fn run() {
             // Health (T1.0.2.21)
             commands::health::get_health_snapshot,
             commands::health::refresh_health_snapshot,
-            // Model mapping (T1.0.3.12)
+            // Model mapping commands are retained for backward compatibility;
+            // outbound provider requests ignore these mappings.
             commands::model_mapping::get_model_mappings,
             commands::model_mapping::set_model_mapping,
             commands::model_mapping::remove_model_mapping,
@@ -112,7 +111,6 @@ pub fn run() {
                     proxy::DEFAULT_PROXY_PORT,
                     proxy::DEFAULT_PROXY_ATTEMPTS,
                     Arc::clone(&runtime_engine),
-                    Arc::clone(&runtime_mapping),
                     Arc::clone(&runtime_manager),
                     database,
                 ));

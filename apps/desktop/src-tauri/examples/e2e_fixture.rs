@@ -14,7 +14,6 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use ccuse_desktop_lib::auth::key_store;
 use ccuse_desktop_lib::commands::monitor::query_metrics_timeseries;
-use ccuse_desktop_lib::converter::ModelMapping;
 use ccuse_desktop_lib::crypto::MasterKey;
 use ccuse_desktop_lib::db::{open_database, run_migrations, Database};
 use ccuse_desktop_lib::providers::{Provider, ProviderInput, ProviderManager, ProviderRepository};
@@ -23,7 +22,6 @@ use ccuse_desktop_lib::switch::SwitchEngine;
 use serde::Serialize;
 use serde_json::{json, Value};
 use tempfile::TempDir;
-use tokio::sync::RwLock;
 use tower_http::cors::CorsLayer;
 
 const LOCAL_API_KEY: &str = "sk-local-e2e-fixture";
@@ -110,9 +108,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let manager = Arc::new(ProviderManager::new());
     let engine = Arc::new(SwitchEngine::new(Arc::clone(&manager)));
-    let model_mapping = Arc::new(RwLock::new(ModelMapping::new()));
-    let proxy_state =
-        ProxyAppState::new(engine, model_mapping, Arc::clone(&manager)).with_monitoring(db.clone());
+    let proxy_state = ProxyAppState::new(engine, Arc::clone(&manager)).with_monitoring(db.clone());
     let proxy = ProxyServer::bind(loopback_zero()).await?;
     let proxy_base_url = format!("http://{}", proxy.local_addr());
     let proxy_handle = tokio::spawn(proxy.serve_with_auth_and_shutdown(

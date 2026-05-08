@@ -1,6 +1,5 @@
 import { useTranslation } from "react-i18next";
 
-import { ModelMappingTable } from "@/components/model-mapping/ModelMappingTable";
 import { ConfigExportPanel } from "@/components/settings/ConfigExportPanel";
 
 export function SettingsPage() {
@@ -47,10 +46,6 @@ export function SettingsPage() {
           <option value="zh">{tc("language_zh")}</option>
         </select>
       </div>
-
-      <ModelMappingTable />
-
-      <hr className="border-border" />
 
       <ConfigExportPanel />
     </section>
