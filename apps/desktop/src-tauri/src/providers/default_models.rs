@@ -4,15 +4,18 @@ use super::api::ProviderError;
 use super::model::ProviderKind;
 
 pub const OPENAI_DEFAULT_MODELS: &[&str] = &["gpt-5.5", "gpt-5.5-instant", "gpt-5.5-instant"];
-pub const ANTHROPIC_DEFAULT_MODELS: &[&str] =
-    &["claude-opus-4.7", "claude-sonnet-4.6", "claude-haiku-4-5"];
+pub const ANTHROPIC_DEFAULT_MODELS: &[&str] = &[
+    "claude-opus-4.7",
+    "claude-sonnet-4.6",
+    "claude-haiku-4-5-20251001",
+];
 pub const OPENAI_COMPATIBLE_DEFAULT_MODELS: &[&str] = &[
     "gpt-5.5",
     "gpt-5.5-instant",
     "gpt-5.5-instant",
     "claude-opus-4.7",
     "claude-sonnet-4.6",
-    "claude-haiku-4-5",
+    "claude-haiku-4-5-20251001",
 ];
 pub const GEMINI_DEFAULT_MODELS: &[&str] = &["gemini-3-flash-preview"];
 

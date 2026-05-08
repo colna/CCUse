@@ -18,7 +18,7 @@ use super::model::{Provider, ProviderKind};
 pub const DEFAULT_STREAM_CHECK_TIMEOUT_SECS: u64 = 45;
 pub const DEFAULT_STREAM_CHECK_MAX_RETRIES: u32 = 2;
 pub const DEFAULT_DEGRADED_THRESHOLD_MS: u64 = 6000;
-pub const DEFAULT_CLAUDE_TEST_MODEL: &str = "claude-haiku-4-5";
+pub const DEFAULT_CLAUDE_TEST_MODEL: &str = "claude-haiku-4-5-20251001";
 pub const DEFAULT_CODEX_TEST_MODEL: &str = "gpt-5.5-instant";
 pub const DEFAULT_GEMINI_TEST_MODEL: &str = "gemini-3-flash-preview";
 pub const DEFAULT_TEST_PROMPT: &str = "Who are you?";
@@ -624,7 +624,7 @@ mod tests {
         assert_eq!(config.timeout_secs, 45);
         assert_eq!(config.max_retries, 2);
         assert_eq!(config.degraded_threshold_ms, 6000);
-        assert_eq!(config.claude_model, "claude-haiku-4-5");
+        assert_eq!(config.claude_model, "claude-haiku-4-5-20251001");
         assert_eq!(config.codex_model, "gpt-5.5-instant");
         assert_eq!(config.gemini_model, "gemini-3-flash-preview");
         assert_eq!(config.test_prompt, "Who are you?");
