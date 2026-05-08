@@ -112,6 +112,9 @@ describe("ProviderList", () => {
       await screen.findByRole("button", { name: /编辑 Claude Prod/ }),
     );
     await user.selectOptions(screen.getByLabelText("供应商类型"), "openai");
+    expect(screen.getByRole("option", { name: "Gemini" })).toBeDisabled();
+    expect(screen.getByRole("option", { name: "Relay" })).toBeDisabled();
+    expect(screen.getByRole("option", { name: "Custom" })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "保存修改" }));
 
     await waitFor(() =>

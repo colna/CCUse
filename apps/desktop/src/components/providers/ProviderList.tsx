@@ -28,6 +28,7 @@ import {
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
+import { PROVIDER_KIND_OPTIONS } from "@/lib/providerKinds";
 import { cn } from "@/lib/utils";
 import {
   listProviders,
@@ -58,17 +59,6 @@ function formatSuccessRate(rate?: number): string {
   if (rate == null) return "--";
   return `${(rate * 100).toFixed(1)}%`;
 }
-
-const providerKindOptions: Array<{
-  kind: ProviderInput["kind"];
-  label: string;
-}> = [
-  { kind: "openai", label: "OpenAI" },
-  { kind: "anthropic", label: "Anthropic" },
-  { kind: "gemini", label: "Gemini" },
-  { kind: "relay", label: "Relay" },
-  { kind: "custom", label: "Custom" },
-];
 
 // ─── Delete Confirmation Dialog ──────────────────────────────
 
@@ -278,8 +268,12 @@ function SortableProviderItem({
             }
             className="w-40 rounded-md border border-border bg-background px-2 py-1 text-sm outline-none focus-visible:border-primary"
           >
-            {providerKindOptions.map((option) => (
-              <option key={option.kind} value={option.kind}>
+            {PROVIDER_KIND_OPTIONS.map((option) => (
+              <option
+                key={option.kind}
+                value={option.kind}
+                disabled={!option.supported}
+              >
                 {option.label}
               </option>
             ))}

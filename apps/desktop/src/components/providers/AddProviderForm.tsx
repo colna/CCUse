@@ -3,51 +3,13 @@ import { ChevronDown, ChevronRight, Loader2, Plug } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
+import { PROVIDER_KIND_OPTIONS, type ProviderKind } from "@/lib/providerKinds";
 import { cn } from "@/lib/utils";
 import {
   addProvider,
   testProviderConnection,
   type ProviderInput,
 } from "@/lib/tauri";
-
-// ─── Provider type definitions ───────────────────────────────
-
-type ProviderKind = ProviderInput["kind"];
-
-interface ProviderTypeOption {
-  kind: ProviderKind;
-  label: string;
-  defaultBaseUrl: string;
-  requiresBaseUrl: boolean;
-}
-
-const PROVIDER_TYPES: ProviderTypeOption[] = [
-  {
-    kind: "openai",
-    label: "OpenAI",
-    defaultBaseUrl: "https://api.openai.com",
-    requiresBaseUrl: false,
-  },
-  {
-    kind: "anthropic",
-    label: "Anthropic",
-    defaultBaseUrl: "https://api.anthropic.com",
-    requiresBaseUrl: false,
-  },
-  {
-    kind: "gemini",
-    label: "Gemini",
-    defaultBaseUrl: "https://generativelanguage.googleapis.com",
-    requiresBaseUrl: false,
-  },
-  { kind: "relay", label: "Relay", defaultBaseUrl: "", requiresBaseUrl: true },
-  {
-    kind: "custom",
-    label: "Custom",
-    defaultBaseUrl: "",
-    requiresBaseUrl: true,
-  },
-];
 
 // ─── Form values & validation ────────────────────────────────
 
@@ -96,7 +58,9 @@ function validate(
   if (!values.name.trim()) errors.name = t("validation_name_required");
 
   const trimmedUrl = values.base_url.trim();
-  const typeOption = PROVIDER_TYPES.find((tp) => tp.kind === values.kind);
+  const typeOption = PROVIDER_KIND_OPTIONS.find(
+    (tp) => tp.kind === values.kind,
+  );
 
   if (!trimmedUrl) {
     if (typeOption?.requiresBaseUrl) {
@@ -165,7 +129,7 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
   const [testing, setTesting] = useState(false);
 
   const handleKindChange = useCallback((kind: ProviderKind) => {
-    const typeOption = PROVIDER_TYPES.find((tp) => tp.kind === kind);
+    const typeOption = PROVIDER_KIND_OPTIONS.find((tp) => tp.kind === kind);
     setValues((s) => ({
       ...s,
       kind,
@@ -264,13 +228,14 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
           {t("provider_type")}
         </span>
         <div className="flex flex-wrap gap-2">
-          {PROVIDER_TYPES.map((opt) => (
+          {PROVIDER_KIND_OPTIONS.map((opt) => (
             <button
               key={opt.kind}
               type="button"
+              disabled={!opt.supported}
               onClick={() => handleKindChange(opt.kind)}
               className={cn(
-                "rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors",
+                "rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:border-border/60 disabled:bg-muted/40 disabled:text-muted-foreground",
                 values.kind === opt.kind
                   ? "border-primary bg-primary/10 text-primary"
                   : "border-border bg-background text-muted-foreground hover:border-primary/40 hover:text-foreground",
@@ -295,7 +260,7 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
         id="provider-base-url"
         label={t("field_base_url")}
         placeholder={
-          PROVIDER_TYPES.find((tp) => tp.kind === values.kind)
+          PROVIDER_KIND_OPTIONS.find((tp) => tp.kind === values.kind)
             ?.defaultBaseUrl || "https://..."
         }
         value={values.base_url}

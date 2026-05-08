@@ -213,7 +213,7 @@ fn format_reload_failure_without_rollback(
 
 /// Test connectivity to a provider's endpoint (T1.0.4.05).
 ///
-/// Makes a lightweight GET to the provider's models endpoint and
+/// Makes a lightweight probe to the provider's models endpoint and
 /// returns the round-trip time in milliseconds.
 #[tauri::command]
 pub async fn test_provider_connection(
@@ -239,30 +239,19 @@ pub(crate) async fn test_provider_connection_with_repo(
         .build()
         .map_err(format_reqwest_error)?;
 
-    let url = match provider.kind {
-        crate::providers::model::ProviderKind::Anthropic => {
-            format!("{}/v1/messages", provider.base_url)
-        }
-        crate::providers::model::ProviderKind::Gemini => {
-            format!("{}/v1beta/models", provider.base_url)
-        }
-        _ => format!("{}/v1/models", provider.base_url),
+    let req = match provider.kind {
+        crate::providers::model::ProviderKind::Anthropic => client
+            .post(format!("{}/v1/messages", provider.base_url))
+            .header("x-api-key", &api_key)
+            .header("anthropic-version", "2023-06-01")
+            .json(&anthropic_probe_body()),
+        crate::providers::model::ProviderKind::Gemini => client
+            .get(format!("{}/v1beta/models", provider.base_url))
+            .query(&[("key", &api_key)]),
+        _ => client
+            .get(format!("{}/v1/models", provider.base_url))
+            .header("Authorization", format!("Bearer {api_key}")),
     };
-
-    let mut req = client.get(&url);
-    match provider.kind {
-        crate::providers::model::ProviderKind::Anthropic => {
-            req = req
-                .header("x-api-key", &api_key)
-                .header("anthropic-version", "2023-06-01");
-        }
-        crate::providers::model::ProviderKind::Gemini => {
-            req = req.query(&[("key", &api_key)]);
-        }
-        _ => {
-            req = req.header("Authorization", format!("Bearer {api_key}"));
-        }
-    }
 
     let resp = req.send().await.map_err(format_reqwest_error)?;
     if !resp.status().is_success() && resp.status().as_u16() != 401 {
@@ -279,6 +268,14 @@ pub(crate) async fn test_provider_connection_with_repo(
     Ok(ms)
 }
 
+fn anthropic_probe_body() -> serde_json::Value {
+    serde_json::json!({
+        "model": "claude-3-5-sonnet-20241022",
+        "max_tokens": 1,
+        "messages": [{"role": "user", "content": "ping"}]
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -288,7 +285,7 @@ mod tests {
     use crate::providers::model::ProviderKind;
     use rusqlite::params;
     use tempfile::TempDir;
-    use wiremock::matchers::{method, path};
+    use wiremock::matchers::{body_json, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     fn make_repo() -> (TempDir, Arc<ProviderRepository>, Database) {
@@ -626,24 +623,28 @@ mod tests {
     async fn test_provider_connection_returns_upstream_error_body() {
         let (_dir, repo, _db) = make_repo();
         let server = MockServer::start().await;
-        Mock::given(method("GET"))
-            .and(path("/v1/models"))
-            .respond_with(ResponseTemplate::new(503).set_body_string("models endpoint unavailable"))
+        Mock::given(method("POST"))
+            .and(path("/v1/messages"))
+            .and(body_json(anthropic_probe_body()))
+            .respond_with(
+                ResponseTemplate::new(503).set_body_string("messages endpoint unavailable"),
+            )
             .expect(1)
             .mount(&server)
             .await;
         let added = repo
             .add(&ProviderInput {
                 base_url: server.uri(),
+                kind: ProviderKind::Anthropic,
                 ..sample_input("Failing", 10)
             })
             .expect("add provider");
 
         let err = test_provider_connection_with_repo(repo.as_ref(), &added.id)
             .await
-            .expect_err("models probe must fail");
+            .expect_err("messages probe must fail");
 
         assert!(err.contains("HTTP 503 Service Unavailable"));
-        assert!(err.contains("models endpoint unavailable"));
+        assert!(err.contains("messages endpoint unavailable"));
     }
 }

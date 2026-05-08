@@ -66,14 +66,23 @@ describe("AddProviderForm", () => {
   it("shows per-field errors when required values are missing", async () => {
     render(<AddProviderForm />);
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Custom" }));
     await user.click(screen.getByRole("button", { name: "添加" }));
     expect(await screen.findByText("名称不能为空")).toBeInTheDocument();
-    expect(
-      screen.getByText("此类型供应商需要填写 Base URL"),
-    ).toBeInTheDocument();
     expect(screen.getByText("API Key 不能为空")).toBeInTheDocument();
+    expect(screen.queryByText("Base URL 格式无效")).not.toBeInTheDocument();
     expect(addProvider).not.toHaveBeenCalled();
+  });
+
+  it("disables unsupported provider kinds", () => {
+    render(<AddProviderForm />);
+
+    expect(screen.getByRole("button", { name: "Gemini" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Relay" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Custom" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "OpenAI" })).not.toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Anthropic" }),
+    ).not.toBeDisabled();
   });
 
   it("rejects malformed Base URL", async () => {
