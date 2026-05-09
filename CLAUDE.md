@@ -183,16 +183,16 @@ apps/website/e2e/**.spec.ts              # 官网 E2E
 
 继承全局 `~/.claude/CLAUDE.md` 的所有规则，并在此基础上叠加：
 
-| 维度       | 规则                                                                                                                                                                                        |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 语言       | 中文回复；技术术语 / 标识符保持原文                                                                                                                                                         |
-| 注释       | 默认不写；只在 _为什么_ 不显然时加一行                                                                                                                                                      |
-| 提交       | Conventional Commits；**每完成一个 task 立即 `git commit + git push`**（用户长期授权，2026-04-28 起生效）。一个 task 一个或多个原子 commit，commit message 含对应 task ID（如 `T1.0.1.07`） |
-| 样式       | 仅 Tailwind utility；禁用 CSS Modules / styled-components / Sass / 全局 CSS（globals.css 入口除外）                                                                                         |
-| 产物       | 严格 3 个：`*_aarch64.dmg` / `*_x64.dmg` / `*_x64-setup.exe`；其余 bundle target 禁用                                                                                                       |
-| 版本号     | `0.x.y` = pre-release；`1.0.0+` = 正式 release；详见 `docs/开发计划.md` §一                                                                                                                 |
-| 销毁性操作 | 删除 / 强推 / 重置等需用户明确授权                                                                                                                                                          |
-| 跳过 hook  | 严禁 `--no-verify`、`--no-gpg-sign` 等绕过手段                                                                                                                                              |
+| 维度       | 规则                                                                                                                                                                                                                             |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 语言       | 中文回复；技术术语 / 标识符保持原文                                                                                                                                                                                              |
+| 注释       | 默认不写；只在 _为什么_ 不显然时加一行                                                                                                                                                                                           |
+| 提交       | Conventional Commits；**每完成一个 task 立即 `git commit + git push`**（用户长期授权，2026-04-28 起生效）。一个 task 一个或多个原子 commit，commit message 含对应 task ID（如 `T1.0.1.07`）                                      |
+| 样式       | 仅 Tailwind utility 与 antd v6 的 `@ant-design/cssinjs` token 体系；禁用 CSS Modules / styled-components / Sass / 全局 CSS（`globals.css` 入口除外）。组件视觉走 antd `ConfigProvider` Token，布局/间距/色彩 token 仍用 Tailwind |
+| 产物       | 严格 3 个：`*_aarch64.dmg` / `*_x64.dmg` / `*_x64-setup.exe`；其余 bundle target 禁用                                                                                                                                            |
+| 版本号     | `0.x.y` = pre-release；`1.0.0+` = 正式 release；详见 `docs/开发计划.md` §一                                                                                                                                                      |
+| 销毁性操作 | 删除 / 强推 / 重置等需用户明确授权                                                                                                                                                                                               |
+| 跳过 hook  | 严禁 `--no-verify`、`--no-gpg-sign` 等绕过手段                                                                                                                                                                                   |
 
 ---
 

@@ -1,6 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
+import { AppThemeProvider } from "./components/providers/AppThemeProvider";
 import "./i18n";
 import "./globals.css";
 
@@ -11,6 +12,8 @@ if (!root) {
 
 ReactDOM.createRoot(root).render(
   <React.StrictMode>
-    <App />
+    <AppThemeProvider>
+      <App />
+    </AppThemeProvider>
   </React.StrictMode>,
 );
