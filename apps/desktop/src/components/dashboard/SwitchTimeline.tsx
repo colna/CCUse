@@ -95,7 +95,7 @@ function TimelineRow({ event }: TimelineRowProps) {
       </button>
 
       {expanded && (
-        <div className="space-y-1 bg-muted/20 px-4 py-3 pl-11 text-xs">
+        <div className="bg-muted/20 space-y-1 px-4 py-3 pl-11 text-xs">
           <p>
             <span className="text-muted-foreground">{t("switch_reason")}</span>
             {event.reason}

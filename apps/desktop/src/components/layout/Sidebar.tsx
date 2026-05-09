@@ -29,9 +29,17 @@ export function Sidebar() {
   return (
     <nav
       aria-label={t("nav_main")}
-      className="bg-[var(--ant-color-bg-container,#fff)]/60 flex h-full w-60 shrink-0 flex-col border-r border-[var(--ant-color-border-secondary,rgba(0,0,0,0.06))] px-4 py-7 backdrop-blur"
+      style={{
+        background: "var(--ant-color-bg-container)",
+        borderRight: "1px solid var(--ant-color-border-secondary)",
+        color: "var(--ant-color-text)",
+      }}
+      className="flex h-full w-60 shrink-0 flex-col px-4 py-7 backdrop-blur"
     >
-      <p className="px-3 text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
+      <p
+        className="px-3 text-[11px] font-semibold uppercase tracking-[0.22em]"
+        style={{ color: "var(--ant-color-text-tertiary)" }}
+      >
         {t("brand")}
       </p>
       <ul className="mt-7 space-y-1">
@@ -42,10 +50,18 @@ export function Sidebar() {
               className={({ isActive }) =>
                 cn(
                   "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm leading-snug tracking-apple-tight transition-colors",
-                  isActive
-                    ? "bg-[var(--ant-color-primary-bg,rgba(0,113,227,0.08))] text-[var(--ant-color-primary,#0071e3)]"
-                    : "text-foreground/80 hover:bg-[var(--ant-color-fill-quaternary,rgba(0,0,0,0.04))] hover:text-foreground",
+                  isActive ? "is-active" : "is-default",
                 )
+              }
+              style={({ isActive }) =>
+                isActive
+                  ? {
+                      background: "var(--ant-color-primary-bg)",
+                      color: "var(--ant-color-primary)",
+                    }
+                  : {
+                      color: "var(--ant-color-text-secondary)",
+                    }
               }
             >
               <Icon className="text-base" />

@@ -101,7 +101,7 @@ export function LatencyChart() {
 
   if (error) {
     return (
-      <div className="rounded-xl border border-destructive/30 bg-card p-4 text-sm text-destructive">
+      <div className="border-destructive/30 rounded-xl border bg-card p-4 text-sm text-destructive">
         {error}
       </div>
     );
@@ -109,7 +109,7 @@ export function LatencyChart() {
 
   if (!loading && chartData.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-border bg-card/50 px-6 py-8 text-center text-sm text-muted-foreground">
+      <div className="bg-card/50 rounded-xl border border-dashed border-border px-6 py-8 text-center text-sm text-muted-foreground">
         {tc("no_data_yet")}
       </div>
     );

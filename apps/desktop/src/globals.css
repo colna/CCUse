@@ -74,10 +74,16 @@
     @apply border-border;
   }
 
+  html,
+  body,
+  #root {
+    background: var(--ant-color-bg-layout, hsl(var(--background)));
+    color: var(--ant-color-text, hsl(var(--foreground)));
+  }
+
   body {
-    @apply bg-background font-sans text-foreground;
+    @apply font-sans;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
-    /* SF Pro Display vs Text auto-switching is handled by the font itself */
   }
 }

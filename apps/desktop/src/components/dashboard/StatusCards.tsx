@@ -157,7 +157,7 @@ export function StatusCards() {
 
   if (error) {
     return (
-      <div className="rounded-xl border border-destructive/30 bg-card p-4 text-sm text-destructive">
+      <div className="border-destructive/30 rounded-xl border bg-card p-4 text-sm text-destructive">
         {error}
       </div>
     );
