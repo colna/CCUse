@@ -87,7 +87,7 @@ fn gemini_success_response() -> Value {
 }
 
 /// Build a short-timeout client for fault injection tests where we
-/// don't want to wait 30 s for the default `reqwest` timeout.
+/// don't want to wait 600 s for the default provider timeout.
 fn short_timeout_client() -> Client {
     Client::builder()
         .timeout(Duration::from_secs(2))
@@ -663,9 +663,16 @@ mod fault_injection {
             .mount(&server)
             .await;
 
-        // Build a provider with short timeout via a custom client.
-        let provider =
-            OpenAIProvider::new("oai-to", "MockTimeout", server.uri(), "sk-test").expect("build");
+        let provider = OpenAIProvider::with_options_and_timeout(
+            "oai-to",
+            "MockTimeout",
+            server.uri(),
+            "sk-test",
+            100,
+            None,
+            Duration::from_secs(2),
+        )
+        .expect("build");
         let request = ApiRequest {
             model: "gpt-5.4".into(),
             messages: vec![ChatMessage {

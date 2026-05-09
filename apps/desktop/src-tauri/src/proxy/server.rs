@@ -43,7 +43,7 @@ use super::{bridge, sse};
 
 const MODELS_CACHE_TTL: Duration = Duration::from_secs(30);
 const MAX_REQUEST_BODY_BYTES: usize = 1024 * 1024;
-const DEFAULT_NON_STREAMING_HANDLER_TIMEOUT: Duration = Duration::from_secs(60);
+const DEFAULT_NON_STREAMING_HANDLER_TIMEOUT: Duration = Duration::from_secs(600);
 
 /// Errors raised while binding or running the proxy server.
 #[derive(thiserror::Error, Debug)]
@@ -1188,5 +1188,13 @@ mod tests {
         let rendered = format!("{err}");
         assert!(rendered.contains(&(u16::MAX - 2).to_string()));
         assert!(rendered.contains('5'));
+    }
+
+    #[test]
+    fn proxy_app_state_defaults_non_streaming_timeout_to_long_provider_deadline() {
+        assert_eq!(
+            DEFAULT_NON_STREAMING_HANDLER_TIMEOUT,
+            Duration::from_secs(600),
+        );
     }
 }

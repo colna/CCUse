@@ -25,9 +25,8 @@ use super::error_format::format_reqwest_error;
 use super::model;
 use super::stream_check::{check_provider_with_default_config, health_status_from_stream_result};
 
-/// Default timeout for non-streaming chat-completions calls. Keep
-/// short — `SwitchEngine` wants to fail-over rather than wait.
-pub const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+/// Default timeout for provider HTTP calls.
+pub const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(600);
 
 /// `OpenAI` chat-completions provider.
 #[derive(Clone)]
@@ -93,6 +92,25 @@ impl OpenAIProvider {
                 .map(|model| (*model).to_owned())
                 .collect(),
         )
+    }
+
+    #[doc(hidden)]
+    pub fn with_options_and_timeout(
+        id: impl Into<String>,
+        name: impl Into<String>,
+        base_url: impl Into<String>,
+        api_key: impl Into<String>,
+        priority: i32,
+        cost_per_token: Option<f64>,
+        timeout: Duration,
+    ) -> Result<Self, ProviderError> {
+        let mut provider =
+            Self::with_options(id, name, base_url, api_key, priority, cost_per_token)?;
+        provider.client = Client::builder()
+            .timeout(timeout)
+            .build()
+            .map_err(|e| ProviderError::Network(format_reqwest_error(e)))?;
+        Ok(provider)
     }
 
     pub fn with_default_models(
@@ -400,6 +418,11 @@ mod tests {
         let err = map_http_error(StatusCode::BAD_REQUEST, "bad".into());
         assert!(matches!(err, ProviderError::BadRequest(_)));
         assert!(!err.is_retriable());
+    }
+
+    #[test]
+    fn default_request_timeout_matches_long_provider_deadline() {
+        assert_eq!(DEFAULT_REQUEST_TIMEOUT, Duration::from_secs(600));
     }
 
     #[test]
