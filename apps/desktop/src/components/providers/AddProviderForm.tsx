@@ -1,5 +1,11 @@
 import { useCallback, useState } from "react";
-import { ChevronDown, ChevronRight, Loader2, Plug } from "lucide-react";
+import {
+  CaretDownOutlined,
+  CaretRightOutlined,
+  ApiOutlined,
+  LoadingOutlined,
+} from "@ant-design/icons";
+import { Input } from "antd";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
@@ -11,8 +17,6 @@ import {
   type ProviderInput,
   type StreamCheckResult,
 } from "@/lib/tauri";
-
-// ─── Form values & validation ────────────────────────────────
 
 interface FormValues {
   kind: ProviderKind;
@@ -108,8 +112,6 @@ function validate(
 
   return errors;
 }
-
-// ─── Component ───────────────────────────────────────────────
 
 interface AddProviderFormProps {
   onAdded?: (id: string) => void;
@@ -212,7 +214,11 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
       onSubmit={handleSubmit}
       aria-label={t("add_provider_aria")}
       aria-busy={submitting}
-      className="space-y-5 rounded-2xl border border-border bg-card p-6 shadow-apple-card"
+      className="space-y-5 rounded-2xl border border-[var(--ant-color-border-secondary,rgba(0,0,0,0.06))] bg-[var(--ant-color-bg-container,#fff)] p-6"
+      style={{
+        boxShadow:
+          "var(--ant-box-shadow-secondary, 0 1px 2px rgba(0,0,0,0.04))",
+      }}
     >
       <header className="space-y-1">
         <h3 className="text-base font-semibold leading-apple-headline tracking-apple-tight">
@@ -223,28 +229,25 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
         </p>
       </header>
 
-      {/* Provider type selector */}
-      <div className="space-y-1.5">
+      <div className="space-y-2">
         <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
           {t("provider_type")}
         </span>
         <div className="flex flex-wrap gap-2">
-          {PROVIDER_KIND_OPTIONS.map((opt) => (
-            <button
-              key={opt.kind}
-              type="button"
-              disabled={submitting || !opt.supported}
-              onClick={() => handleKindChange(opt.kind)}
-              className={cn(
-                "rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:border-border/60 disabled:bg-muted/40 disabled:text-muted-foreground",
-                values.kind === opt.kind
-                  ? "border-primary bg-primary/10 text-primary"
-                  : "border-border bg-background text-muted-foreground hover:border-primary/40 hover:text-foreground",
-              )}
-            >
-              {opt.label}
-            </button>
-          ))}
+          {PROVIDER_KIND_OPTIONS.map((opt) => {
+            const selected = values.kind === opt.kind;
+            return (
+              <Button
+                key={opt.kind}
+                type={selected ? "primary" : "default"}
+                disabled={submitting || !opt.supported}
+                onClick={() => handleKindChange(opt.kind)}
+                size="middle"
+              >
+                {opt.label}
+              </Button>
+            );
+          })}
         </div>
       </div>
 
@@ -310,8 +313,7 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
         <span>{t("enable_provider_label")}</span>
       </label>
 
-      {/* Advanced section (collapsible) */}
-      <div className="rounded-xl border border-border">
+      <div className="rounded-xl border border-[var(--ant-color-border-secondary,rgba(0,0,0,0.06))]">
         <button
           type="button"
           disabled={submitting}
@@ -319,14 +321,14 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
           className="flex w-full items-center gap-2 px-4 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
         >
           {advancedOpen ? (
-            <ChevronDown className="size-4" />
+            <CaretDownOutlined className="text-xs" />
           ) : (
-            <ChevronRight className="size-4" />
+            <CaretRightOutlined className="text-xs" />
           )}
           {t("advanced_section")}
         </button>
         {advancedOpen && (
-          <div className="space-y-4 border-t border-border px-4 py-4">
+          <div className="space-y-4 border-t border-[var(--ant-color-border-secondary,rgba(0,0,0,0.06))] px-4 py-4">
             <Field
               id="provider-monthly-quota"
               label={t("field_monthly_quota")}
@@ -387,37 +389,47 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
           </p>
           <div className="flex items-center gap-2">
             {successId && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={handleReset}
-              >
+              <Button type="default" onClick={handleReset}>
                 {t("add_another")}
               </Button>
             )}
-            <Button type="submit" disabled={submitting || Boolean(successId)}>
-              {submitting && <Loader2 className="mr-2 size-3.5 animate-spin" />}
+            <Button
+              type="primary"
+              htmlType="submit"
+              disabled={submitting || Boolean(successId)}
+              icon={
+                submitting ? (
+                  <LoadingOutlined
+                    className="animate-spin"
+                    aria-label=""
+                    role="presentation"
+                  />
+                ) : undefined
+              }
+            >
               {submitting ? t("adding") : t("add")}
             </Button>
           </div>
         </div>
 
-        {/* Test Connection (only after successful add) */}
         {successId && (
-          <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/30 px-4 py-3">
+          <div className="flex items-center gap-3 rounded-lg border border-[var(--ant-color-border-secondary,rgba(0,0,0,0.06))] bg-[var(--ant-color-fill-quaternary,rgba(0,0,0,0.02))] px-4 py-3">
             <Button
-              type="button"
-              variant="outline"
-              size="sm"
+              type="default"
+              icon={
+                testing ? (
+                  <LoadingOutlined
+                    className="animate-spin"
+                    aria-label=""
+                    role="presentation"
+                  />
+                ) : (
+                  <ApiOutlined aria-label="" role="presentation" />
+                )
+              }
               onClick={handleTestConnection}
               disabled={testing}
             >
-              {testing ? (
-                <Loader2 className="mr-2 size-3.5 animate-spin" />
-              ) : (
-                <Plug className="mr-2 size-3.5" />
-              )}
               {t("test_connection")}
             </Button>
             {testResult && (
@@ -452,8 +464,6 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
   );
 }
 
-// ─── Shared Field component ──────────────────────────────────
-
 interface FieldProps {
   id: string;
   label: string;
@@ -481,31 +491,33 @@ function Field({
 }: FieldProps) {
   const errorId = `${id}-error`;
   const hintId = `${id}-hint`;
+  const describedBy = cn(error && errorId, hint && hintId) || undefined;
+  const status = error ? "error" : undefined;
+  const commonProps = {
+    id,
+    value,
+    placeholder,
+    disabled,
+    "aria-invalid": Boolean(error),
+    "aria-describedby": describedBy,
+    status,
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) =>
+      onChange(e.target.value),
+  } as const;
+
   return (
     <div className="space-y-1.5">
       <label
         htmlFor={id}
-        className="text-xs uppercase tracking-[0.18em] text-muted-foreground"
+        className="block text-xs uppercase tracking-[0.18em] text-muted-foreground"
       >
         {label}
       </label>
-      <input
-        id={id}
-        type={type}
-        inputMode={inputMode}
-        value={value}
-        placeholder={placeholder}
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.value)}
-        aria-invalid={Boolean(error)}
-        aria-describedby={cn(error && errorId, hint && hintId) || undefined}
-        className={cn(
-          "w-full rounded-md border bg-background px-3 py-2 text-sm leading-snug tracking-apple-tight outline-none transition-colors disabled:cursor-not-allowed disabled:opacity-60",
-          error
-            ? "border-destructive/60 focus-visible:border-destructive"
-            : "border-border focus-visible:border-primary",
-        )}
-      />
+      {type === "password" ? (
+        <Input.Password {...commonProps} />
+      ) : (
+        <Input {...commonProps} inputMode={inputMode} />
+      )}
       {hint ? (
         <p id={hintId} className="text-xs text-muted-foreground">
           {hint}

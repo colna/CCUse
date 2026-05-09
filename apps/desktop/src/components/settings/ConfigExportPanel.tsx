@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { Download, Upload, Sparkles } from "lucide-react";
+import {
+  DownloadOutlined,
+  UploadOutlined,
+  ThunderboltFilled,
+} from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import {
@@ -98,21 +102,19 @@ export function ConfigExportPanel() {
 
       <div className="flex flex-wrap gap-3">
         <Button
-          variant="outline"
-          size="sm"
+          type="default"
           disabled={exporting}
           onClick={handleExport}
+          icon={<DownloadOutlined aria-label="" role="presentation" />}
         >
-          <Download className="size-3.5" />
           {exporting ? t("config_exporting") : t("config_export_btn")}
         </Button>
         <Button
-          variant="outline"
-          size="sm"
+          type="default"
           disabled={importing}
           onClick={handleImport}
+          icon={<UploadOutlined aria-label="" role="presentation" />}
         >
-          <Upload className="size-3.5" />
           {importing ? t("config_importing") : t("config_import_btn")}
         </Button>
       </div>
@@ -134,7 +136,7 @@ export function ConfigExportPanel() {
             {presets.map((preset) => (
               <button
                 key={preset.id}
-                className="group flex flex-col gap-1.5 rounded-lg border border-border p-4 text-left transition-colors hover:border-primary/50 hover:bg-muted/30"
+                className="hover:border-[var(--ant-color-primary,#0071e3)]/50 group flex flex-col gap-1.5 rounded-2xl border border-[var(--ant-color-border-secondary,rgba(0,0,0,0.06))] bg-[var(--ant-color-bg-container,#fff)] p-4 text-left transition-colors"
                 onClick={() => {
                   setStatus(
                     t("config_template_selected", { name: preset.name }),
@@ -143,7 +145,11 @@ export function ConfigExportPanel() {
                 }}
               >
                 <div className="flex items-center gap-2">
-                  <Sparkles className="size-4 text-primary/60 group-hover:text-primary" />
+                  <ThunderboltFilled
+                    className="text-[var(--ant-color-primary,#0071e3)]/60 group-hover:text-[var(--ant-color-primary,#0071e3)]"
+                    aria-label=""
+                    role="presentation"
+                  />
                   <span className="text-sm font-medium text-foreground">
                     {preset.name}
                   </span>

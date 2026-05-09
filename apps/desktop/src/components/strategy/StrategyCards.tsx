@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { ArrowUpDown, Gauge, Coins, RotateCcw, Brain } from "lucide-react";
+import {
+  SwapOutlined,
+  ThunderboltOutlined,
+  DollarOutlined,
+  RetweetOutlined,
+  RobotOutlined,
+} from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
 
 import { cn } from "@/lib/utils";
@@ -22,31 +28,31 @@ const STRATEGIES: StrategyOption[] = [
     id: "priority",
     labelKey: "strategy_priority",
     descKey: "strategy_priority_desc",
-    icon: ArrowUpDown,
+    icon: SwapOutlined,
   },
   {
     id: "fastest",
     labelKey: "strategy_fastest",
     descKey: "strategy_fastest_desc",
-    icon: Gauge,
+    icon: ThunderboltOutlined,
   },
   {
     id: "cost",
     labelKey: "strategy_cost",
     descKey: "strategy_cost_desc",
-    icon: Coins,
+    icon: DollarOutlined,
   },
   {
     id: "load_balance",
     labelKey: "strategy_load_balance",
     descKey: "strategy_load_balance_desc",
-    icon: RotateCcw,
+    icon: RetweetOutlined,
   },
   {
     id: "smart",
     labelKey: "strategy_smart",
     descKey: "strategy_smart_desc",
-    icon: Brain,
+    icon: RobotOutlined,
   },
 ];
 
@@ -84,7 +90,7 @@ export function StrategyCards() {
         <p className="text-xs text-muted-foreground">{t("strategy_desc")}</p>
       </header>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {STRATEGIES.map((s) => {
           const Icon = s.icon;
           const selected = config?.strategy === s.id;
@@ -94,23 +100,25 @@ export function StrategyCards() {
               onClick={() => handleSelect(s.id)}
               disabled={updating}
               className={cn(
-                "flex flex-col items-start gap-2 rounded-xl border p-4 text-left transition-all",
+                "flex flex-col items-start gap-2 rounded-2xl border p-5 text-left transition-all",
                 selected
-                  ? "border-primary bg-primary/5 ring-1 ring-primary/30"
-                  : "border-border bg-card hover:border-primary/40 hover:bg-card/80",
+                  ? "border-[var(--ant-color-primary,#0071e3)] bg-[var(--ant-color-primary-bg,rgba(0,113,227,0.08))]"
+                  : "hover:border-[var(--ant-color-primary,#0071e3)]/40 border-[var(--ant-color-border-secondary,rgba(0,0,0,0.06))] bg-[var(--ant-color-bg-container,#fff)]",
                 updating && "opacity-60",
               )}
             >
-              <div className="flex items-center gap-2">
+              <div className="flex w-full items-center gap-2">
                 <Icon
                   className={cn(
-                    "size-4",
-                    selected ? "text-primary" : "text-muted-foreground",
+                    "text-base",
+                    selected
+                      ? "text-[var(--ant-color-primary,#0071e3)]"
+                      : "text-muted-foreground",
                   )}
                 />
                 <span className="text-sm font-medium">{t(s.labelKey)}</span>
                 {selected && (
-                  <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                  <span className="ml-auto rounded-full bg-[var(--ant-color-primary-bg,rgba(0,113,227,0.1))] px-2 py-0.5 text-[10px] font-medium text-[var(--ant-color-primary,#0071e3)]">
                     {t("current_badge")}
                   </span>
                 )}

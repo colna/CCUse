@@ -1,10 +1,10 @@
 import { useCallback, useState } from "react";
-import { ChevronUp, Plus } from "lucide-react";
+import { UpOutlined, PlusOutlined } from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
 
+import { Button } from "@/components/ui/button";
 import { AddProviderForm } from "@/components/providers/AddProviderForm";
 import { ProviderList } from "@/components/providers/ProviderList";
-import { Button } from "@/components/ui/button";
 
 const ADD_PROVIDER_FORM_PANEL_ID = "add-provider-form-panel";
 
@@ -30,18 +30,20 @@ export function ProvidersPage() {
       <ProviderList refreshKey={refreshKey} />
       <div className="flex justify-end">
         <Button
-          type="button"
-          size="sm"
-          variant={addFormOpen ? "outline" : "default"}
+          htmlType="button"
+          size="middle"
+          type={addFormOpen ? "default" : "primary"}
           onClick={handleToggleAddForm}
           aria-expanded={addFormOpen}
           aria-controls={ADD_PROVIDER_FORM_PANEL_ID}
+          icon={
+            addFormOpen ? (
+              <UpOutlined aria-label="" role="presentation" />
+            ) : (
+              <PlusOutlined aria-label="" role="presentation" />
+            )
+          }
         >
-          {addFormOpen ? (
-            <ChevronUp className="mr-2 size-3.5" />
-          ) : (
-            <Plus className="mr-2 size-3.5" />
-          )}
           {addFormOpen
             ? t("collapse_add_provider_form")
             : t("add_provider_title")}

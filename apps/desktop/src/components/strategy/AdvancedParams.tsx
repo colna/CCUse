@@ -170,7 +170,7 @@ export function AdvancedParams() {
   const smartWeightIsValid = smartWeightTotal === TOTAL_WEIGHT;
 
   return (
-    <div className="space-y-5 rounded-2xl border border-border bg-card p-6 shadow-apple-card">
+    <div className="space-y-5 rounded-2xl border border-[var(--ant-color-border-secondary,rgba(0,0,0,0.06))] bg-[var(--ant-color-bg-container,#fff)] p-6">
       <header className="space-y-1">
         <h3 className="text-base font-semibold leading-apple-headline tracking-apple-tight">
           {t("advanced_title")}
@@ -181,7 +181,7 @@ export function AdvancedParams() {
       <div className="space-y-1.5">
         <label
           htmlFor="max-retries"
-          className="text-xs uppercase tracking-[0.18em] text-muted-foreground"
+          className="block text-xs uppercase tracking-[0.18em] text-muted-foreground"
         >
           {t("max_retries_label")}
         </label>
@@ -192,7 +192,7 @@ export function AdvancedParams() {
           max={10}
           value={maxRetries}
           onChange={(e) => setMaxRetries(e.target.value)}
-          className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus-visible:border-primary"
+          className="w-full rounded-md border border-[var(--ant-color-border,rgba(0,0,0,0.08))] bg-[var(--ant-color-bg-container,#fff)] px-3 py-2 text-sm outline-none focus-visible:border-[var(--ant-color-primary,#0071e3)]"
         />
         <p className="text-xs text-muted-foreground">{t("max_retries_hint")}</p>
       </div>
@@ -245,7 +245,11 @@ export function AdvancedParams() {
 
       <footer className="flex items-center justify-end gap-3">
         {saved && <span className="text-xs text-primary">{tc("saved")}</span>}
-        <Button onClick={handleSave} disabled={saving || !smartWeightIsValid}>
+        <Button
+          type="primary"
+          onClick={handleSave}
+          disabled={saving || !smartWeightIsValid}
+        >
           {saving ? tc("saving") : tc("save")}
         </Button>
       </footer>

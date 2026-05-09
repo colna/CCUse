@@ -17,15 +17,16 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
-  Check,
-  FlaskConical,
-  GripVertical,
-  Loader2,
-  Pencil,
-  RefreshCw,
-  Trash2,
-  X,
-} from "lucide-react";
+  CheckOutlined,
+  CloseOutlined,
+  DeleteOutlined,
+  EditOutlined,
+  ExperimentOutlined,
+  HolderOutlined,
+  LoadingOutlined,
+  ReloadOutlined,
+} from "@ant-design/icons";
+import { Tooltip } from "antd";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
@@ -75,8 +76,6 @@ function streamStatusLabel(status?: StreamCheckResult["status"]): string {
   }
 }
 
-// ─── Delete Confirmation Dialog ──────────────────────────────
-
 interface DeleteDialogProps {
   providerName: string;
   deleting: boolean;
@@ -99,7 +98,7 @@ function DeleteDialog({
         aria-modal="true"
         aria-labelledby="delete-provider-dialog-title"
         aria-busy={deleting}
-        className="mx-4 w-full max-w-sm rounded-2xl border border-border bg-card p-6 shadow-lg"
+        className="mx-4 w-full max-w-sm rounded-2xl border border-[var(--ant-color-border-secondary,rgba(0,0,0,0.06))] bg-[var(--ant-color-bg-elevated,#fff)] p-6 shadow-xl"
       >
         <h3
           id="delete-provider-dialog-title"
@@ -113,21 +112,24 @@ function DeleteDialog({
           {t("delete_undone")}
         </p>
         <div className="mt-5 flex justify-end gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onCancel}
-            disabled={deleting}
-          >
+          <Button type="default" onClick={onCancel} disabled={deleting}>
             {tc("cancel")}
           </Button>
           <Button
-            variant="destructive"
-            size="sm"
+            type="primary"
+            danger
             onClick={onConfirm}
             disabled={deleting}
+            icon={
+              deleting ? (
+                <LoadingOutlined
+                  className="animate-spin"
+                  aria-label=""
+                  role="presentation"
+                />
+              ) : undefined
+            }
           >
-            {deleting && <Loader2 className="mr-2 size-3.5 animate-spin" />}
             {deleting ? t("deleting") : tc("delete")}
           </Button>
         </div>
@@ -157,7 +159,7 @@ function ProviderErrorDialog({
         aria-modal="true"
         aria-labelledby="provider-error-dialog-title"
         aria-describedby="provider-error-dialog-message"
-        className="mx-4 w-full max-w-sm rounded-2xl border border-destructive/30 bg-card p-6 shadow-lg"
+        className="mx-4 w-full max-w-sm rounded-2xl border border-[var(--ant-color-error-border,rgba(255,77,79,0.4))] bg-[var(--ant-color-bg-elevated,#fff)] p-6 shadow-xl"
       >
         <h3
           id="provider-error-dialog-title"
@@ -168,12 +170,12 @@ function ProviderErrorDialog({
         <p className="mt-2 text-sm text-muted-foreground">{providerName}</p>
         <pre
           id="provider-error-dialog-message"
-          className="mt-3 max-h-44 overflow-auto whitespace-pre-wrap rounded-md bg-muted/50 p-3 text-xs text-destructive"
+          className="mt-3 max-h-44 overflow-auto whitespace-pre-wrap rounded-md bg-[var(--ant-color-fill-quaternary,rgba(0,0,0,0.02))] p-3 text-xs text-destructive"
         >
           {message}
         </pre>
         <div className="mt-5 flex justify-end">
-          <Button variant="outline" size="sm" onClick={onClose}>
+          <Button type="default" onClick={onClose}>
             {tc("close")}
           </Button>
         </div>
@@ -181,8 +183,6 @@ function ProviderErrorDialog({
     </div>
   );
 }
-
-// ─── Inline Edit Form ────────────────────────────────────────
 
 interface EditState {
   name: string;
@@ -268,13 +268,16 @@ function SortableProviderItem({
     }
   }, [provider.id, editValues, saving, onSaveEdit]);
 
+  const inputClass =
+    "flex-1 rounded-md border border-[var(--ant-color-border,rgba(0,0,0,0.08))] bg-[var(--ant-color-bg-container,#fff)] px-2 py-1 text-sm outline-none focus-visible:border-[var(--ant-color-primary,#0071e3)] disabled:cursor-not-allowed disabled:opacity-60";
+
   if (editing) {
     return (
       <div
         ref={setNodeRef}
         style={style}
         aria-busy={saving}
-        className="space-y-3 rounded-xl border border-primary/40 bg-card px-4 py-3 shadow-sm"
+        className="border-[var(--ant-color-primary,#0071e3)]/40 space-y-3 rounded-2xl border bg-[var(--ant-color-bg-container,#fff)] px-5 py-4"
       >
         <div className="flex items-center gap-2">
           <label
@@ -291,7 +294,7 @@ function SortableProviderItem({
             onChange={(e) =>
               setEditValues((s) => ({ ...s, name: e.target.value }))
             }
-            className="flex-1 rounded-md border border-border bg-background px-2 py-1 text-sm outline-none focus-visible:border-primary disabled:cursor-not-allowed disabled:opacity-60"
+            className={inputClass}
           />
         </div>
         <div className="flex items-center gap-2">
@@ -311,7 +314,7 @@ function SortableProviderItem({
                 kind: e.target.value as ProviderInput["kind"],
               }))
             }
-            className="w-40 rounded-md border border-border bg-background px-2 py-1 text-sm outline-none focus-visible:border-primary disabled:cursor-not-allowed disabled:opacity-60"
+            className={cn(inputClass, "w-40 flex-none")}
           >
             {PROVIDER_KIND_OPTIONS.map((option) => (
               <option
@@ -339,7 +342,7 @@ function SortableProviderItem({
             onChange={(e) =>
               setEditValues((s) => ({ ...s, base_url: e.target.value }))
             }
-            className="flex-1 rounded-md border border-border bg-background px-2 py-1 text-sm outline-none focus-visible:border-primary disabled:cursor-not-allowed disabled:opacity-60"
+            className={inputClass}
           />
         </div>
         <div className="flex items-center gap-2">
@@ -358,7 +361,7 @@ function SortableProviderItem({
             onChange={(e) =>
               setEditValues((s) => ({ ...s, api_key: e.target.value }))
             }
-            className="flex-1 rounded-md border border-border bg-background px-2 py-1 text-sm outline-none focus-visible:border-primary disabled:cursor-not-allowed disabled:opacity-60"
+            className={inputClass}
           />
         </div>
         <div className="flex items-center gap-2">
@@ -377,7 +380,7 @@ function SortableProviderItem({
             onChange={(e) =>
               setEditValues((s) => ({ ...s, priority: e.target.value }))
             }
-            className="w-20 rounded-md border border-border bg-background px-2 py-1 text-sm outline-none focus-visible:border-primary disabled:cursor-not-allowed disabled:opacity-60"
+            className={cn(inputClass, "w-20 flex-none")}
           />
           <label className="ml-4 flex items-center gap-1 text-xs">
             <input
@@ -391,31 +394,35 @@ function SortableProviderItem({
             />
             {tc("enabled")}
           </label>
-          <div className="ml-auto flex items-center gap-1">
+          <div className="ml-auto flex items-center gap-1.5">
             <Button
-              variant="ghost"
-              size="icon"
-              className="size-7 text-primary hover:text-primary"
+              type="text"
+              size="small"
+              shape="circle"
               onClick={handleSaveEdit}
               disabled={saving}
               aria-label={t("save_changes_aria")}
-            >
-              {saving ? (
-                <Loader2 className="size-3.5 animate-spin" />
-              ) : (
-                <Check className="size-3.5" />
-              )}
-            </Button>
+              icon={
+                saving ? (
+                  <LoadingOutlined
+                    className="animate-spin"
+                    aria-label=""
+                    role="presentation"
+                  />
+                ) : (
+                  <CheckOutlined aria-label="" role="presentation" />
+                )
+              }
+            />
             <Button
-              variant="ghost"
-              size="icon"
-              className="size-7 text-muted-foreground hover:text-foreground"
+              type="text"
+              size="small"
+              shape="circle"
               onClick={handleCancelEdit}
               disabled={saving}
               aria-label={t("cancel_editing_aria")}
-            >
-              <X className="size-3.5" />
-            </Button>
+              icon={<CloseOutlined aria-label="" role="presentation" />}
+            />
           </div>
         </div>
       </div>
@@ -427,8 +434,9 @@ function SortableProviderItem({
       ref={setNodeRef}
       style={style}
       className={cn(
-        "flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-sm transition-shadow",
-        isDragging && "z-50 shadow-lg ring-2 ring-primary/30",
+        "flex items-center gap-4 rounded-2xl border border-[var(--ant-color-border-secondary,rgba(0,0,0,0.06))] bg-[var(--ant-color-bg-container,#fff)] px-5 py-3.5 transition-shadow",
+        isDragging &&
+          "ring-[var(--ant-color-primary,#0071e3)]/30 z-50 shadow-lg ring-2",
       )}
     >
       <button
@@ -437,7 +445,7 @@ function SortableProviderItem({
         className="cursor-grab touch-none text-muted-foreground hover:text-foreground"
         aria-label={t("drag_to_reorder_aria")}
       >
-        <GripVertical className="size-4" />
+        <HolderOutlined className="text-base" />
       </button>
 
       <span
@@ -456,35 +464,41 @@ function SortableProviderItem({
         </p>
       </div>
 
-      <span
-        className={cn(
-          "text-xs tabular-nums",
-          health?.success_rate != null && health.success_rate < 0.9
-            ? "text-yellow-600"
-            : "text-muted-foreground",
-        )}
-        title={t("success_rate_title")}
-      >
-        {formatSuccessRate(health?.success_rate)}
-      </span>
-
-      {health?.response_time_us != null && (
-        <span className="text-xs tabular-nums text-muted-foreground">
-          {Math.round(health.response_time_us / 1000)}ms
-        </span>
-      )}
-
-      {health?.status && (
-        <span className="text-xs text-muted-foreground">
-          {streamStatusLabel(
-            health.status === "healthy"
-              ? "operational"
-              : health.status === "degraded"
-                ? "degraded"
-                : "failed",
+      <div className="flex items-center gap-3 text-xs tabular-nums">
+        <span
+          className={cn(
+            health?.success_rate != null && health.success_rate < 0.9
+              ? "text-yellow-600"
+              : "text-muted-foreground",
           )}
+          title={t("success_rate_title")}
+        >
+          {formatSuccessRate(health?.success_rate)}
         </span>
-      )}
+
+        {health?.response_time_us != null && (
+          <span className="text-muted-foreground">
+            {Math.round(health.response_time_us / 1000)}ms
+          </span>
+        )}
+
+        {health?.status && (
+          <span className="text-muted-foreground">
+            {streamStatusLabel(
+              health.status === "healthy"
+                ? "operational"
+                : health.status === "degraded"
+                  ? "degraded"
+                  : "failed",
+            )}
+          </span>
+        )}
+      </div>
+
+      <span
+        className="mx-1 h-6 w-px shrink-0 bg-[var(--ant-color-border-secondary,rgba(0,0,0,0.06))]"
+        aria-hidden
+      />
 
       <label className="flex items-center gap-1 text-xs">
         <input
@@ -500,45 +514,61 @@ function SortableProviderItem({
         />
       </label>
 
-      <Button
-        variant="ghost"
-        size="icon"
-        className="size-7 text-muted-foreground hover:text-foreground"
-        onClick={() => onTestConnection(provider.id)}
-        disabled={testing}
-        aria-label={t("test_connection_provider_aria", { name: provider.name })}
-      >
-        {testing ? (
-          <RefreshCw className="size-3.5 animate-spin" />
-        ) : (
-          <FlaskConical className="size-3.5" />
-        )}
-      </Button>
-
-      <Button
-        variant="ghost"
-        size="icon"
-        className="size-7 text-muted-foreground hover:text-foreground"
-        onClick={handleStartEdit}
-        aria-label={t("edit_provider_aria", { name: provider.name })}
-      >
-        <Pencil className="size-3.5" />
-      </Button>
-
-      <Button
-        variant="ghost"
-        size="icon"
-        className="size-7 text-muted-foreground hover:text-destructive"
-        onClick={() => onDelete(provider.id, provider.name)}
-        disabled={deleting}
-        aria-label={t("delete_provider_aria", { name: provider.name })}
-      >
-        {deleting ? (
-          <Loader2 className="size-3.5 animate-spin" />
-        ) : (
-          <Trash2 className="size-3.5" />
-        )}
-      </Button>
+      <div className="flex items-center gap-1">
+        <Tooltip
+          title={t("test_connection_provider_aria", { name: provider.name })}
+        >
+          <Button
+            type="text"
+            size="small"
+            shape="circle"
+            onClick={() => onTestConnection(provider.id)}
+            disabled={testing}
+            aria-label={t("test_connection_provider_aria", {
+              name: provider.name,
+            })}
+            icon={
+              testing ? (
+                <ReloadOutlined spin aria-label="" role="presentation" />
+              ) : (
+                <ExperimentOutlined aria-label="" role="presentation" />
+              )
+            }
+          />
+        </Tooltip>
+        <Tooltip title={t("edit_provider_aria", { name: provider.name })}>
+          <Button
+            type="text"
+            size="small"
+            shape="circle"
+            onClick={handleStartEdit}
+            aria-label={t("edit_provider_aria", { name: provider.name })}
+            icon={<EditOutlined aria-label="" role="presentation" />}
+          />
+        </Tooltip>
+        <Tooltip title={t("delete_provider_aria", { name: provider.name })}>
+          <Button
+            type="text"
+            size="small"
+            shape="circle"
+            danger
+            onClick={() => onDelete(provider.id, provider.name)}
+            disabled={deleting}
+            aria-label={t("delete_provider_aria", { name: provider.name })}
+            icon={
+              deleting ? (
+                <LoadingOutlined
+                  className="animate-spin"
+                  aria-label=""
+                  role="presentation"
+                />
+              ) : (
+                <DeleteOutlined aria-label="" role="presentation" />
+              )
+            }
+          />
+        </Tooltip>
+      </div>
     </div>
   );
 }
@@ -560,8 +590,6 @@ function providerToInput(
     ...overrides,
   };
 }
-
-// ─── Provider List ───────────────────────────────────────────
 
 interface ProviderListProps {
   refreshKey?: number;
@@ -793,7 +821,7 @@ export function ProviderList({ refreshKey }: ProviderListProps) {
 
   if (error) {
     return (
-      <div className="rounded-xl border border-destructive/30 bg-card p-4 text-sm text-destructive">
+      <div className="rounded-2xl border border-[var(--ant-color-error-border,rgba(255,77,79,0.4))] bg-[var(--ant-color-bg-container,#fff)] p-4 text-sm text-destructive">
         {error}
       </div>
     );
@@ -801,7 +829,7 @@ export function ProviderList({ refreshKey }: ProviderListProps) {
 
   if (providers.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-border bg-card/50 px-6 py-8 text-center text-sm text-muted-foreground">
+      <div className="rounded-2xl border border-dashed border-[var(--ant-color-border-secondary,rgba(0,0,0,0.06))] bg-[var(--ant-color-fill-quaternary,rgba(0,0,0,0.02))] px-6 py-10 text-center text-sm text-muted-foreground">
         {t("no_providers")}
       </div>
     );
@@ -818,7 +846,7 @@ export function ProviderList({ refreshKey }: ProviderListProps) {
           items={providers.map((p) => p.id)}
           strategy={verticalListSortingStrategy}
         >
-          <div className="space-y-2">
+          <div className="space-y-2.5">
             {providers.map((provider) => (
               <SortableProviderItem
                 key={provider.id}

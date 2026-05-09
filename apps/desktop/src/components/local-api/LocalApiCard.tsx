@@ -174,7 +174,11 @@ export function LocalApiCard() {
             onClick={handleRestart}
             disabled={state.status === "loading"}
           >
-            <RefreshCw className="mr-2 size-4" aria-hidden />
+            <RefreshCw
+              className="mr-2 size-4"
+              aria-label=""
+              role="presentation"
+            />
             {t("local_api_restart")}
           </Button>
         </div>
@@ -245,7 +249,7 @@ function Field({
           onClick={onCopy}
           disabled={!copyable}
         >
-          <Copy className="size-4" aria-hidden />
+          <Copy className="size-4" aria-label="" role="presentation" />
         </Button>
       </dd>
     </div>
@@ -296,7 +300,7 @@ function KeyField({
           onClick={onToggleVisible}
           disabled={!copyable}
         >
-          <Icon className="size-4" aria-hidden />
+          <Icon className="size-4" aria-label="" role="presentation" />
         </Button>
         <Button
           type="button"
@@ -306,7 +310,7 @@ function KeyField({
           onClick={onCopy}
           disabled={!copyable}
         >
-          <Copy className="size-4" aria-hidden />
+          <Copy className="size-4" aria-label="" role="presentation" />
         </Button>
       </dd>
     </div>

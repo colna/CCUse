@@ -10,48 +10,28 @@ describe("Button", () => {
     expect(btn.tagName).toBe("BUTTON");
   });
 
-  it("applies primary variant classes by default", () => {
-    render(<Button>Primary</Button>);
+  it("applies antd primary type when type=primary", () => {
+    render(<Button type="primary">Primary</Button>);
     const btn = screen.getByRole("button", { name: "Primary" });
-    expect(btn.className).toContain("bg-primary");
-    expect(btn.className).toContain("text-primary-foreground");
+    expect(btn.className).toMatch(/ant-btn(-color)?-primary/);
   });
 
-  it("applies pill variant classes when variant=pill", () => {
-    render(<Button variant="pill">Learn more</Button>);
-    const btn = screen.getByRole("button", { name: "Learn more" });
-    expect(btn.className).toContain("rounded-full");
-    expect(btn.className).toContain("border");
+  it("applies antd default type by default", () => {
+    render(<Button>Default</Button>);
+    const btn = screen.getByRole("button", { name: "Default" });
+    expect(btn.className).toContain("ant-btn");
   });
 
-  it("applies size classes", () => {
-    render(<Button size="lg">Large</Button>);
-    expect(screen.getByRole("button").className).toContain("h-10");
+  it("supports size attribute via antd size prop", () => {
+    render(<Button size="large">Large</Button>);
+    const btn = screen.getByRole("button", { name: "Large" });
+    expect(btn.className).toContain("ant-btn-lg");
   });
 
-  it("forwards extra className via tailwind-merge without conflict", () => {
-    render(<Button className="px-12">Spaced</Button>);
+  it("forwards extra className", () => {
+    render(<Button className="my-custom">Spaced</Button>);
     const btn = screen.getByRole("button", { name: "Spaced" });
-    expect(btn.className).toContain("px-12");
-    // Conflicting size px-4 from default size should be replaced
-    expect(btn.className).not.toMatch(/(?:^|\s)px-4(?:\s|$)/);
-  });
-
-  it("forwards ref to the underlying button element", () => {
-    const ref = { current: null as HTMLButtonElement | null };
-    render(<Button ref={ref}>Ref</Button>);
-    expect(ref.current?.tagName).toBe("BUTTON");
-  });
-
-  it("renders as child element when asChild is true (Slot)", () => {
-    render(
-      <Button asChild>
-        <a href="/docs">Docs</a>
-      </Button>,
-    );
-    const link = screen.getByRole("link", { name: "Docs" });
-    expect(link.tagName).toBe("A");
-    expect(link.getAttribute("href")).toBe("/docs");
+    expect(btn.className).toContain("my-custom");
   });
 
   it("invokes onClick when activated", async () => {
@@ -64,5 +44,11 @@ describe("Button", () => {
   it("respects disabled attribute", () => {
     render(<Button disabled>Off</Button>);
     expect(screen.getByRole("button", { name: "Off" })).toBeDisabled();
+  });
+
+  it("does not auto insert space between Chinese characters", () => {
+    render(<Button>添加</Button>);
+    const btn = screen.getByRole("button", { name: "添加" });
+    expect(btn).toBeInTheDocument();
   });
 });

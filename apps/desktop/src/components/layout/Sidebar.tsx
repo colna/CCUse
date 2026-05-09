@@ -47,7 +47,7 @@ export function Sidebar() {
                 )
               }
             >
-              <Icon className="size-4" aria-hidden />
+              <Icon className="size-4" aria-label="" role="presentation" />
               <span>{t(labelKey)}</span>
             </NavLink>
           </li>

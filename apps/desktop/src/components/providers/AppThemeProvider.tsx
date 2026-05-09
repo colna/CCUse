@@ -20,6 +20,7 @@ export function AppThemeProvider({ children }: Props) {
     <ConfigProvider
       locale={locale}
       theme={scheme === "dark" ? darkTheme : lightTheme}
+      button={{ autoInsertSpace: false }}
     >
       <AntApp component={false}>{children}</AntApp>
     </ConfigProvider>
