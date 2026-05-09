@@ -86,7 +86,7 @@ fn readme_documents_chat_completions_curl_quick_check() {
         "### 本地 API 快速验证",
         "curl -sS http://127.0.0.1:8787/v1/chat/completions",
         "-H \"Authorization: Bearer sk-local-...\"",
-        "\"model\": \"gpt-5.5-instant\"",
+        "\"model\": \"gpt-5.4\"",
         "\"stream\": false",
         "providers_not_configured",
     ] {

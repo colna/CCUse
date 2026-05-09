@@ -19,7 +19,7 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 
 fn openai_chat_request_body() -> Value {
     json!({
-        "model": "gpt-5.5-instant",
+        "model": "gpt-5.4",
         "messages": [{"role": "user", "content": "ping"}],
         "temperature": 0.7,
         "max_tokens": 64,
@@ -47,7 +47,7 @@ fn openai_success_response() -> Value {
         "id": "chatcmpl-mock",
         "object": "chat.completion",
         "created": 1_700_000_000_u64,
-        "model": "gpt-5.5-instant",
+        "model": "gpt-5.4",
         "choices": [{
             "index": 0,
             "message": {"role": "assistant", "content": "pong"},
@@ -123,7 +123,7 @@ mod three_provider_mocks {
         assert_eq!(resp.status(), 200);
         let body: Value = resp.json().await.expect("json");
         assert_eq!(body["id"], "chatcmpl-mock");
-        assert_eq!(body["model"], "gpt-5.5-instant");
+        assert_eq!(body["model"], "gpt-5.4");
         assert_eq!(body["choices"][0]["message"]["role"], "assistant");
         assert_eq!(body["choices"][0]["message"]["content"], "pong");
         assert_eq!(body["choices"][0]["finish_reason"], "stop");
@@ -276,7 +276,7 @@ mod three_provider_mocks {
             OpenAIProvider::new("oai-1", "MockOpenAI", server.uri(), "sk-test").expect("build");
 
         let request = ApiRequest {
-            model: "gpt-5.5-instant".into(),
+            model: "gpt-5.4".into(),
             messages: vec![ChatMessage {
                 role: "user".into(),
                 content: "ping".into(),
@@ -428,7 +428,7 @@ mod fault_injection {
         let provider =
             OpenAIProvider::new("oai-rl", "MockRL", server.uri(), "sk-test").expect("build");
         let request = ApiRequest {
-            model: "gpt-5.5-instant".into(),
+            model: "gpt-5.4".into(),
             messages: vec![ChatMessage {
                 role: "user".into(),
                 content: "ping".into(),
@@ -548,7 +548,7 @@ mod fault_injection {
         let provider =
             OpenAIProvider::new("oai-5xx", "Mock5xx", server.uri(), "sk-test").expect("build");
         let request = ApiRequest {
-            model: "gpt-5.5-instant".into(),
+            model: "gpt-5.4".into(),
             messages: vec![ChatMessage {
                 role: "user".into(),
                 content: "ping".into(),
@@ -667,7 +667,7 @@ mod fault_injection {
         let provider =
             OpenAIProvider::new("oai-to", "MockTimeout", server.uri(), "sk-test").expect("build");
         let request = ApiRequest {
-            model: "gpt-5.5-instant".into(),
+            model: "gpt-5.4".into(),
             messages: vec![ChatMessage {
                 role: "user".into(),
                 content: "ping".into(),
@@ -718,7 +718,7 @@ mod fault_injection {
         .expect("build");
 
         let request = ApiRequest {
-            model: "gpt-5.5-instant".into(),
+            model: "gpt-5.4".into(),
             messages: vec![ChatMessage {
                 role: "user".into(),
                 content: "ping".into(),

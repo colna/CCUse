@@ -20,7 +20,7 @@ pub const DEFAULT_STREAM_CHECK_TIMEOUT_SECS: u64 = 45;
 pub const DEFAULT_STREAM_CHECK_MAX_RETRIES: u32 = 2;
 pub const DEFAULT_DEGRADED_THRESHOLD_MS: u64 = 6000;
 pub const DEFAULT_CLAUDE_TEST_MODEL: &str = "claude-haiku-4-5-20251001";
-pub const DEFAULT_CODEX_TEST_MODEL: &str = "gpt-5.5-instant";
+pub const DEFAULT_CODEX_TEST_MODEL: &str = "gpt-5.4";
 pub const DEFAULT_GEMINI_TEST_MODEL: &str = "gemini-3-flash-preview";
 pub const DEFAULT_TEST_PROMPT: &str = "Who are you?";
 
@@ -586,7 +586,7 @@ mod tests {
         assert_eq!(config.max_retries, 2);
         assert_eq!(config.degraded_threshold_ms, 6000);
         assert_eq!(config.claude_model, "claude-haiku-4-5-20251001");
-        assert_eq!(config.codex_model, "gpt-5.5-instant");
+        assert_eq!(config.codex_model, "gpt-5.4");
         assert_eq!(config.gemini_model, "gemini-3-flash-preview");
         assert_eq!(config.test_prompt, "Who are you?");
     }
@@ -626,8 +626,8 @@ mod tests {
             ("o1-preview".to_owned(), Some("high".to_owned()))
         );
         assert_eq!(
-            parse_model_with_effort("gpt-5.5-instant"),
-            ("gpt-5.5-instant".to_owned(), None)
+            parse_model_with_effort("gpt-5.4"),
+            ("gpt-5.4".to_owned(), None)
         );
     }
 
@@ -679,10 +679,7 @@ mod tests {
         Mock::given(method("POST"))
             .and(path("/v1/chat/completions"))
             .and(header("authorization", "Bearer sk-test"))
-            .and(body_json(openai_chat_body(
-                "gpt-5.5-instant",
-                DEFAULT_TEST_PROMPT,
-            )))
+            .and(body_json(openai_chat_body("gpt-5.4", DEFAULT_TEST_PROMPT)))
             .respond_with(
                 ResponseTemplate::new(200)
                     .set_body_string("data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\n"),
@@ -696,7 +693,7 @@ mod tests {
 
         assert!(result.success);
         assert_eq!(result.http_status, Some(200));
-        assert_eq!(result.model_used, "gpt-5.5-instant");
+        assert_eq!(result.model_used, "gpt-5.4");
         assert_eq!(result.retry_count, 0);
     }
 

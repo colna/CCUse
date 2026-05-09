@@ -64,7 +64,7 @@ beforeEach(() => {
     message: "Check succeeded",
     response_time_ms: 88,
     http_status: 200,
-    model_used: "gpt-5.5-instant",
+    model_used: "gpt-5.4",
     tested_at: 1_714_000_000,
     retry_count: 0,
     error_category: null,

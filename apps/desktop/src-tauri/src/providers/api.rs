@@ -430,7 +430,7 @@ mod tests {
     #[test]
     fn api_request_serialises_omitting_default_fields() {
         let req = ApiRequest {
-            model: "gpt-5.5-instant".into(),
+            model: "gpt-5.4".into(),
             messages: vec![ChatMessage {
                 role: "user".into(),
                 content: "hi".into(),
@@ -443,7 +443,7 @@ mod tests {
             tools: vec![],
         };
         let json = serde_json::to_value(&req).expect("serialise");
-        assert_eq!(json["model"], "gpt-5.5-instant");
+        assert_eq!(json["model"], "gpt-5.4");
         assert!(json.get("temperature").is_none());
         assert!(json.get("max_tokens").is_none());
         assert_eq!(json["stream"], false);
@@ -453,7 +453,7 @@ mod tests {
     fn api_response_round_trips_through_json() {
         let resp = ApiResponse {
             id: "chatcmpl-1".into(),
-            model: "gpt-5.5-instant".into(),
+            model: "gpt-5.4".into(),
             choices: vec![ApiChoice {
                 index: 0,
                 message: ChatMessage {

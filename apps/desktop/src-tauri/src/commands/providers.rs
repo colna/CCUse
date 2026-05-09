@@ -587,7 +587,7 @@ mod tests {
         Mock::given(method("POST"))
             .and(path("/v1/chat/completions"))
             .and(body_json(serde_json::json!({
-                "model": "gpt-5.5-instant",
+                "model": "gpt-5.4",
                 "messages": [{"role": "user", "content": "Who are you?"}],
                 "max_tokens": 1,
                 "stream": true,
@@ -613,7 +613,7 @@ mod tests {
 
         assert!(err.success);
         assert_eq!(err.http_status, Some(200));
-        assert_eq!(err.model_used, "gpt-5.5-instant");
+        assert_eq!(err.model_used, "gpt-5.4");
         assert!(matches!(
             err.status,
             crate::providers::StreamCheckStatus::Operational

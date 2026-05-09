@@ -3,18 +3,18 @@
 use super::api::ProviderError;
 use super::model::ProviderKind;
 
-pub const OPENAI_DEFAULT_MODELS: &[&str] = &["gpt-5.5", "gpt-5.5-instant", "gpt-5.5-instant"];
+pub const OPENAI_DEFAULT_MODELS: &[&str] = &["gpt-5.5", "gpt-5.4", "gpt-5.4"];
 pub const ANTHROPIC_DEFAULT_MODELS: &[&str] = &[
-    "claude-opus-4.7",
-    "claude-sonnet-4.6",
+    "claude-opus-4-7",
+    "claude-sonnet-4-6",
     "claude-haiku-4-5-20251001",
 ];
 pub const OPENAI_COMPATIBLE_DEFAULT_MODELS: &[&str] = &[
     "gpt-5.5",
-    "gpt-5.5-instant",
-    "gpt-5.5-instant",
-    "claude-opus-4.7",
-    "claude-sonnet-4.6",
+    "gpt-5.4",
+    "gpt-5.4",
+    "claude-opus-4-7",
+    "claude-sonnet-4-6",
     "claude-haiku-4-5-20251001",
 ];
 pub const GEMINI_DEFAULT_MODELS: &[&str] = &["gemini-3-flash-preview"];
@@ -38,13 +38,23 @@ pub fn owned_defaults(defaults: &[&str]) -> Vec<String> {
 }
 
 #[must_use]
-pub fn model_candidates(_request_model: &str, defaults: &[String]) -> Vec<String> {
-    defaults
-        .iter()
-        .map(|model| model.trim())
-        .filter(|model| !model.is_empty())
-        .map(str::to_owned)
-        .collect()
+pub fn model_candidates(request_model: &str, defaults: &[String]) -> Vec<String> {
+    let request_model = request_model.trim();
+    let mut candidates = Vec::new();
+
+    if !request_model.is_empty() {
+        candidates.push(request_model.to_owned());
+    }
+
+    candidates.extend(
+        defaults
+            .iter()
+            .map(|model| model.trim())
+            .filter(|model| !model.is_empty())
+            .filter(|model| *model != request_model)
+            .map(str::to_owned),
+    );
+    candidates
 }
 
 #[must_use]
@@ -93,32 +103,35 @@ mod tests {
 
         assert_eq!(
             model_candidates("", &defaults),
-            vec!["gpt-5.5", "gpt-5.5-instant", "gpt-5.5-instant"],
+            vec!["gpt-5.5", "gpt-5.4", "gpt-5.4"],
         );
     }
 
     #[test]
-    fn explicit_request_model_is_ignored_for_provider_defaults() {
+    fn explicit_request_model_is_tried_before_provider_defaults() {
         let defaults = owned_defaults(OPENAI_DEFAULT_MODELS);
 
         assert_eq!(
             model_candidates(" gpt-custom ", &defaults),
-            vec!["gpt-5.5", "gpt-5.5-instant", "gpt-5.5-instant"],
+            vec!["gpt-custom", "gpt-5.5", "gpt-5.4", "gpt-5.4",],
+        );
+    }
+
+    #[test]
+    fn explicit_request_model_is_not_duplicated_when_already_a_default() {
+        let defaults = owned_defaults(OPENAI_DEFAULT_MODELS);
+
+        assert_eq!(
+            model_candidates(" gpt-5.5 ", &defaults),
+            vec!["gpt-5.5", "gpt-5.4", "gpt-5.4"],
         );
     }
 
     #[test]
     fn default_candidates_trim_accidental_whitespace() {
-        let defaults = vec![
-            " gpt-5.5 ".to_owned(),
-            " ".to_owned(),
-            "gpt-5.5-instant".to_owned(),
-        ];
+        let defaults = vec![" gpt-5.5 ".to_owned(), " ".to_owned(), "gpt-5.4".to_owned()];
 
-        assert_eq!(
-            model_candidates("", &defaults),
-            vec!["gpt-5.5", "gpt-5.5-instant"],
-        );
+        assert_eq!(model_candidates("", &defaults), vec!["gpt-5.5", "gpt-5.4"],);
     }
 
     #[test]

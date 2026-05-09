@@ -549,26 +549,26 @@ mod tests {
     #[test]
     fn simple_request_roundtrip() {
         let input = json!({
-            "model": "gpt-5.5-instant",
+            "model": "gpt-5.4",
             "messages": [{"role": "user", "content": "hello"}],
             "temperature": 0.7,
             "max_tokens": 100,
             "stream": false
         });
         let unified = converter().request_to_unified(&input).unwrap();
-        assert_eq!(unified.model, "gpt-5.5-instant");
+        assert_eq!(unified.model, "gpt-5.4");
         assert_eq!(unified.messages.len(), 1);
         assert_eq!(unified.messages[0].text_content(), "hello");
 
         let back = converter().unified_to_request(&unified).unwrap();
-        assert_eq!(back["model"], "gpt-5.5-instant");
+        assert_eq!(back["model"], "gpt-5.4");
         assert_eq!(back["messages"][0]["content"], "hello");
     }
 
     #[test]
     fn multimodal_content_array() {
         let input = json!({
-            "model": "gpt-5.5-instant",
+            "model": "gpt-5.4",
             "messages": [{
                 "role": "user",
                 "content": [
@@ -588,7 +588,7 @@ mod tests {
     #[test]
     fn tool_calls_roundtrip() {
         let input = json!({
-            "model": "gpt-5.5-instant",
+            "model": "gpt-5.4",
             "messages": [
                 {"role": "user", "content": "weather?"},
                 {
@@ -637,7 +637,7 @@ mod tests {
         let input = json!({
             "id": "chatcmpl-abc",
             "object": "chat.completion",
-            "model": "gpt-5.5-instant",
+            "model": "gpt-5.4",
             "choices": [{
                 "index": 0,
                 "message": {"role": "assistant", "content": "Hi!"},
@@ -662,7 +662,7 @@ mod tests {
     #[test]
     fn tool_definitions_roundtrip() {
         let input = json!({
-            "model": "gpt-5.5-instant",
+            "model": "gpt-5.4",
             "messages": [{"role": "user", "content": "hi"}],
             "tools": [{
                 "type": "function",
@@ -684,7 +684,7 @@ mod tests {
 
     #[test]
     fn stream_chunk_parse_and_encode() {
-        let data = r#"{"id":"chatcmpl-1","object":"chat.completion.chunk","model":"gpt-5.5-instant","choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"},"finish_reason":null}]}"#;
+        let data = r#"{"id":"chatcmpl-1","object":"chat.completion.chunk","model":"gpt-5.4","choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"},"finish_reason":null}]}"#;
         let chunk = converter().parse_stream_chunk(data).unwrap().unwrap();
         assert_eq!(chunk.id, "chatcmpl-1");
         assert_eq!(
@@ -710,7 +710,7 @@ mod tests {
     fn stream_tool_call_delta() {
         let data = json!({
             "id": "chatcmpl-2",
-            "model": "gpt-5.5-instant",
+            "model": "gpt-5.4",
             "choices": [{
                 "index": 0,
                 "delta": {

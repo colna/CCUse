@@ -221,7 +221,7 @@ mod tests {
     #[test]
     fn unified_to_api_request_maps_text_messages() {
         let unified = UnifiedRequest {
-            model: "gpt-5.5-instant".into(),
+            model: "gpt-5.4".into(),
             messages: vec![
                 UnifiedMessage::text(Role::System, "You are helpful"),
                 UnifiedMessage::text(Role::User, "Hello"),
@@ -236,7 +236,7 @@ mod tests {
 
         let api = unified_to_api_request(&unified);
 
-        assert_eq!(api.model, "gpt-5.5-instant");
+        assert_eq!(api.model, "gpt-5.4");
         assert_eq!(api.messages.len(), 2);
         assert_eq!(api.messages[0].role, "system");
         assert_eq!(api.messages[0].content, "You are helpful");
@@ -250,7 +250,7 @@ mod tests {
     #[test]
     fn unified_to_api_request_preserves_multimodal_content() {
         let unified = UnifiedRequest {
-            model: "gpt-5.5-instant".into(),
+            model: "gpt-5.4".into(),
             messages: vec![UnifiedMessage {
                 role: Role::User,
                 content: vec![
@@ -287,7 +287,7 @@ mod tests {
     fn api_response_to_unified_round_trip() {
         let resp = ApiResponse {
             id: "chatcmpl-abc".into(),
-            model: "gpt-5.5-instant".into(),
+            model: "gpt-5.4".into(),
             choices: vec![ApiChoice {
                 index: 0,
                 message: ChatMessage {
@@ -308,7 +308,7 @@ mod tests {
         let unified = api_response_to_unified(&resp);
 
         assert_eq!(unified.id, "chatcmpl-abc");
-        assert_eq!(unified.model, "gpt-5.5-instant");
+        assert_eq!(unified.model, "gpt-5.4");
         assert_eq!(unified.choices.len(), 1);
         assert_eq!(unified.choices[0].message.role, Role::Assistant);
         assert_eq!(unified.choices[0].message.text_content(), "Hello!");
@@ -332,7 +332,7 @@ mod tests {
     #[test]
     fn unified_to_api_request_preserves_tool_definitions() {
         let unified = UnifiedRequest {
-            model: "gpt-5.5-instant".into(),
+            model: "gpt-5.4".into(),
             messages: vec![UnifiedMessage::text(Role::User, "weather?")],
             temperature: None,
             max_tokens: None,
@@ -360,7 +360,7 @@ mod tests {
     #[test]
     fn unified_to_api_request_preserves_tool_call_and_result_messages() {
         let unified = UnifiedRequest {
-            model: "gpt-5.5-instant".into(),
+            model: "gpt-5.4".into(),
             messages: vec![
                 UnifiedMessage {
                     role: Role::Assistant,
@@ -404,7 +404,7 @@ mod tests {
     #[test]
     fn unified_to_api_request_preserves_multiple_tool_results_from_one_message() {
         let unified = UnifiedRequest {
-            model: "gpt-5.5-instant".into(),
+            model: "gpt-5.4".into(),
             messages: vec![UnifiedMessage {
                 role: Role::User,
                 content: vec![
@@ -438,7 +438,7 @@ mod tests {
     fn api_response_to_unified_preserves_assistant_tool_calls() {
         let resp = ApiResponse {
             id: "chatcmpl-tool".into(),
-            model: "gpt-5.5-instant".into(),
+            model: "gpt-5.4".into(),
             choices: vec![ApiChoice {
                 index: 0,
                 message: ChatMessage {
@@ -474,7 +474,7 @@ mod tests {
     fn api_response_to_unified_preserves_multimodal_content() {
         let resp = ApiResponse {
             id: "chatcmpl-image".into(),
-            model: "gpt-5.5-instant".into(),
+            model: "gpt-5.4".into(),
             choices: vec![ApiChoice {
                 index: 0,
                 message: ChatMessage {

@@ -33,7 +33,7 @@ impl ModelMapping {
 
     /// Look up the equivalent model for a target vendor.
     ///
-    /// If `client_model` is `gpt-5.5-instant` and `target_vendor` is `anthropic`,
+    /// If `client_model` is `gpt-5.4` and `target_vendor` is `anthropic`,
     /// returns `Some("claude-sonnet-4-20250514")`.
     #[must_use]
     pub fn map_model(&self, client_model: &str, target_vendor: &str) -> Option<String> {
@@ -157,17 +157,17 @@ mod tests {
     #[test]
     fn set_and_get_custom_mapping() {
         let mut mm = ModelMapping::new();
-        mm.set_mapping("my-model", "openai", "gpt-5.5-instant");
+        mm.set_mapping("my-model", "openai", "gpt-5.4");
         assert_eq!(
             mm.map_model("my-model", "openai").as_deref(),
-            Some("gpt-5.5-instant")
+            Some("gpt-5.4")
         );
     }
 
     #[test]
     fn remove_mapping() {
         let mut mm = ModelMapping::new();
-        mm.set_mapping("test", "openai", "gpt-5.5-instant");
+        mm.set_mapping("test", "openai", "gpt-5.4");
         mm.remove_mapping("test", "openai");
         assert!(mm.map_model("test", "openai").is_none());
     }
@@ -178,15 +178,15 @@ mod tests {
         let mut overrides = ModelMapping {
             entries: HashMap::new(),
         };
-        overrides.set_mapping("gpt-5.5-instant", "anthropic", "claude-opus-4-7");
+        overrides.set_mapping("gpt-5.4", "anthropic", "claude-opus-4-7");
 
         base.merge(&overrides);
         // Override should win.
         assert_eq!(
-            base.map_model("gpt-5.5-instant", "anthropic").as_deref(),
+            base.map_model("gpt-5.4", "anthropic").as_deref(),
             Some("claude-opus-4-7")
         );
-        assert!(base.map_model("gpt-5.5-instant", "gemini").is_none());
+        assert!(base.map_model("gpt-5.4", "gemini").is_none());
     }
 
     #[test]
@@ -195,8 +195,8 @@ mod tests {
         let json = serde_json::to_string(&mm).unwrap();
         let back: ModelMapping = serde_json::from_str(&json).unwrap();
         assert_eq!(
-            mm.map_model("gpt-5.5-instant", "anthropic"),
-            back.map_model("gpt-5.5-instant", "anthropic")
+            mm.map_model("gpt-5.4", "anthropic"),
+            back.map_model("gpt-5.4", "anthropic")
         );
     }
 

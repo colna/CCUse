@@ -81,7 +81,7 @@ async fn metrics(
 async fn upstream_models() -> Json<Value> {
     Json(json!({
         "object": "list",
-        "data": [{"id": "gpt-5.5-instant", "object": "model"}]
+        "data": [{"id": "gpt-5.4", "object": "model"}]
     }))
 }
 
@@ -90,7 +90,7 @@ async fn upstream_chat(Json(_body): Json<Value>) -> Json<Value> {
         "id": "chatcmpl-playwright-e2e",
         "object": "chat.completion",
         "created": 1_700_000_000_u64,
-        "model": "gpt-5.5-instant",
+        "model": "gpt-5.4",
         "choices": [{
             "index": 0,
             "message": {"role": "assistant", "content": "pong"},

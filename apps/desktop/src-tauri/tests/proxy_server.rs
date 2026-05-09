@@ -162,7 +162,7 @@ async fn chat_completions_returns_503_when_no_providers() {
     let (base, tx, handle) = start_test_server().await;
     let response = reqwest::Client::new()
         .post(format!("{base}/v1/chat/completions"))
-        .json(&serde_json::json!({"model": "gpt-5.5-instant", "messages": [{"role": "user", "content": "hi"}]}))
+        .json(&serde_json::json!({"model": "gpt-5.4", "messages": [{"role": "user", "content": "hi"}]}))
         .send()
         .await
         .expect("chat completions request should reach the server");
@@ -180,7 +180,7 @@ async fn chat_completions_rejects_body_over_one_mib() {
     let (base, tx, handle) = start_test_server().await;
     let oversized_content = "x".repeat(1024 * 1024 + 1);
     let request = serde_json::json!({
-        "model": "gpt-5.5-instant",
+        "model": "gpt-5.4",
         "messages": [{"role": "user", "content": oversized_content}]
     });
 
@@ -328,7 +328,7 @@ async fn auth_v1_chat_completions_accepts_bearer_authorization() {
     let response = reqwest::Client::new()
         .post(format!("{base}/v1/chat/completions"))
         .bearer_auth(&key)
-        .json(&serde_json::json!({"model": "gpt-5.5-instant", "messages": []}))
+        .json(&serde_json::json!({"model": "gpt-5.4", "messages": []}))
         .send()
         .await
         .expect("request reaches server");
