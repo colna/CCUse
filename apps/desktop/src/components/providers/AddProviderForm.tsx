@@ -3,6 +3,7 @@ import {
   CaretDownOutlined,
   CaretRightOutlined,
   ApiOutlined,
+  CheckOutlined,
   LoadingOutlined,
 } from "@ant-design/icons";
 import { Input } from "antd";
@@ -243,6 +244,20 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
                 disabled={submitting || !opt.supported}
                 onClick={() => handleKindChange(opt.kind)}
                 size="middle"
+                aria-pressed={selected}
+                icon={
+                  selected ? (
+                    <CheckOutlined aria-label="" role="presentation" />
+                  ) : undefined
+                }
+                style={
+                  selected
+                    ? {
+                        boxShadow:
+                          "0 0 0 2px var(--app-primary-bg), 0 4px 12px rgba(0, 113, 227, 0.18)",
+                      }
+                    : undefined
+                }
               >
                 {opt.label}
               </Button>
