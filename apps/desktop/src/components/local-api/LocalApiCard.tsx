@@ -1,4 +1,9 @@
-import { Copy, Eye, EyeOff, RefreshCw } from "lucide-react";
+import {
+  CopyOutlined,
+  EyeInvisibleOutlined,
+  EyeOutlined,
+  ReloadOutlined,
+} from "@ant-design/icons";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -102,7 +107,7 @@ export function LocalApiCard() {
     <article
       aria-labelledby="local-api-card-title"
       data-testid="local-api-card"
-      className="rounded-2xl border border-border bg-card p-6 shadow-apple-card"
+      className="rounded-2xl border border-[var(--ant-color-border-secondary,rgba(0,0,0,0.06))] bg-[var(--ant-color-bg-container,#fff)] p-6"
     >
       <header className="flex items-start justify-between gap-4">
         <div>
@@ -144,7 +149,7 @@ export function LocalApiCard() {
           className={cn(
             "text-xs",
             copyHint && !state.error
-              ? "text-primary"
+              ? "text-[var(--ant-color-primary,#0071e3)]"
               : state.error
                 ? "text-destructive"
                 : "text-muted-foreground",
@@ -160,25 +165,20 @@ export function LocalApiCard() {
         </p>
         <div className="flex items-center gap-2">
           <Button
-            type="button"
-            variant="outline"
-            size="sm"
+            htmlType="button"
+            type="default"
             onClick={handleRotate}
             disabled={state.status !== "running"}
           >
             {t("local_api_rotate_key")}
           </Button>
           <Button
-            type="button"
-            size="sm"
+            htmlType="button"
+            type="primary"
             onClick={handleRestart}
             disabled={state.status === "loading"}
+            icon={<ReloadOutlined aria-label="" role="presentation" />}
           >
-            <RefreshCw
-              className="mr-2 size-4"
-              aria-label=""
-              role="presentation"
-            />
             {t("local_api_restart")}
           </Button>
         </div>
@@ -204,7 +204,7 @@ function StatusBadge({ status }: { status: Status }) {
   return (
     <span
       role="status"
-      className="inline-flex items-center gap-2 rounded-full border border-border bg-background px-3 py-1 text-xs"
+      className="inline-flex items-center gap-2 rounded-full border border-[var(--ant-color-border-secondary,rgba(0,0,0,0.06))] bg-[var(--ant-color-bg-container,#fff)] px-3 py-1 text-xs"
     >
       <span aria-hidden className={cn("size-2 rounded-full", dotClass)} />
       {text}
@@ -237,20 +237,19 @@ function Field({
       <dd className="mt-1 flex items-center gap-2">
         <code
           data-testid={testId}
-          className="flex-1 truncate rounded-md border border-border bg-muted/40 px-3 py-2 font-mono text-xs"
+          className="flex-1 truncate rounded-md border border-[var(--ant-color-border-secondary,rgba(0,0,0,0.06))] bg-[var(--ant-color-fill-quaternary,rgba(0,0,0,0.02))] px-3 py-2 font-mono text-xs"
         >
           {value}
         </code>
         <Button
-          type="button"
-          variant="ghost"
-          size="sm"
+          htmlType="button"
+          type="text"
+          shape="circle"
           aria-label={copyAriaLabel}
           onClick={onCopy}
           disabled={!copyable}
-        >
-          <Copy className="size-4" aria-label="" role="presentation" />
-        </Button>
+          icon={<CopyOutlined aria-label="" role="presentation" />}
+        />
       </dd>
     </div>
   );
@@ -274,7 +273,7 @@ function KeyField({
   onCopy,
 }: KeyFieldProps) {
   const { t } = useTranslation("providers");
-  const Icon = visible ? EyeOff : Eye;
+  const Icon = visible ? EyeInvisibleOutlined : EyeOutlined;
   return (
     <div>
       <dt className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
@@ -283,14 +282,14 @@ function KeyField({
       <dd className="mt-1 flex items-center gap-2">
         <code
           data-testid={testId}
-          className="flex-1 truncate rounded-md border border-border bg-muted/40 px-3 py-2 font-mono text-xs"
+          className="flex-1 truncate rounded-md border border-[var(--ant-color-border-secondary,rgba(0,0,0,0.06))] bg-[var(--ant-color-fill-quaternary,rgba(0,0,0,0.02))] px-3 py-2 font-mono text-xs"
         >
           {value}
         </code>
         <Button
-          type="button"
-          variant="ghost"
-          size="sm"
+          htmlType="button"
+          type="text"
+          shape="circle"
           data-testid="local-api-toggle-key"
           aria-label={
             visible
@@ -299,19 +298,17 @@ function KeyField({
           }
           onClick={onToggleVisible}
           disabled={!copyable}
-        >
-          <Icon className="size-4" aria-label="" role="presentation" />
-        </Button>
+          icon={<Icon aria-label="" role="presentation" />}
+        />
         <Button
-          type="button"
-          variant="ghost"
-          size="sm"
+          htmlType="button"
+          type="text"
+          shape="circle"
           aria-label={t("local_api_copy_key_aria")}
           onClick={onCopy}
           disabled={!copyable}
-        >
-          <Copy className="size-4" aria-label="" role="presentation" />
-        </Button>
+          icon={<CopyOutlined aria-label="" role="presentation" />}
+        />
       </dd>
     </div>
   );

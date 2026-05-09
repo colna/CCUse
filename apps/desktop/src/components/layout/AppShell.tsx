@@ -43,14 +43,14 @@ export function AppShell() {
   const { t } = useTranslation("common");
 
   return (
-    <div className="flex h-screen min-h-screen w-full bg-background text-foreground">
+    <div className="flex h-screen min-h-screen w-full bg-[var(--ant-color-bg-layout,#f5f5f7)] text-foreground">
       <Sidebar />
       <div className="flex flex-1 flex-col">
         <Topbar
           title={t(meta.titleKey)}
           description={meta.descKey ? t(meta.descKey) : undefined}
         />
-        <main className="flex-1 overflow-y-auto px-8 py-6">
+        <main className="flex-1 overflow-y-auto px-10 py-8">
           <Outlet />
         </main>
       </div>

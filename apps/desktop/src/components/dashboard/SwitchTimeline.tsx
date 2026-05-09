@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { ArrowRight, ChevronDown, ChevronRight } from "lucide-react";
+import {
+  ArrowRightOutlined,
+  CaretDownOutlined,
+  CaretRightOutlined,
+} from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
 
 import { cn } from "@/lib/utils";
@@ -42,16 +46,24 @@ function TimelineRow({ event }: TimelineRowProps) {
   const { t } = useTranslation("monitor");
 
   return (
-    <div className="border-b border-border last:border-b-0">
+    <div className="border-b border-[var(--ant-color-border-secondary,rgba(0,0,0,0.06))] last:border-b-0">
       <button
         type="button"
         onClick={() => setExpanded((e) => !e)}
-        className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm transition-colors hover:bg-muted/30"
+        className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm transition-colors hover:bg-[var(--ant-color-fill-quaternary,rgba(0,0,0,0.02))]"
       >
         {expanded ? (
-          <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
+          <CaretDownOutlined
+            className="shrink-0 text-xs text-muted-foreground"
+            aria-label=""
+            role="presentation"
+          />
         ) : (
-          <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />
+          <CaretRightOutlined
+            className="shrink-0 text-xs text-muted-foreground"
+            aria-label=""
+            role="presentation"
+          />
         )}
 
         <span className="w-36 shrink-0 text-xs tabular-nums text-muted-foreground">
@@ -62,7 +74,11 @@ function TimelineRow({ event }: TimelineRowProps) {
           <span className="max-w-[80px] truncate" title={event.from_provider}>
             {event.from_provider}
           </span>
-          <ArrowRight className="size-3 shrink-0 text-muted-foreground" />
+          <ArrowRightOutlined
+            className="shrink-0 text-[10px] text-muted-foreground"
+            aria-label=""
+            role="presentation"
+          />
           <span className="max-w-[80px] truncate" title={event.to_provider}>
             {event.to_provider}
           </span>
@@ -134,15 +150,15 @@ export function SwitchTimeline() {
 
   if (error) {
     return (
-      <div className="rounded-xl border border-destructive/30 bg-card p-4 text-sm text-destructive">
+      <div className="rounded-2xl border border-[var(--ant-color-error-border,rgba(255,77,79,0.4))] bg-[var(--ant-color-bg-container,#fff)] p-4 text-sm text-destructive">
         {error}
       </div>
     );
   }
 
   return (
-    <div className="rounded-xl border border-border bg-card shadow-sm">
-      <div className="border-b border-border px-4 py-3">
+    <div className="rounded-2xl border border-[var(--ant-color-border-secondary,rgba(0,0,0,0.06))] bg-[var(--ant-color-bg-container,#fff)]">
+      <div className="border-b border-[var(--ant-color-border-secondary,rgba(0,0,0,0.06))] px-4 py-3">
         <h4 className="text-sm font-medium">{t("switch_timeline_title")}</h4>
       </div>
       {loading ? (

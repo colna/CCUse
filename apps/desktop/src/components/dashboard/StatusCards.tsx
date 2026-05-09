@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { Activity, Clock, RefreshCw, Server, TrendingUp } from "lucide-react";
+import {
+  ApartmentOutlined,
+  ClockCircleOutlined,
+  ReloadOutlined,
+  CloudServerOutlined,
+  RiseOutlined,
+} from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
@@ -164,36 +170,40 @@ export function StatusCards() {
           {t("status_overview")}
         </h3>
         <Button
-          type="button"
-          size="sm"
-          variant="outline"
+          htmlType="button"
+          size="small"
+          type="default"
           onClick={handleRefresh}
           disabled={refreshing}
+          icon={
+            <ReloadOutlined
+              spin={refreshing}
+              aria-label=""
+              role="presentation"
+            />
+          }
         >
-          <RefreshCw
-            className={refreshing ? "mr-2 size-4 animate-spin" : "mr-2 size-4"}
-          />
           {t("refresh")}
         </Button>
       </div>
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard
           testId="current-provider-card"
-          icon={<Server className="size-4" />}
+          icon={<CloudServerOutlined aria-label="" role="presentation" />}
           label={t("current_provider")}
           value={loading ? "--" : (data.currentProvider ?? t("none"))}
           loading={loading}
         />
         <StatCard
           testId="today-requests-card"
-          icon={<Activity className="size-4" />}
+          icon={<ApartmentOutlined aria-label="" role="presentation" />}
           label={t("today_requests")}
           value={loading ? "--" : String(data.todayRequests)}
           loading={loading}
         />
         <StatCard
           testId="success-rate-card"
-          icon={<TrendingUp className="size-4" />}
+          icon={<RiseOutlined aria-label="" role="presentation" />}
           label={t("success_rate")}
           value={
             loading
@@ -211,7 +221,7 @@ export function StatusCards() {
         />
         <StatCard
           testId="avg-response-time-card"
-          icon={<Clock className="size-4" />}
+          icon={<ClockCircleOutlined aria-label="" role="presentation" />}
           label={t("avg_response_time")}
           value={
             loading
@@ -247,7 +257,7 @@ function StatCard({
   return (
     <div
       data-testid={testId}
-      className="rounded-xl border border-border bg-card p-4 shadow-sm"
+      className="rounded-2xl border border-[var(--ant-color-border-secondary,rgba(0,0,0,0.06))] bg-[var(--ant-color-bg-container,#fff)] p-5"
     >
       <div className="flex items-center gap-2 text-muted-foreground">
         {icon}
@@ -256,7 +266,7 @@ function StatCard({
       <p
         data-testid={`${testId}-value`}
         className={cn(
-          "mt-2 text-xl font-semibold tabular-nums tracking-tight",
+          "mt-2 text-[26px] font-semibold tabular-nums leading-tight tracking-tight",
           loading && "animate-pulse text-muted-foreground",
           highlight === "warning" && "text-yellow-600",
           highlight === "error" && "text-destructive",

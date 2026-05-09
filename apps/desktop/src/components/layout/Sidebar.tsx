@@ -1,9 +1,10 @@
 import {
-  LayoutDashboard,
-  Server,
-  Shuffle,
-  Settings as SettingsIcon,
-} from "lucide-react";
+  AppstoreOutlined,
+  CloudServerOutlined,
+  SettingOutlined,
+  SwapOutlined,
+} from "@ant-design/icons";
+import type { ComponentType } from "react";
 import { NavLink } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
@@ -12,14 +13,14 @@ import { cn } from "@/lib/utils";
 interface NavItem {
   to: string;
   labelKey: string;
-  icon: typeof LayoutDashboard;
+  Icon: ComponentType<{ className?: string }>;
 }
 
 const NAV_ITEMS: readonly NavItem[] = [
-  { to: "/dashboard", labelKey: "nav_dashboard", icon: LayoutDashboard },
-  { to: "/providers", labelKey: "nav_providers", icon: Server },
-  { to: "/strategy", labelKey: "nav_strategy", icon: Shuffle },
-  { to: "/settings", labelKey: "nav_settings", icon: SettingsIcon },
+  { to: "/dashboard", labelKey: "nav_dashboard", Icon: AppstoreOutlined },
+  { to: "/providers", labelKey: "nav_providers", Icon: CloudServerOutlined },
+  { to: "/strategy", labelKey: "nav_strategy", Icon: SwapOutlined },
+  { to: "/settings", labelKey: "nav_settings", Icon: SettingOutlined },
 ] as const;
 
 export function Sidebar() {
@@ -28,26 +29,26 @@ export function Sidebar() {
   return (
     <nav
       aria-label={t("nav_main")}
-      className="flex h-full w-56 shrink-0 flex-col border-r border-border bg-card/40 px-3 py-6"
+      className="bg-[var(--ant-color-bg-container,#fff)]/60 flex h-full w-60 shrink-0 flex-col border-r border-[var(--ant-color-border-secondary,rgba(0,0,0,0.06))] px-4 py-7 backdrop-blur"
     >
-      <p className="px-3 text-xs uppercase tracking-[0.18em] text-muted-foreground">
+      <p className="px-3 text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
         {t("brand")}
       </p>
-      <ul className="mt-6 space-y-1">
-        {NAV_ITEMS.map(({ to, labelKey, icon: Icon }) => (
+      <ul className="mt-7 space-y-1">
+        {NAV_ITEMS.map(({ to, labelKey, Icon }) => (
           <li key={to}>
             <NavLink
               to={to}
               className={({ isActive }) =>
                 cn(
-                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm leading-snug tracking-apple-tight transition-colors",
+                  "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm leading-snug tracking-apple-tight transition-colors",
                   isActive
-                    ? "bg-primary/10 text-primary"
-                    : "text-foreground/80 hover:bg-muted hover:text-foreground",
+                    ? "bg-[var(--ant-color-primary-bg,rgba(0,113,227,0.08))] text-[var(--ant-color-primary,#0071e3)]"
+                    : "text-foreground/80 hover:bg-[var(--ant-color-fill-quaternary,rgba(0,0,0,0.04))] hover:text-foreground",
                 )
               }
             >
-              <Icon className="size-4" aria-label="" role="presentation" />
+              <Icon className="text-base" />
               <span>{t(labelKey)}</span>
             </NavLink>
           </li>
