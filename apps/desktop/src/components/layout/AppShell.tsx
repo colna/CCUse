@@ -43,7 +43,13 @@ export function AppShell() {
   const { t } = useTranslation("common");
 
   return (
-    <div className="flex h-screen min-h-screen w-full bg-[var(--ant-color-bg-layout,#f5f5f7)] text-foreground">
+    <div
+      style={{
+        background: "var(--app-bg-layout)",
+        color: "var(--app-text)",
+      }}
+      className="flex h-screen min-h-screen w-full"
+    >
       <Sidebar />
       <div className="flex flex-1 flex-col">
         <Topbar

@@ -214,7 +214,7 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
       onSubmit={handleSubmit}
       aria-label={t("add_provider_aria")}
       aria-busy={submitting}
-      className="space-y-5 rounded-2xl border border-[var(--ant-color-border-secondary,rgba(0,0,0,0.06))] bg-[var(--ant-color-bg-container,#fff)] p-6"
+      className="space-y-5 rounded-2xl border border-[var(--app-border-secondary)] bg-[var(--app-bg-container)] p-6"
       style={{
         boxShadow:
           "var(--ant-box-shadow-secondary, 0 1px 2px rgba(0,0,0,0.04))",
@@ -313,7 +313,7 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
         <span>{t("enable_provider_label")}</span>
       </label>
 
-      <div className="rounded-xl border border-[var(--ant-color-border-secondary,rgba(0,0,0,0.06))]">
+      <div className="rounded-xl border border-[var(--app-border-secondary)]">
         <button
           type="button"
           disabled={submitting}
@@ -328,7 +328,7 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
           {t("advanced_section")}
         </button>
         {advancedOpen && (
-          <div className="space-y-4 border-t border-[var(--ant-color-border-secondary,rgba(0,0,0,0.06))] px-4 py-4">
+          <div className="space-y-4 border-t border-[var(--app-border-secondary)] px-4 py-4">
             <Field
               id="provider-monthly-quota"
               label={t("field_monthly_quota")}
@@ -413,7 +413,7 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
         </div>
 
         {successId && (
-          <div className="flex items-center gap-3 rounded-lg border border-[var(--ant-color-border-secondary,rgba(0,0,0,0.06))] bg-[var(--ant-color-fill-quaternary,rgba(0,0,0,0.02))] px-4 py-3">
+          <div className="flex items-center gap-3 rounded-lg border border-[var(--app-border-secondary)] bg-[var(--app-bg-subtle)] px-4 py-3">
             <Button
               type="default"
               icon={

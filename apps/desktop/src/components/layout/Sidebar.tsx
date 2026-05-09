@@ -30,15 +30,15 @@ export function Sidebar() {
     <nav
       aria-label={t("nav_main")}
       style={{
-        background: "var(--ant-color-bg-container)",
-        borderRight: "1px solid var(--ant-color-border-secondary)",
-        color: "var(--ant-color-text)",
+        background: "var(--app-bg-container)",
+        borderRight: "1px solid var(--app-border-secondary)",
+        color: "var(--app-text)",
       }}
-      className="flex h-full w-60 shrink-0 flex-col px-4 py-7 backdrop-blur"
+      className="flex h-full w-60 shrink-0 flex-col px-4 py-7"
     >
       <p
         className="px-3 text-[11px] font-semibold uppercase tracking-[0.22em]"
-        style={{ color: "var(--ant-color-text-tertiary)" }}
+        style={{ color: "var(--app-text-tertiary)" }}
       >
         {t("brand")}
       </p>
@@ -56,11 +56,11 @@ export function Sidebar() {
               style={({ isActive }) =>
                 isActive
                   ? {
-                      background: "var(--ant-color-primary-bg)",
-                      color: "var(--ant-color-primary)",
+                      background: "var(--app-primary-bg)",
+                      color: "var(--app-primary)",
                     }
                   : {
-                      color: "var(--ant-color-text-secondary)",
+                      color: "var(--app-text-secondary)",
                     }
               }
             >

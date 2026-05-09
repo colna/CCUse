@@ -107,7 +107,7 @@ export function LocalApiCard() {
     <article
       aria-labelledby="local-api-card-title"
       data-testid="local-api-card"
-      className="rounded-2xl border border-[var(--ant-color-border-secondary,rgba(0,0,0,0.06))] bg-[var(--ant-color-bg-container,#fff)] p-6"
+      className="rounded-2xl border border-[var(--app-border-secondary)] bg-[var(--app-bg-container)] p-6"
     >
       <header className="flex items-start justify-between gap-4">
         <div>
@@ -149,7 +149,7 @@ export function LocalApiCard() {
           className={cn(
             "text-xs",
             copyHint && !state.error
-              ? "text-[var(--ant-color-primary,#0071e3)]"
+              ? "text-[var(--app-primary)]"
               : state.error
                 ? "text-destructive"
                 : "text-muted-foreground",
@@ -204,7 +204,7 @@ function StatusBadge({ status }: { status: Status }) {
   return (
     <span
       role="status"
-      className="inline-flex items-center gap-2 rounded-full border border-[var(--ant-color-border-secondary,rgba(0,0,0,0.06))] bg-[var(--ant-color-bg-container,#fff)] px-3 py-1 text-xs"
+      className="inline-flex items-center gap-2 rounded-full border border-[var(--app-border-secondary)] bg-[var(--app-bg-container)] px-3 py-1 text-xs"
     >
       <span aria-hidden className={cn("size-2 rounded-full", dotClass)} />
       {text}
@@ -237,7 +237,7 @@ function Field({
       <dd className="mt-1 flex items-center gap-2">
         <code
           data-testid={testId}
-          className="flex-1 truncate rounded-md border border-[var(--ant-color-border-secondary,rgba(0,0,0,0.06))] bg-[var(--ant-color-fill-quaternary,rgba(0,0,0,0.02))] px-3 py-2 font-mono text-xs"
+          className="flex-1 truncate rounded-md border border-[var(--app-border-secondary)] bg-[var(--app-bg-subtle)] px-3 py-2 font-mono text-xs"
         >
           {value}
         </code>
@@ -282,7 +282,7 @@ function KeyField({
       <dd className="mt-1 flex items-center gap-2">
         <code
           data-testid={testId}
-          className="flex-1 truncate rounded-md border border-[var(--ant-color-border-secondary,rgba(0,0,0,0.06))] bg-[var(--ant-color-fill-quaternary,rgba(0,0,0,0.02))] px-3 py-2 font-mono text-xs"
+          className="flex-1 truncate rounded-md border border-[var(--app-border-secondary)] bg-[var(--app-bg-subtle)] px-3 py-2 font-mono text-xs"
         >
           {value}
         </code>

@@ -257,7 +257,7 @@ function StatCard({
   return (
     <div
       data-testid={testId}
-      className="rounded-2xl border border-[var(--ant-color-border-secondary,rgba(0,0,0,0.06))] bg-[var(--ant-color-bg-container,#fff)] p-5"
+      className="rounded-2xl border border-[var(--app-border-secondary)] bg-[var(--app-bg-container)] p-5"
     >
       <div className="flex items-center gap-2 text-muted-foreground">
         {icon}

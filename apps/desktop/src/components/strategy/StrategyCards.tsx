@@ -102,8 +102,8 @@ export function StrategyCards() {
               className={cn(
                 "flex flex-col items-start gap-2 rounded-2xl border p-5 text-left transition-all",
                 selected
-                  ? "border-[var(--ant-color-primary,#0071e3)] bg-[var(--ant-color-primary-bg,rgba(0,113,227,0.08))]"
-                  : "hover:border-[var(--ant-color-primary,#0071e3)]/40 border-[var(--ant-color-border-secondary,rgba(0,0,0,0.06))] bg-[var(--ant-color-bg-container,#fff)]",
+                  ? "border-[var(--app-primary)] bg-[var(--app-primary-bg)]"
+                  : "hover:border-[var(--app-primary)]/40 border-[var(--app-border-secondary)] bg-[var(--app-bg-container)]",
                 updating && "opacity-60",
               )}
             >
@@ -112,13 +112,13 @@ export function StrategyCards() {
                   className={cn(
                     "text-base",
                     selected
-                      ? "text-[var(--ant-color-primary,#0071e3)]"
+                      ? "text-[var(--app-primary)]"
                       : "text-muted-foreground",
                   )}
                 />
                 <span className="text-sm font-medium">{t(s.labelKey)}</span>
                 {selected && (
-                  <span className="ml-auto rounded-full bg-[var(--ant-color-primary-bg,rgba(0,113,227,0.1))] px-2 py-0.5 text-[10px] font-medium text-[var(--ant-color-primary,#0071e3)]">
+                  <span className="bg-[var(--app-primary-bg))] ml-auto rounded-full px-2 py-0.5 text-[10px] font-medium text-[var(--app-primary)]">
                     {t("current_badge")}
                   </span>
                 )}

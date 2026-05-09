@@ -7,39 +7,39 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        background: "var(--ant-color-bg-layout)",
-        foreground: "var(--ant-color-text)",
+        background: "var(--app-bg-layout)",
+        foreground: "var(--app-text)",
         card: {
-          DEFAULT: "var(--ant-color-bg-container)",
-          foreground: "var(--ant-color-text)",
+          DEFAULT: "var(--app-bg-container)",
+          foreground: "var(--app-text)",
         },
         popover: {
-          DEFAULT: "var(--ant-color-bg-elevated)",
-          foreground: "var(--ant-color-text)",
+          DEFAULT: "var(--app-bg-elevated)",
+          foreground: "var(--app-text)",
         },
         muted: {
-          DEFAULT: "var(--ant-color-fill-quaternary)",
-          foreground: "var(--ant-color-text-secondary)",
+          DEFAULT: "var(--app-bg-subtle)",
+          foreground: "var(--app-text-secondary)",
         },
         accent: {
-          DEFAULT: "var(--ant-color-fill-tertiary)",
-          foreground: "var(--ant-color-text)",
+          DEFAULT: "var(--app-bg-hover)",
+          foreground: "var(--app-text)",
         },
         primary: {
-          DEFAULT: "var(--ant-color-primary)",
-          foreground: "var(--ant-color-white, #ffffff)",
+          DEFAULT: "var(--app-primary)",
+          foreground: "#ffffff",
         },
         secondary: {
-          DEFAULT: "var(--ant-color-fill-secondary)",
-          foreground: "var(--ant-color-text)",
+          DEFAULT: "var(--app-bg-hover)",
+          foreground: "var(--app-text)",
         },
         destructive: {
-          DEFAULT: "var(--ant-color-error)",
-          foreground: "var(--ant-color-white, #ffffff)",
+          DEFAULT: "var(--app-error)",
+          foreground: "#ffffff",
         },
-        border: "var(--ant-color-border-secondary)",
-        input: "var(--ant-color-border)",
-        ring: "var(--ant-color-primary)",
+        border: "var(--app-border-secondary)",
+        input: "var(--app-border)",
+        ring: "var(--app-primary)",
       },
     },
   },

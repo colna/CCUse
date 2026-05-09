@@ -46,11 +46,11 @@ function TimelineRow({ event }: TimelineRowProps) {
   const { t } = useTranslation("monitor");
 
   return (
-    <div className="border-b border-[var(--ant-color-border-secondary,rgba(0,0,0,0.06))] last:border-b-0">
+    <div className="border-b border-[var(--app-border-secondary)] last:border-b-0">
       <button
         type="button"
         onClick={() => setExpanded((e) => !e)}
-        className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm transition-colors hover:bg-[var(--ant-color-fill-quaternary,rgba(0,0,0,0.02))]"
+        className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm transition-colors hover:bg-[var(--app-bg-subtle)]"
       >
         {expanded ? (
           <CaretDownOutlined
@@ -150,15 +150,15 @@ export function SwitchTimeline() {
 
   if (error) {
     return (
-      <div className="rounded-2xl border border-[var(--ant-color-error-border,rgba(255,77,79,0.4))] bg-[var(--ant-color-bg-container,#fff)] p-4 text-sm text-destructive">
+      <div className="rounded-2xl border border-[var(--app-error-border)] bg-[var(--app-bg-container)] p-4 text-sm text-destructive">
         {error}
       </div>
     );
   }
 
   return (
-    <div className="rounded-2xl border border-[var(--ant-color-border-secondary,rgba(0,0,0,0.06))] bg-[var(--ant-color-bg-container,#fff)]">
-      <div className="border-b border-[var(--ant-color-border-secondary,rgba(0,0,0,0.06))] px-4 py-3">
+    <div className="rounded-2xl border border-[var(--app-border-secondary)] bg-[var(--app-bg-container)]">
+      <div className="border-b border-[var(--app-border-secondary)] px-4 py-3">
         <h4 className="text-sm font-medium">{t("switch_timeline_title")}</h4>
       </div>
       {loading ? (

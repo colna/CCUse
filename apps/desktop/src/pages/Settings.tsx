@@ -39,7 +39,7 @@ export function SettingsPage() {
         <select
           value={selectValue}
           onChange={handleLanguageChange}
-          className="rounded-md border border-[var(--ant-color-border,rgba(0,0,0,0.08))] bg-[var(--ant-color-bg-container,#fff)] px-3 py-2 text-sm outline-none focus-visible:border-[var(--ant-color-primary,#0071e3)]"
+          className="rounded-md border border-[var(--app-border)] bg-[var(--app-bg-container)] px-3 py-2 text-sm outline-none focus-visible:border-[var(--app-primary)]"
         >
           <option value="auto">{tc("language_auto")}</option>
           <option value="en">{tc("language_en")}</option>

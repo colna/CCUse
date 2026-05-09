@@ -98,7 +98,7 @@ function DeleteDialog({
         aria-modal="true"
         aria-labelledby="delete-provider-dialog-title"
         aria-busy={deleting}
-        className="mx-4 w-full max-w-sm rounded-2xl border border-[var(--ant-color-border-secondary,rgba(0,0,0,0.06))] bg-[var(--ant-color-bg-elevated,#fff)] p-6 shadow-xl"
+        className="mx-4 w-full max-w-sm rounded-2xl border border-[var(--app-border-secondary)] bg-[var(--app-bg-elevated)] p-6 shadow-xl"
       >
         <h3
           id="delete-provider-dialog-title"
@@ -159,7 +159,7 @@ function ProviderErrorDialog({
         aria-modal="true"
         aria-labelledby="provider-error-dialog-title"
         aria-describedby="provider-error-dialog-message"
-        className="mx-4 w-full max-w-sm rounded-2xl border border-[var(--ant-color-error-border,rgba(255,77,79,0.4))] bg-[var(--ant-color-bg-elevated,#fff)] p-6 shadow-xl"
+        className="mx-4 w-full max-w-sm rounded-2xl border border-[var(--app-error-border)] bg-[var(--app-bg-elevated)] p-6 shadow-xl"
       >
         <h3
           id="provider-error-dialog-title"
@@ -170,7 +170,7 @@ function ProviderErrorDialog({
         <p className="mt-2 text-sm text-muted-foreground">{providerName}</p>
         <pre
           id="provider-error-dialog-message"
-          className="mt-3 max-h-44 overflow-auto whitespace-pre-wrap rounded-md bg-[var(--ant-color-fill-quaternary,rgba(0,0,0,0.02))] p-3 text-xs text-destructive"
+          className="mt-3 max-h-44 overflow-auto whitespace-pre-wrap rounded-md bg-[var(--app-bg-subtle)] p-3 text-xs text-destructive"
         >
           {message}
         </pre>
@@ -269,7 +269,7 @@ function SortableProviderItem({
   }, [provider.id, editValues, saving, onSaveEdit]);
 
   const inputClass =
-    "flex-1 rounded-md border border-[var(--ant-color-border,rgba(0,0,0,0.08))] bg-[var(--ant-color-bg-container,#fff)] px-2 py-1 text-sm outline-none focus-visible:border-[var(--ant-color-primary,#0071e3)] disabled:cursor-not-allowed disabled:opacity-60";
+    "flex-1 rounded-md border border-[var(--app-border)] bg-[var(--app-bg-container)] px-2 py-1 text-sm outline-none focus-visible:border-[var(--app-primary)] disabled:cursor-not-allowed disabled:opacity-60";
 
   if (editing) {
     return (
@@ -277,7 +277,7 @@ function SortableProviderItem({
         ref={setNodeRef}
         style={style}
         aria-busy={saving}
-        className="border-[var(--ant-color-primary,#0071e3)]/40 space-y-3 rounded-2xl border bg-[var(--ant-color-bg-container,#fff)] px-5 py-4"
+        className="border-[var(--app-primary)]/40 space-y-3 rounded-2xl border bg-[var(--app-bg-container)] px-5 py-4"
       >
         <div className="flex items-center gap-2">
           <label
@@ -434,9 +434,8 @@ function SortableProviderItem({
       ref={setNodeRef}
       style={style}
       className={cn(
-        "flex items-center gap-4 rounded-2xl border border-[var(--ant-color-border-secondary,rgba(0,0,0,0.06))] bg-[var(--ant-color-bg-container,#fff)] px-5 py-3.5 transition-shadow",
-        isDragging &&
-          "ring-[var(--ant-color-primary,#0071e3)]/30 z-50 shadow-lg ring-2",
+        "flex items-center gap-4 rounded-2xl border border-[var(--app-border-secondary)] bg-[var(--app-bg-container)] px-5 py-3.5 transition-shadow",
+        isDragging && "ring-[var(--app-primary)]/30 z-50 shadow-lg ring-2",
       )}
     >
       <button
@@ -496,7 +495,7 @@ function SortableProviderItem({
       </div>
 
       <span
-        className="mx-1 h-6 w-px shrink-0 bg-[var(--ant-color-border-secondary,rgba(0,0,0,0.06))]"
+        className="mx-1 h-6 w-px shrink-0 bg-[var(--app-border-secondary)]"
         aria-hidden
       />
 
@@ -821,7 +820,7 @@ export function ProviderList({ refreshKey }: ProviderListProps) {
 
   if (error) {
     return (
-      <div className="rounded-2xl border border-[var(--ant-color-error-border,rgba(255,77,79,0.4))] bg-[var(--ant-color-bg-container,#fff)] p-4 text-sm text-destructive">
+      <div className="rounded-2xl border border-[var(--app-error-border)] bg-[var(--app-bg-container)] p-4 text-sm text-destructive">
         {error}
       </div>
     );
@@ -829,7 +828,7 @@ export function ProviderList({ refreshKey }: ProviderListProps) {
 
   if (providers.length === 0) {
     return (
-      <div className="rounded-2xl border border-dashed border-[var(--ant-color-border-secondary,rgba(0,0,0,0.06))] bg-[var(--ant-color-fill-quaternary,rgba(0,0,0,0.02))] px-6 py-10 text-center text-sm text-muted-foreground">
+      <div className="rounded-2xl border border-dashed border-[var(--app-border-secondary)] bg-[var(--app-bg-subtle)] px-6 py-10 text-center text-sm text-muted-foreground">
         {t("no_providers")}
       </div>
     );

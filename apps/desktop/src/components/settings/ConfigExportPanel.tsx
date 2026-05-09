@@ -136,7 +136,7 @@ export function ConfigExportPanel() {
             {presets.map((preset) => (
               <button
                 key={preset.id}
-                className="hover:border-[var(--ant-color-primary,#0071e3)]/50 group flex flex-col gap-1.5 rounded-2xl border border-[var(--ant-color-border-secondary,rgba(0,0,0,0.06))] bg-[var(--ant-color-bg-container,#fff)] p-4 text-left transition-colors"
+                className="hover:border-[var(--app-primary)]/50 group flex flex-col gap-1.5 rounded-2xl border border-[var(--app-border-secondary)] bg-[var(--app-bg-container)] p-4 text-left transition-colors"
                 onClick={() => {
                   setStatus(
                     t("config_template_selected", { name: preset.name }),
@@ -146,7 +146,7 @@ export function ConfigExportPanel() {
               >
                 <div className="flex items-center gap-2">
                   <ThunderboltFilled
-                    className="text-[var(--ant-color-primary,#0071e3)]/60 group-hover:text-[var(--ant-color-primary,#0071e3)]"
+                    className="text-[var(--app-primary)]/60 group-hover:text-[var(--app-primary)]"
                     aria-label=""
                     role="presentation"
                   />

@@ -170,7 +170,7 @@ export function AdvancedParams() {
   const smartWeightIsValid = smartWeightTotal === TOTAL_WEIGHT;
 
   return (
-    <div className="space-y-5 rounded-2xl border border-[var(--ant-color-border-secondary,rgba(0,0,0,0.06))] bg-[var(--ant-color-bg-container,#fff)] p-6">
+    <div className="space-y-5 rounded-2xl border border-[var(--app-border-secondary)] bg-[var(--app-bg-container)] p-6">
       <header className="space-y-1">
         <h3 className="text-base font-semibold leading-apple-headline tracking-apple-tight">
           {t("advanced_title")}
@@ -192,7 +192,7 @@ export function AdvancedParams() {
           max={10}
           value={maxRetries}
           onChange={(e) => setMaxRetries(e.target.value)}
-          className="w-full rounded-md border border-[var(--ant-color-border,rgba(0,0,0,0.08))] bg-[var(--ant-color-bg-container,#fff)] px-3 py-2 text-sm outline-none focus-visible:border-[var(--ant-color-primary,#0071e3)]"
+          className="w-full rounded-md border border-[var(--app-border)] bg-[var(--app-bg-container)] px-3 py-2 text-sm outline-none focus-visible:border-[var(--app-primary)]"
         />
         <p className="text-xs text-muted-foreground">{t("max_retries_hint")}</p>
       </div>

@@ -4,65 +4,138 @@
 
 @layer base {
   :root {
+    color-scheme: light;
+
+    --app-bg-layout: #f5f5f7;
+    --app-bg-container: #ffffff;
+    --app-bg-elevated: #ffffff;
+    --app-bg-hover: rgba(0, 0, 0, 0.04);
+    --app-bg-subtle: rgba(0, 0, 0, 0.02);
+
+    --app-text: #1d1d1f;
+    --app-text-secondary: rgba(0, 0, 0, 0.65);
+    --app-text-tertiary: rgba(0, 0, 0, 0.48);
+
+    --app-border: rgba(0, 0, 0, 0.1);
+    --app-border-secondary: rgba(0, 0, 0, 0.06);
+
+    --app-primary: #0071e3;
+    --app-primary-bg: rgba(0, 113, 227, 0.08);
+    --app-primary-soft: rgba(0, 113, 227, 0.6);
+
+    --app-error: #ff4d4f;
+    --app-error-border: rgba(255, 77, 79, 0.4);
+
+    /* shadcn-compat HSL channels (kept for legacy classes that still
+       expand to hsl(var(--xxx))). Aligned with the values above. */
     --background: 0 0% 100%;
     --foreground: 240 10% 3.9%;
-
     --card: 0 0% 100%;
     --card-foreground: 240 10% 3.9%;
-
     --popover: 0 0% 100%;
     --popover-foreground: 240 10% 3.9%;
-
-    /* Apple Blue #0071e3 - the only chromatic color */
     --primary: 212 100% 45%;
     --primary-foreground: 0 0% 100%;
-
     --secondary: 240 4.8% 95.9%;
     --secondary-foreground: 240 5.9% 10%;
-
     --muted: 240 4.8% 95.9%;
     --muted-foreground: 240 3.8% 46.1%;
-
     --accent: 240 4.8% 95.9%;
     --accent-foreground: 240 5.9% 10%;
-
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
-
     --border: 240 5.9% 90%;
     --input: 240 5.9% 90%;
     --ring: 212 100% 45%;
 
-    /* 8px grid - Apple HIG aligned */
     --radius: 0.5rem;
   }
 
-  .dark {
-    /* Apple near-black surfaces */
+  @media (prefers-color-scheme: dark) {
+    :root:not(.light) {
+      color-scheme: dark;
+
+      --app-bg-layout: #0a0a0a;
+      --app-bg-container: #1c1c1e;
+      --app-bg-elevated: #28282a;
+      --app-bg-hover: rgba(255, 255, 255, 0.06);
+      --app-bg-subtle: rgba(255, 255, 255, 0.03);
+
+      --app-text: #f5f5f7;
+      --app-text-secondary: rgba(255, 255, 255, 0.65);
+      --app-text-tertiary: rgba(255, 255, 255, 0.48);
+
+      --app-border: rgba(255, 255, 255, 0.12);
+      --app-border-secondary: rgba(255, 255, 255, 0.06);
+
+      --app-primary: #2997ff;
+      --app-primary-bg: rgba(41, 151, 255, 0.16);
+      --app-primary-soft: rgba(41, 151, 255, 0.6);
+
+      --app-error: #ff7875;
+      --app-error-border: rgba(255, 120, 117, 0.4);
+
+      --background: 220 11% 5%;
+      --foreground: 0 0% 98%;
+      --card: 240 4% 10%;
+      --card-foreground: 0 0% 98%;
+      --popover: 240 4% 10%;
+      --popover-foreground: 0 0% 98%;
+      --primary: 212 100% 50%;
+      --primary-foreground: 0 0% 100%;
+      --secondary: 240 3.7% 15.9%;
+      --secondary-foreground: 0 0% 98%;
+      --muted: 240 3.7% 15.9%;
+      --muted-foreground: 240 5% 64.9%;
+      --accent: 240 3.7% 15.9%;
+      --accent-foreground: 0 0% 98%;
+      --destructive: 0 62.8% 30.6%;
+      --destructive-foreground: 0 0% 98%;
+      --border: 240 3.7% 15.9%;
+      --input: 240 3.7% 15.9%;
+      --ring: 212 100% 50%;
+    }
+  }
+
+  :root.dark {
+    color-scheme: dark;
+
+    --app-bg-layout: #0a0a0a;
+    --app-bg-container: #1c1c1e;
+    --app-bg-elevated: #28282a;
+    --app-bg-hover: rgba(255, 255, 255, 0.06);
+    --app-bg-subtle: rgba(255, 255, 255, 0.03);
+
+    --app-text: #f5f5f7;
+    --app-text-secondary: rgba(255, 255, 255, 0.65);
+    --app-text-tertiary: rgba(255, 255, 255, 0.48);
+
+    --app-border: rgba(255, 255, 255, 0.12);
+    --app-border-secondary: rgba(255, 255, 255, 0.06);
+
+    --app-primary: #2997ff;
+    --app-primary-bg: rgba(41, 151, 255, 0.16);
+    --app-primary-soft: rgba(41, 151, 255, 0.6);
+
+    --app-error: #ff7875;
+    --app-error-border: rgba(255, 120, 117, 0.4);
+
     --background: 220 11% 5%;
     --foreground: 0 0% 98%;
-
     --card: 240 4% 10%;
     --card-foreground: 0 0% 98%;
-
     --popover: 240 4% 10%;
     --popover-foreground: 0 0% 98%;
-
     --primary: 212 100% 50%;
     --primary-foreground: 0 0% 100%;
-
     --secondary: 240 3.7% 15.9%;
     --secondary-foreground: 0 0% 98%;
-
     --muted: 240 3.7% 15.9%;
     --muted-foreground: 240 5% 64.9%;
-
     --accent: 240 3.7% 15.9%;
     --accent-foreground: 0 0% 98%;
-
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 0 0% 98%;
-
     --border: 240 3.7% 15.9%;
     --input: 240 3.7% 15.9%;
     --ring: 212 100% 50%;
@@ -77,8 +150,8 @@
   html,
   body,
   #root {
-    background: var(--ant-color-bg-layout, hsl(var(--background)));
-    color: var(--ant-color-text, hsl(var(--foreground)));
+    background: var(--app-bg-layout);
+    color: var(--app-text);
   }
 
   body {
