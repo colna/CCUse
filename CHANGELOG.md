@@ -5,6 +5,44 @@ All notable changes to CCUse will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-05-11
+
+### Added
+
+- Migrated desktop UI to **Ant Design v6** with Apple-flavored design tokens and system color sync; Dashboard / LocalApiCard / shell, Providers / Settings / Strategy pages now share the new look (T-A, T-B, T-C).
+- New marketing **website** (`apps/website`, Next.js App Router) with locale routing, theme switching, SEO baseline, hero / feature cards / architecture sections, MDX-powered docs (sidebar + TOC + search), getting-started / strategy / monitoring / FAQ guides, features page, and a download page that fetches the latest GitHub release with platform-aware recommendation cards.
+- Shared `@ccuse/ui` package exposes shadcn primitives reused by `apps/website` and `apps/desktop`.
+- Added **Tauri WebDriver E2E** smoke flow under `apps/desktop`'s Playwright config.
+- Provider list now shows loading states for create / update / delete operations, and "Add provider" form collapses by default.
+
+### Changed
+
+- Provider dispatch attempts are now logged through the proxy runtime, surfacing into Dashboard switch history.
+- Health check / failover / smart-strategy weighting reworked: status events push to UI in real time, weights stay balanced, fastest-overview refresh aligned with actual switch logic.
+- Dropped `lucide-react` dependency; icons are unified via `@ant-design/icons`.
+
+### Fixed
+
+- antd CSS variables now bind to Tailwind tokens, fixing light/dark theme inversion via `:root --app-*` tokens.
+- Provider kind selection state is now visually obvious; provider api key, type, and other fields are editable; deleting a provider no longer fails when switch history references it.
+- Proxy correctness:
+  - extend provider timeout to 600s for long completions (T1.0.6.19);
+  - preserve inbound model candidates and skip upstream model rewriting (T1.0.6.16);
+  - preserve Anthropic tool results and harden message ids / usage defaults (T1.0.6.09 / T1.0.6.10);
+  - align Anthropic Claude headers and route native Anthropic providers correctly;
+  - align exhausted-account errors with sub2api shape (T1.0.6.03);
+  - surface provider network error causes and connection-probe failures in dialog (T1.0.4.05);
+  - preserve multimodal provider requests (T1.0.3.02);
+  - add provider default model fallback;
+  - align health-check model ids with cc-switch streaming probe.
+- Avoid macOS keychain prompt on startup; replace unreadable provider keys (T1.0.2.19).
+- Unify project / tray / Windows icons (T1.0.6.31).
+
+### CI
+
+- Release workflow detects existing assets via `jq any` and resumes incomplete releases instead of skipping;
+- Optional Apple / Windows signing secrets are gated behind `CCUSE_APPLE_SIGNING_ENABLED` / `CCUSE_WINDOWS_SIGNING_ENABLED` repository variables; disabled signing no longer leaks empty env vars into the build.
+
 ## [1.0.1] - 2026-04-29
 
 ### Fixed
