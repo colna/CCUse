@@ -71,14 +71,14 @@ CCUse/
 pnpm install
 
 # 2. 启动桌面端（dev 模式）
-pnpm desktop:dev
+pnpm dev:desktop
 
 # 3. 跑测试
-pnpm desktop:test           # Vitest（React 端）
+pnpm test:desktop           # Vitest（React 端）
 cd apps/desktop/src-tauri && cargo test    # cargo test（Rust 端）
 
 # 4. 类型检查
-pnpm desktop:typecheck
+pnpm typecheck
 ```
 
 ### 本地 API 快速验证

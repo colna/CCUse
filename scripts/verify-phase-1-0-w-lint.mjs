@@ -37,14 +37,8 @@ assert.equal(
   existsSync(path.join(root, "apps/desktop/eslint.config.mjs")),
   false,
 );
-assert.match(
-  rootPackage.scripts.lint,
-  /eslint apps\/desktop apps\/website packages\/ui/,
-);
-assert.match(
-  rootPackage.scripts["lint:fix"],
-  /eslint apps\/desktop apps\/website packages\/ui .*--fix/,
-);
+assert.match(rootPackage.scripts.lint, /^turbo run lint$/);
+assert.match(rootPackage.scripts["lint:fix"], /^turbo run lint:fix$/);
 assert.equal(
   rootPackage.scripts["website:verify-lint"],
   "node scripts/verify-phase-1-0-w-lint.mjs",
