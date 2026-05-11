@@ -5,6 +5,32 @@ All notable changes to CCUse will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-05-11
+
+### Changed
+
+- **Desktop front-end refactor (no public API change)** — full review pass over `apps/desktop/src/**`:
+  - `ProviderList.tsx` 885 → 397 lines (−55%); extracted `SortableProviderItem`, `dialogs` (`DeleteDialog` + `ProviderErrorDialog`), and `healthDisplay` helpers.
+  - `AddProviderForm.tsx` restructured into `KindPicker` / `AdvancedSection` / `TestConnectionStrip` + `buildProviderInput` / `validate` utilities.
+  - `ui/button.tsx` 118 → 21 lines: dropped the legacy shadcn variant / size shim that no production caller used; all call sites already used native antd `Button` props.
+  - Dashboard charts (`SuccessRateChart` / `LatencyChart` / `CostPieChart` / `SwitchTimeline`) and `StatusCards` now share `useTimeseriesPoll` and `timeFormat` helpers, removing duplicated mount-fetch + setInterval boilerplate.
+  - `AppThemeProvider` extracts `SHARED_COMPONENTS` so light / dark configs cannot drift.
+  - `providerKinds.ts`: removed unused `SUPPORTED_PROVIDER_KINDS` / `isSupportedProviderKind`; use a `readonly` tuple.
+
+### Added
+
+- `App.tsx` wildcard route fallback prevents a blank screen for unknown hash URLs.
+- Why-comments added throughout for non-obvious branches and platform-edge fallbacks.
+
+### Fixed
+
+- `StrategyCards` selected badge: `bg-[var(--app-primary-bg))]` had an extra `)`.
+
+### Removed
+
+- Dead `matchMedia.addListener` fallback in `useColorScheme` and `setupTests`; modern jsdom + Tauri WebView both support `addEventListener`.
+- `lib/tauri.ts`: legacy `execCommand` clipboard fallback (Tauri WebView always exposes `navigator.clipboard`).
+
 ## [1.1.0] - 2026-05-11
 
 ### Added
