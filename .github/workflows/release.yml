@@ -237,6 +237,16 @@ jobs:
             - **Windows** — `*_x64-setup.exe`
 
             自动由 GitHub Actions 构建发布。
+
+            > **macOS 用户必读**：当前构建未启用 Apple Developer 公证，下载后双击会被 Gatekeeper 拦截，弹出 "CCUse 已损坏，无法打开" 的误导性提示。
+            >
+            > 把 `CCUse.app` 拖入 `/Applications` 后，在终端执行一次以下命令即可正常启动：
+            >
+            > ```bash
+            > sudo xattr -dr com.apple.quarantine /Applications/CCUse.app
+            > ```
+            >
+            > 详见 [FAQ 与故障排查](https://github.com/colna/CCUse#macos-提示-ccuse-已损坏)。
           releaseDraft: false
           # 0.x.y → pre-release；1.0.0 起转为正式 release
           prerelease: ${{ needs.check-version.outputs.is_prerelease == 'true' }}

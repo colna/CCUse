@@ -50,6 +50,32 @@ If installation still fails:
 2. Re-run `CCUse_<version>_x64-setup.exe`.
 3. Ask IT to allow the WebView2 runtime installer if the machine blocks bootstrap downloads.
 
+## macOS Says `"CCUse" Is Damaged And Can't Be Opened. You Should Move It To The Trash`
+
+This is **macOS Gatekeeper's misleading error for unnotarized apps**, not a real corruption. The current CI does not enable Apple Developer signing / notarization (`CCUSE_APPLE_SIGNING_ENABLED` is off), so any dmg downloaded by a browser inherits a `com.apple.quarantine` extended attribute and triggers this dialog.
+
+Once you confirm the dmg actually came from [CCUse GitHub Releases](https://github.com/colna/CCUse/releases), do the following:
+
+**Step 1.** Drag `CCUse.app` into `/Applications` even if the warning appears.
+
+**Step 2.** Run one of the commands below in Terminal.
+
+If the app is already in `/Applications`:
+
+```bash
+sudo xattr -dr com.apple.quarantine /Applications/CCUse.app
+```
+
+If you would rather unquarantine the dmg first and then drag normally:
+
+```bash
+sudo xattr -dr com.apple.quarantine ~/Downloads/CCUse_*.dmg
+```
+
+CCUse will start normally afterwards.
+
+> Do **not** run `xattr -dr com.apple.quarantine` on packages from unknown sources. Only use it when you have verified the installer came from the official CCUse Release page.
+
 ## macOS Says The App Cannot Be Verified
 
 Official release builds are intended to be signed and notarized when the Apple signing secrets are enabled in CI. If macOS still blocks the app:

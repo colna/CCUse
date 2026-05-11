@@ -157,6 +157,16 @@ bash scripts/verify-phase-1-0-1.sh
 | `0.x.y`   | pre-release  | `*_aarch64.dmg` / `*_x64.dmg` / `*_x64-setup.exe` |
 | `1.0.0+`  | 正式 release | 同上                                              |
 
+### macOS 提示 "CCUse 已损坏"
+
+由于当前 CI 暂未启用 Apple Developer 公证，从浏览器下载的 dmg 会被 Gatekeeper 误标记为 "已损坏"。**这不是真的损坏**，确认 dmg 来自 [GitHub Release](https://github.com/colna/CCUse/releases) 后，把 `CCUse.app` 拖进 `/Applications` 并在终端执行一次：
+
+```bash
+sudo xattr -dr com.apple.quarantine /Applications/CCUse.app
+```
+
+之后即可正常启动。详细原理与英文说明见 [`docs/faq-troubleshooting`](./apps/website/content/docs/zh/faq-troubleshooting.mdx)。
+
 ---
 
 ## License
