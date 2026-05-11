@@ -22,7 +22,7 @@ CCUse is a desktop app that exposes a single local HTTP API endpoint and abstrac
 
 |           |                                                            |
 | --------- | ---------------------------------------------------------- |
-| Version   | `1.1.1`                                                    |
+| Version   | `1.1.2`                                                    |
 | Roadmap   | [`开发计划.md`](./docs/开发计划.md)                        |
 | Changelog | [`CHANGELOG.md`](./CHANGELOG.md)                           |
 | Releases  | [GitHub Releases](https://github.com/colna/CCUse/releases) |

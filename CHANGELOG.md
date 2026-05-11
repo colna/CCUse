@@ -5,6 +5,13 @@ All notable changes to CCUse will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.2] - 2026-05-11
+
+### Documentation
+
+- Split the root README into separate English (`README.md`) and Chinese (`README.zh-CN.md`) files with reciprocal language links at the top of each.
+- Refresh status badges to v1.1.2, drop the obsolete Phase 1.0.1 demo verification section (the `/v1/*` routes have routed through `SwitchEngine` since v1.0.1), add a Supported Local API Endpoints table, and align styling notes with the antd v6 + Tailwind setup.
+
 ## [1.1.1] - 2026-05-11
 
 ### Changed
