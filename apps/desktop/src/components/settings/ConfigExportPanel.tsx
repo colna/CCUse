@@ -1,19 +1,29 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   DownloadOutlined,
-  UploadOutlined,
   ThunderboltFilled,
+  UploadOutlined,
 } from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
+
 import { Button } from "@/components/ui/button";
 import {
   exportConfig,
-  importConfig,
   getTemplatePresets,
+  importConfig,
   type TemplatePreset,
 } from "@/lib/tauri";
 
-/** Config export / import / template presets panel (T1.0.4.18-20). */
+/**
+ * 设置页面里"导入 / 导出 / 模板预设"面板。
+ *
+ * - 导出走 `getTemplatePresets` 后端命令，得到一份对称加密的二进制
+ *   `.ccuse`；密码由用户当场输入，前端不持久化。
+ * - 导入是反向操作：选择文件 → 询问密码 → 调用后端命令。
+ * - 模板预设当前只显示，不直接落库（点击后只是提示选中），等后端
+ *   command 接入后再扩展。
+ */
+
 export function ConfigExportPanel() {
   const { t } = useTranslation("monitor");
   const [presets, setPresets] = useState<TemplatePreset[]>([]);
@@ -22,37 +32,22 @@ export function ConfigExportPanel() {
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
 
-  const loadPresets = useCallback(async () => {
-    try {
-      const data = await getTemplatePresets();
-      setPresets(data);
-    } catch {
-      // Tauri not available in dev/test
-    }
+  useEffect(() => {
+    // 后端无 Tauri 环境时（vitest jsdom）返回 reject，这里直接吞掉：
+    // 预设是锦上添花，不该把整个 Settings 拉黑。
+    getTemplatePresets()
+      .then(setPresets)
+      .catch(() => undefined);
   }, []);
 
-  useEffect(() => {
-    loadPresets();
-  }, [loadPresets]);
-
-  const handleExport = async () => {
+  const handleExport = useCallback(async () => {
     const password = window.prompt(t("config_export_password_prompt"));
     if (!password) return;
     setExporting(true);
     setStatus(null);
     try {
       const blob = await exportConfig(password);
-      const file = new Blob([blob as BlobPart], {
-        type: "application/octet-stream",
-      });
-      const url = URL.createObjectURL(file);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `ccuse-config-${Date.now()}.ccuse`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      downloadFile(blob, `ccuse-config-${Date.now()}.ccuse`);
       setStatus(t("config_export_success"));
       setStatusIsError(false);
     } catch (err) {
@@ -61,9 +56,9 @@ export function ConfigExportPanel() {
     } finally {
       setExporting(false);
     }
-  };
+  }, [t]);
 
-  const handleImport = async () => {
+  const handleImport = useCallback(() => {
     const input = document.createElement("input");
     input.type = "file";
     input.accept = ".ccuse";
@@ -75,8 +70,7 @@ export function ConfigExportPanel() {
       setImporting(true);
       setStatus(null);
       try {
-        const buffer = await file.arrayBuffer();
-        await importConfig(new Uint8Array(buffer), password);
+        await importConfig(new Uint8Array(await file.arrayBuffer()), password);
         setStatus(t("config_import_success"));
         setStatusIsError(false);
       } catch (err) {
@@ -87,7 +81,7 @@ export function ConfigExportPanel() {
       }
     };
     input.click();
-  };
+  }, [t]);
 
   return (
     <div className="space-y-6">
@@ -164,4 +158,19 @@ export function ConfigExportPanel() {
       )}
     </div>
   );
+}
+
+/** 触发浏览器下载一段二进制；浏览器 / WebView 都通用。 */
+function downloadFile(bytes: Uint8Array, filename: string) {
+  const file = new Blob([bytes as BlobPart], {
+    type: "application/octet-stream",
+  });
+  const url = URL.createObjectURL(file);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }

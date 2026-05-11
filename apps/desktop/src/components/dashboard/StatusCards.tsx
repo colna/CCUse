@@ -21,6 +21,17 @@ import {
   type SwitchStrategy,
 } from "@/lib/tauri";
 
+/**
+ * 仪表盘顶部的 4 张关键指标卡：当前供应商 / 今日请求 / 成功率 / 平均
+ * 响应。三个数据源并发拉取，UI 一次性更新避免闪烁。
+ *
+ * "当前供应商"的判定与后端 SwitchEngine 的策略保持视觉一致：fastest
+ * 时取响应最快的健康节点，否则取第一个 healthy 节点。它只用于显示，
+ * 真正的路由由后端决定。
+ */
+
+const REFRESH_INTERVAL_MS = 10_000;
+
 interface CardData {
   currentProvider: string | null;
   todayRequests: number;
@@ -28,47 +39,16 @@ interface CardData {
   avgResponseTimeMs: number | null;
 }
 
-const REFRESH_INTERVAL = 10_000;
-
-async function loadHealthSnapshot(forceRefresh: boolean) {
-  return forceRefresh ? refreshHealthSnapshot() : getHealthSnapshot();
-}
-
-function selectCurrentProvider(
-  providers: HealthSnapshot[],
-  strategy: SwitchStrategy,
-): HealthSnapshot | null {
-  const aliveProviders = providers.filter((p) => p.status !== "down");
-  if (aliveProviders.length === 0) {
-    return null;
-  }
-
-  if (strategy === "fastest") {
-    const providersWithLatency = aliveProviders.filter(
-      (p): p is HealthSnapshot & { response_time_us: number } =>
-        p.response_time_us != null,
-    );
-
-    if (providersWithLatency.length > 0) {
-      return providersWithLatency.reduce((best, provider) =>
-        provider.response_time_us < best.response_time_us ? provider : best,
-      );
-    }
-  }
-
-  return (
-    aliveProviders.find((p) => p.status === "healthy") ?? aliveProviders[0]
-  );
-}
+const EMPTY_CARD: CardData = {
+  currentProvider: null,
+  todayRequests: 0,
+  successRate: null,
+  avgResponseTimeMs: null,
+};
 
 export function StatusCards() {
   const { t } = useTranslation("monitor");
-  const [data, setData] = useState<CardData>({
-    currentProvider: null,
-    todayRequests: 0,
-    successRate: null,
-    avgResponseTimeMs: null,
-  });
+  const [data, setData] = useState<CardData>(EMPTY_CARD);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -76,49 +56,11 @@ export function StatusCards() {
   const fetchData = useCallback(async (forceRefresh = false) => {
     try {
       const [healthRes, metrics, strategy] = await Promise.all([
-        loadHealthSnapshot(forceRefresh),
+        forceRefresh ? refreshHealthSnapshot() : getHealthSnapshot(),
         getMetricsTimeseries(),
         getStrategy(),
       ]);
-
-      const providers: HealthSnapshot[] = healthRes.providers;
-      const activeProvider = selectCurrentProvider(
-        providers,
-        strategy.strategy,
-      );
-
-      const totalRequests = metrics.reduce(
-        (sum: number, b: MetricsBucket) => sum + b.request_count,
-        0,
-      );
-
-      let overallSuccessRate: number | null = null;
-      if (metrics.length > 0) {
-        const totalSuccess = metrics.reduce(
-          (sum: number, b: MetricsBucket) =>
-            sum + b.success_rate * b.request_count,
-          0,
-        );
-        overallSuccessRate =
-          totalRequests > 0 ? totalSuccess / totalRequests : null;
-      }
-
-      let avgLatency: number | null = null;
-      if (metrics.length > 0) {
-        const totalLatency = metrics.reduce(
-          (sum: number, b: MetricsBucket) =>
-            sum + b.avg_latency_ms * b.request_count,
-          0,
-        );
-        avgLatency = totalRequests > 0 ? totalLatency / totalRequests : null;
-      }
-
-      setData({
-        currentProvider: activeProvider?.provider_name ?? null,
-        todayRequests: totalRequests,
-        successRate: overallSuccessRate,
-        avgResponseTimeMs: avgLatency,
-      });
+      setData(deriveCardData(healthRes.providers, metrics, strategy.strategy));
       setError(null);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
@@ -138,18 +80,16 @@ export function StatusCards() {
 
   useEffect(() => {
     fetchData();
-  }, [fetchData]);
-
-  useEffect(() => {
-    const id = setInterval(fetchData, REFRESH_INTERVAL);
+    const id = setInterval(fetchData, REFRESH_INTERVAL_MS);
     return () => clearInterval(id);
   }, [fetchData]);
 
   useEffect(() => {
+    // `.catch(() => undefined)` 消化非 Tauri 环境下 `listen()` 抛错；
+    // 见 `ProviderList`。
     const unlistenPromise = onProviderStatusChanged(() => {
       void fetchData();
-    }).catch(() => null);
-
+    }).catch(() => undefined);
     return () => {
       void unlistenPromise.then((unlisten) => unlisten?.());
     };
@@ -276,4 +216,50 @@ function StatCard({
       </p>
     </div>
   );
+}
+
+/** 把 metrics 时间序列折算成"总请求加权平均"，与下面图表口径一致。 */
+function deriveCardData(
+  providers: HealthSnapshot[],
+  metrics: MetricsBucket[],
+  strategy: SwitchStrategy,
+): CardData {
+  const totalRequests = metrics.reduce((sum, b) => sum + b.request_count, 0);
+  const weightedAvg = (pick: (b: MetricsBucket) => number): number | null => {
+    if (metrics.length === 0 || totalRequests === 0) return null;
+    return (
+      metrics.reduce((sum, b) => sum + pick(b) * b.request_count, 0) /
+      totalRequests
+    );
+  };
+
+  const activeProvider = selectCurrentProvider(providers, strategy);
+  return {
+    currentProvider: activeProvider?.provider_name ?? null,
+    todayRequests: totalRequests,
+    successRate: weightedAvg((b) => b.success_rate),
+    avgResponseTimeMs: weightedAvg((b) => b.avg_latency_ms),
+  };
+}
+
+function selectCurrentProvider(
+  providers: HealthSnapshot[],
+  strategy: SwitchStrategy,
+): HealthSnapshot | null {
+  const alive = providers.filter((p) => p.status !== "down");
+  if (alive.length === 0) return null;
+
+  if (strategy === "fastest") {
+    const withLatency = alive.filter(
+      (p): p is HealthSnapshot & { response_time_us: number } =>
+        p.response_time_us != null,
+    );
+    if (withLatency.length > 0) {
+      return withLatency.reduce((best, p) =>
+        p.response_time_us < best.response_time_us ? p : best,
+      );
+    }
+  }
+
+  return alive.find((p) => p.status === "healthy") ?? alive[0]!;
 }

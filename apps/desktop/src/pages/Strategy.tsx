@@ -1,8 +1,9 @@
 import { useTranslation } from "react-i18next";
 
-import { StrategyCards } from "@/components/strategy/StrategyCards";
 import { AdvancedParams } from "@/components/strategy/AdvancedParams";
+import { StrategyCards } from "@/components/strategy/StrategyCards";
 
+/** 策略页：顶部是 5 种策略卡片，下面是高级参数（重试 + 智能权重）。 */
 export function StrategyPage() {
   const { t } = useTranslation("strategy");
 

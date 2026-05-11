@@ -10,9 +10,23 @@ import {
   type StrategyResponse,
 } from "@/lib/tauri";
 
+/**
+ * "高级参数"面板：最大重试 + 智能策略的 4 维权重。
+ *
+ * 智能权重的约束是"总和恒等于 100"。用户拖动任一滑块时，剩余三个会
+ * 按当前比例自动重新分配；这样既保证总和守恒、又不需要用户手动平衡。
+ * 算法上分两步：
+ *   1. clamp 每个值到 [0, 100]、向下取整；
+ *   2. 把剩余预算按"小数余项最大优先"分配，最后总和精确为 100。
+ *
+ * 测试钉住了 (40,30,20,10) 起步、滑健康度到 50 → (50,25,17,8) 的具体
+ * 数字，所以这套算法不能随意改动。
+ */
+
 type WeightKey = keyof SmartWeights;
 
 const TOTAL_WEIGHT = 100;
+const SAVED_HINT_MS = 2000;
 const WEIGHT_KEYS: WeightKey[] = [
   "health",
   "response_time",
@@ -28,6 +42,8 @@ function totalWeight(weights: SmartWeights): number {
   return WEIGHT_KEYS.reduce((sum, key) => sum + weights[key], 0);
 }
 
+/** 把 `target` 总量按 `source` 的现有比例分到 `keys` 列出的字段；
+ * 其余字段记 0。源全 0 时改为均分，保证不会出现"全黑屏"的极端态。 */
 function distributeWeight(
   keys: WeightKey[],
   source: SmartWeights,
@@ -38,9 +54,7 @@ function distributeWeight(
     WEIGHT_KEYS.map((key) => [key, 0]),
   ) as Record<WeightKey, number>;
 
-  if (keys.length === 0 || target === 0) {
-    return result;
-  }
+  if (keys.length === 0 || target === 0) return result;
 
   const sourceTotal = keys.reduce(
     (sum, key) => sum + clampWeight(source[key]),
@@ -48,6 +62,8 @@ function distributeWeight(
   );
 
   if (sourceTotal === 0) {
+    // 兜底：源全为 0，没有比例可借，改为均分；剩余 1..k-1 按顺序补齐
+    // 头部，保证总和精确等于 target。
     const base = Math.floor(target / keys.length);
     let remainder = target - base * keys.length;
     for (const key of keys) {
@@ -63,6 +79,7 @@ function distributeWeight(
     return { key, base, fraction: raw - base };
   });
 
+  // "余项最大优先"分配，保证整数化后的总和精确等于 target。
   let remainder = target - scaled.reduce((sum, item) => sum + item.base, 0);
   const byLargestFraction = [...scaled].sort((a, b) => b.fraction - a.fraction);
   for (const item of byLargestFraction) {
@@ -81,17 +98,10 @@ function normalizeWeights(weights: SmartWeights): SmartWeights {
     priority: clampWeight(weights.priority),
   };
 
-  if (totalWeight(cleaned) === TOTAL_WEIGHT) {
-    return cleaned;
-  }
+  if (totalWeight(cleaned) === TOTAL_WEIGHT) return cleaned;
 
   const distributed = distributeWeight(WEIGHT_KEYS, cleaned, TOTAL_WEIGHT);
-  return {
-    health: distributed.health,
-    response_time: distributed.response_time,
-    cost: distributed.cost,
-    priority: distributed.priority,
-  };
+  return { ...cleaned, ...distributed };
 }
 
 function rebalanceWeights(
@@ -106,14 +116,7 @@ function rebalanceWeights(
     weights,
     TOTAL_WEIGHT - nextValue,
   );
-
-  return {
-    health: changedKey === "health" ? nextValue : distributed.health,
-    response_time:
-      changedKey === "response_time" ? nextValue : distributed.response_time,
-    cost: changedKey === "cost" ? nextValue : distributed.cost,
-    priority: changedKey === "priority" ? nextValue : distributed.priority,
-  };
+  return { ...distributed, [changedKey]: nextValue };
 }
 
 export function AdvancedParams() {
@@ -149,7 +152,7 @@ export function AdvancedParams() {
         smart_weights: weights,
       });
       setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
+      setTimeout(() => setSaved(false), SAVED_HINT_MS);
     } catch (err) {
       console.error("Failed to update params:", err);
     } finally {
@@ -157,12 +160,9 @@ export function AdvancedParams() {
     }
   }, [maxRetries, weights]);
 
-  const handleWeightChange = useCallback(
-    (key: keyof SmartWeights, value: number) => {
-      setWeights((prev) => rebalanceWeights(prev, key, value));
-    },
-    [],
-  );
+  const handleWeightChange = useCallback((key: WeightKey, value: number) => {
+    setWeights((prev) => rebalanceWeights(prev, key, value));
+  }, []);
 
   if (!config) return null;
 
@@ -202,26 +202,21 @@ export function AdvancedParams() {
           <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
             {t("smart_weights_label")}
           </p>
-          <WeightSlider
-            label={t("weight_health")}
-            value={weights.health}
-            onChange={(v) => handleWeightChange("health", v)}
-          />
-          <WeightSlider
-            label={t("weight_response_time")}
-            value={weights.response_time}
-            onChange={(v) => handleWeightChange("response_time", v)}
-          />
-          <WeightSlider
-            label={t("weight_cost")}
-            value={weights.cost}
-            onChange={(v) => handleWeightChange("cost", v)}
-          />
-          <WeightSlider
-            label={t("weight_priority")}
-            value={weights.priority}
-            onChange={(v) => handleWeightChange("priority", v)}
-          />
+          {(
+            [
+              ["health", "weight_health"],
+              ["response_time", "weight_response_time"],
+              ["cost", "weight_cost"],
+              ["priority", "weight_priority"],
+            ] as const
+          ).map(([key, labelKey]) => (
+            <WeightSlider
+              key={key}
+              label={t(labelKey)}
+              value={weights[key]}
+              onChange={(v) => handleWeightChange(key, v)}
+            />
+          ))}
           <p className="text-xs text-muted-foreground">
             {t("weight_total", {
               total: smartWeightTotal,

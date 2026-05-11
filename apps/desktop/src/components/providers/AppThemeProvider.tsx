@@ -11,6 +11,13 @@ interface Props {
   children: ReactNode;
 }
 
+/**
+ * 包裹全树的 antd `ConfigProvider`：
+ * - 主题随系统深浅色自动切换；
+ * - antd 内置文案随 i18next 语言切换（目前只支持中英）；
+ * - `<App component={false}>` 是 antd 6 的隐藏 message/notification host，
+ *   不渲染额外 DOM 节点。
+ */
 export function AppThemeProvider({ children }: Props) {
   const scheme = useColorScheme();
   const { i18n } = useTranslation();

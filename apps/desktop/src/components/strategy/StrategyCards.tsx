@@ -1,20 +1,26 @@
-import { useCallback, useEffect, useState } from "react";
 import {
-  SwapOutlined,
-  ThunderboltOutlined,
   DollarOutlined,
   RetweetOutlined,
   RobotOutlined,
+  SwapOutlined,
+  ThunderboltOutlined,
 } from "@ant-design/icons";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { cn } from "@/lib/utils";
 import {
   getStrategy,
   setStrategy,
-  type SwitchStrategy,
   type StrategyResponse,
+  type SwitchStrategy,
 } from "@/lib/tauri";
+
+/**
+ * 切换策略选择卡片组。选择策略只是写入后端状态，真正的策略生效在
+ * `SwitchEngine` 中；这里展示当前选择，并把"已选中"高亮成 antd primary
+ * 蓝。
+ */
 
 interface StrategyOption {
   id: SwitchStrategy;
@@ -23,7 +29,7 @@ interface StrategyOption {
   icon: React.ElementType;
 }
 
-const STRATEGIES: StrategyOption[] = [
+const STRATEGIES: readonly StrategyOption[] = [
   {
     id: "priority",
     labelKey: "strategy_priority",
@@ -118,7 +124,7 @@ export function StrategyCards() {
                 />
                 <span className="text-sm font-medium">{t(s.labelKey)}</span>
                 {selected && (
-                  <span className="bg-[var(--app-primary-bg))] ml-auto rounded-full px-2 py-0.5 text-[10px] font-medium text-[var(--app-primary)]">
+                  <span className="ml-auto rounded-full bg-[var(--app-primary-bg)] px-2 py-0.5 text-[10px] font-medium text-[var(--app-primary)]">
                     {t("current_badge")}
                   </span>
                 )}

@@ -6,9 +6,13 @@ import { Topbar } from "./Topbar";
 
 interface PageMeta {
   titleKey: string;
-  descKey?: string;
+  descKey: string;
 }
 
+/**
+ * 路径 → 页面标题/描述 i18n key 映射。Topbar 文案只与路由相关，
+ * 直接表驱动比每个页面各自传 props 更紧凑，也便于和 sidebar 同步翻译。
+ */
 const PAGE_META: Record<string, PageMeta> = {
   "/dashboard": {
     titleKey: "page_dashboard_title",
@@ -33,13 +37,9 @@ const FALLBACK_META: PageMeta = {
   descKey: "page_fallback_desc",
 };
 
-function metaForPath(pathname: string): PageMeta {
-  return PAGE_META[pathname] ?? FALLBACK_META;
-}
-
 export function AppShell() {
-  const location = useLocation();
-  const meta = metaForPath(location.pathname);
+  const { pathname } = useLocation();
+  const meta = PAGE_META[pathname] ?? FALLBACK_META;
   const { t } = useTranslation("common");
 
   return (
@@ -52,10 +52,7 @@ export function AppShell() {
     >
       <Sidebar />
       <div className="flex flex-1 flex-col">
-        <Topbar
-          title={t(meta.titleKey)}
-          description={meta.descKey ? t(meta.descKey) : undefined}
-        />
+        <Topbar title={t(meta.titleKey)} description={t(meta.descKey)} />
         <main className="flex-1 overflow-y-auto px-10 py-8">
           <Outlet />
         </main>

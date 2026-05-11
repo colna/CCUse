@@ -19,6 +19,20 @@ import {
   type StreamCheckResult,
 } from "@/lib/tauri";
 
+/**
+ * "添加供应商"表单。
+ *
+ * 设计点：
+ * - 所有字段保留为字符串原样，提交时统一 `trim` + 数值转换；这样
+ *   `aria-invalid` / 错误提示能精确指向用户输入的位置，而不会被
+ *   number 解析提前吞掉。
+ * - 添加成功后，提交按钮锁死；同时露出一个"测试连接"按钮，避免用户
+ *   重复提交相同表单。
+ * - 高级选项默认折叠，默认值都是 null —— 后端把缺省视为"不限"。
+ */
+
+type TFn = (key: string, opts?: Record<string, string | number>) => string;
+
 interface FormValues {
   kind: ProviderKind;
   name: string;
@@ -41,6 +55,9 @@ interface FieldErrors {
   cost_per_1k_tokens?: string;
 }
 
+const PRIORITY_MIN = 1;
+const PRIORITY_MAX = 1000;
+
 const INITIAL_VALUES: FormValues = {
   kind: "openai",
   name: "",
@@ -52,67 +69,6 @@ const INITIAL_VALUES: FormValues = {
   rate_limit_rpm: "",
   cost_per_1k_tokens: "",
 };
-
-const PRIORITY_MIN = 1;
-const PRIORITY_MAX = 1000;
-
-function validate(
-  values: FormValues,
-  t: (key: string, opts?: Record<string, string | number>) => string,
-): FieldErrors {
-  const errors: FieldErrors = {};
-  if (!values.name.trim()) errors.name = t("validation_name_required");
-
-  const trimmedUrl = values.base_url.trim();
-  const typeOption = PROVIDER_KIND_OPTIONS.find(
-    (tp) => tp.kind === values.kind,
-  );
-
-  if (!trimmedUrl) {
-    if (typeOption?.requiresBaseUrl) {
-      errors.base_url = t("validation_base_url_required");
-    }
-  } else {
-    try {
-      const url = new URL(trimmedUrl);
-      if (url.protocol !== "https:" && url.protocol !== "http:") {
-        errors.base_url = t("validation_base_url_protocol");
-      }
-    } catch {
-      errors.base_url = t("validation_base_url_invalid");
-    }
-  }
-
-  if (!values.api_key.trim()) errors.api_key = t("validation_api_key_required");
-
-  const priority = Number(values.priority);
-  if (!Number.isInteger(priority)) {
-    errors.priority = t("validation_priority_integer");
-  } else if (priority < PRIORITY_MIN || priority > PRIORITY_MAX) {
-    errors.priority = t("validation_priority_range", {
-      min: PRIORITY_MIN,
-      max: PRIORITY_MAX,
-    });
-  }
-
-  if (values.monthly_quota.trim()) {
-    const v = Number(values.monthly_quota);
-    if (isNaN(v) || v < 0)
-      errors.monthly_quota = t("validation_non_negative_number");
-  }
-  if (values.rate_limit_rpm.trim()) {
-    const v = Number(values.rate_limit_rpm);
-    if (!Number.isInteger(v) || v < 0)
-      errors.rate_limit_rpm = t("validation_non_negative_integer");
-  }
-  if (values.cost_per_1k_tokens.trim()) {
-    const v = Number(values.cost_per_1k_tokens);
-    if (isNaN(v) || v < 0)
-      errors.cost_per_1k_tokens = t("validation_non_negative_number");
-  }
-
-  return errors;
-}
 
 interface AddProviderFormProps {
   onAdded?: (id: string) => void;
@@ -131,12 +87,8 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
   const [testing, setTesting] = useState(false);
 
   const handleKindChange = useCallback((kind: ProviderKind) => {
-    const typeOption = PROVIDER_KIND_OPTIONS.find((tp) => tp.kind === kind);
-    setValues((s) => ({
-      ...s,
-      kind,
-      base_url: typeOption?.defaultBaseUrl ?? "",
-    }));
+    const opt = PROVIDER_KIND_OPTIONS.find((o) => o.kind === kind);
+    setValues((s) => ({ ...s, kind, base_url: opt?.defaultBaseUrl ?? "" }));
     setTestResult(null);
     setTestError(null);
   }, []);
@@ -147,8 +99,7 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
     setTestResult(null);
     setTestError(null);
     try {
-      const result = await testProviderConnection(successId);
-      setTestResult(result);
+      setTestResult(await testProviderConnection(successId));
     } catch (err: unknown) {
       setTestError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -168,31 +119,13 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
       setErrors(fieldErrors);
       if (Object.keys(fieldErrors).length > 0) return;
 
-      const input: ProviderInput = {
-        name: values.name.trim(),
-        kind: values.kind,
-        base_url: values.base_url.trim().replace(/\/$/, ""),
-        api_key: values.api_key.trim(),
-        priority: Number(values.priority),
-        enabled: values.enabled,
-        monthly_quota: values.monthly_quota.trim()
-          ? Number(values.monthly_quota)
-          : null,
-        rate_limit_rpm: values.rate_limit_rpm.trim()
-          ? Number(values.rate_limit_rpm)
-          : null,
-        cost_per_1k_tokens: values.cost_per_1k_tokens.trim()
-          ? Number(values.cost_per_1k_tokens)
-          : null,
-      };
       setSubmitting(true);
       try {
-        const provider = await addProvider(input);
+        const provider = await addProvider(buildProviderInput(values));
         setSuccessId(provider.id);
         onAdded?.(provider.id);
       } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : String(err);
-        setServerError(message);
+        setServerError(err instanceof Error ? err.message : String(err));
       } finally {
         setSubmitting(false);
       }
@@ -230,41 +163,12 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
         </p>
       </header>
 
-      <div className="space-y-2">
-        <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-          {t("provider_type")}
-        </span>
-        <div className="flex flex-wrap gap-2">
-          {PROVIDER_KIND_OPTIONS.map((opt) => {
-            const selected = values.kind === opt.kind;
-            return (
-              <Button
-                key={opt.kind}
-                type={selected ? "primary" : "default"}
-                disabled={submitting || !opt.supported}
-                onClick={() => handleKindChange(opt.kind)}
-                size="middle"
-                aria-pressed={selected}
-                icon={
-                  selected ? (
-                    <CheckOutlined aria-label="" role="presentation" />
-                  ) : undefined
-                }
-                style={
-                  selected
-                    ? {
-                        boxShadow:
-                          "0 0 0 2px var(--app-primary-bg), 0 4px 12px rgba(0, 113, 227, 0.18)",
-                      }
-                    : undefined
-                }
-              >
-                {opt.label}
-              </Button>
-            );
-          })}
-        </div>
-      </div>
+      <KindPicker
+        value={values.kind}
+        disabled={submitting}
+        onChange={handleKindChange}
+        t={t}
+      />
 
       <Field
         id="provider-name"
@@ -280,7 +184,7 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
         id="provider-base-url"
         label={t("field_base_url")}
         placeholder={
-          PROVIDER_KIND_OPTIONS.find((tp) => tp.kind === values.kind)
+          PROVIDER_KIND_OPTIONS.find((o) => o.kind === values.kind)
             ?.defaultBaseUrl || "https://..."
         }
         value={values.base_url}
@@ -328,60 +232,15 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
         <span>{t("enable_provider_label")}</span>
       </label>
 
-      <div className="rounded-xl border border-[var(--app-border-secondary)]">
-        <button
-          type="button"
-          disabled={submitting}
-          onClick={() => setAdvancedOpen((o) => !o)}
-          className="flex w-full items-center gap-2 px-4 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {advancedOpen ? (
-            <CaretDownOutlined className="text-xs" />
-          ) : (
-            <CaretRightOutlined className="text-xs" />
-          )}
-          {t("advanced_section")}
-        </button>
-        {advancedOpen && (
-          <div className="space-y-4 border-t border-[var(--app-border-secondary)] px-4 py-4">
-            <Field
-              id="provider-monthly-quota"
-              label={t("field_monthly_quota")}
-              inputMode="decimal"
-              placeholder={t("field_monthly_quota_placeholder")}
-              value={values.monthly_quota}
-              onChange={(v) => setValues((s) => ({ ...s, monthly_quota: v }))}
-              error={errors.monthly_quota}
-              hint={t("field_monthly_quota_hint")}
-              disabled={submitting}
-            />
-            <Field
-              id="provider-rate-limit-rpm"
-              label={t("field_rate_limit")}
-              inputMode="numeric"
-              placeholder={t("field_rate_limit_placeholder")}
-              value={values.rate_limit_rpm}
-              onChange={(v) => setValues((s) => ({ ...s, rate_limit_rpm: v }))}
-              error={errors.rate_limit_rpm}
-              hint={t("field_rate_limit_hint")}
-              disabled={submitting}
-            />
-            <Field
-              id="provider-cost-per-1k"
-              label={t("field_cost_per_1k")}
-              inputMode="decimal"
-              placeholder={t("field_cost_per_1k_placeholder")}
-              value={values.cost_per_1k_tokens}
-              onChange={(v) =>
-                setValues((s) => ({ ...s, cost_per_1k_tokens: v }))
-              }
-              error={errors.cost_per_1k_tokens}
-              hint={t("field_cost_per_1k_hint")}
-              disabled={submitting}
-            />
-          </div>
-        )}
-      </div>
+      <AdvancedSection
+        open={advancedOpen}
+        disabled={submitting}
+        values={values}
+        errors={errors}
+        onToggle={() => setAdvancedOpen((o) => !o)}
+        onChange={setValues}
+        t={t}
+      />
 
       <footer className="space-y-3">
         <div className="flex items-center justify-between gap-3">
@@ -428,54 +287,202 @@ export function AddProviderForm({ onAdded }: AddProviderFormProps) {
         </div>
 
         {successId && (
-          <div className="flex items-center gap-3 rounded-lg border border-[var(--app-border-secondary)] bg-[var(--app-bg-subtle)] px-4 py-3">
-            <Button
-              type="default"
-              icon={
-                testing ? (
-                  <LoadingOutlined
-                    className="animate-spin"
-                    aria-label=""
-                    role="presentation"
-                  />
-                ) : (
-                  <ApiOutlined aria-label="" role="presentation" />
-                )
-              }
-              onClick={handleTestConnection}
-              disabled={testing}
-            >
-              {t("test_connection")}
-            </Button>
-            {testResult && (
-              <div className="text-xs text-muted-foreground">
-                <span
-                  className={
-                    testResult.success ? "text-green-600" : "text-destructive"
-                  }
-                >
-                  {testResult.success
-                    ? t("test_connected", {
-                        latency: testResult.response_time_ms ?? 0,
-                      })
-                    : testResult.message}
-                </span>
-                <span className="ml-2">
-                  {testResult.http_status != null
-                    ? `HTTP ${testResult.http_status}`
-                    : ""}
-                </span>
-              </div>
-            )}
-            {testError && (
-              <span className="text-xs text-destructive">
-                {t("test_failed", { error: testError })}
-              </span>
-            )}
-          </div>
+          <TestConnectionStrip
+            testing={testing}
+            testResult={testResult}
+            testError={testError}
+            onClick={handleTestConnection}
+            t={t}
+          />
         )}
       </footer>
     </form>
+  );
+}
+
+// ─── 表单内部子组件 ───────────────────────────────────────────────────
+
+interface KindPickerProps {
+  value: ProviderKind;
+  disabled: boolean;
+  onChange: (kind: ProviderKind) => void;
+  t: TFn;
+}
+
+function KindPicker({ value, disabled, onChange, t }: KindPickerProps) {
+  return (
+    <div className="space-y-2">
+      <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+        {t("provider_type")}
+      </span>
+      <div className="flex flex-wrap gap-2">
+        {PROVIDER_KIND_OPTIONS.map((opt) => {
+          const selected = value === opt.kind;
+          return (
+            <Button
+              key={opt.kind}
+              type={selected ? "primary" : "default"}
+              disabled={disabled || !opt.supported}
+              onClick={() => onChange(opt.kind)}
+              size="middle"
+              aria-pressed={selected}
+              icon={
+                selected ? (
+                  <CheckOutlined aria-label="" role="presentation" />
+                ) : undefined
+              }
+              style={
+                selected
+                  ? {
+                      boxShadow:
+                        "0 0 0 2px var(--app-primary-bg), 0 4px 12px rgba(0, 113, 227, 0.18)",
+                    }
+                  : undefined
+              }
+            >
+              {opt.label}
+            </Button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+interface AdvancedSectionProps {
+  open: boolean;
+  disabled: boolean;
+  values: FormValues;
+  errors: FieldErrors;
+  onToggle: () => void;
+  onChange: React.Dispatch<React.SetStateAction<FormValues>>;
+  t: TFn;
+}
+
+function AdvancedSection({
+  open,
+  disabled,
+  values,
+  errors,
+  onToggle,
+  onChange,
+  t,
+}: AdvancedSectionProps) {
+  return (
+    <div className="rounded-xl border border-[var(--app-border-secondary)]">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={onToggle}
+        className="flex w-full items-center gap-2 px-4 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {open ? (
+          <CaretDownOutlined className="text-xs" />
+        ) : (
+          <CaretRightOutlined className="text-xs" />
+        )}
+        {t("advanced_section")}
+      </button>
+      {open && (
+        <div className="space-y-4 border-t border-[var(--app-border-secondary)] px-4 py-4">
+          <Field
+            id="provider-monthly-quota"
+            label={t("field_monthly_quota")}
+            inputMode="decimal"
+            placeholder={t("field_monthly_quota_placeholder")}
+            value={values.monthly_quota}
+            onChange={(v) => onChange((s) => ({ ...s, monthly_quota: v }))}
+            error={errors.monthly_quota}
+            hint={t("field_monthly_quota_hint")}
+            disabled={disabled}
+          />
+          <Field
+            id="provider-rate-limit-rpm"
+            label={t("field_rate_limit")}
+            inputMode="numeric"
+            placeholder={t("field_rate_limit_placeholder")}
+            value={values.rate_limit_rpm}
+            onChange={(v) => onChange((s) => ({ ...s, rate_limit_rpm: v }))}
+            error={errors.rate_limit_rpm}
+            hint={t("field_rate_limit_hint")}
+            disabled={disabled}
+          />
+          <Field
+            id="provider-cost-per-1k"
+            label={t("field_cost_per_1k")}
+            inputMode="decimal"
+            placeholder={t("field_cost_per_1k_placeholder")}
+            value={values.cost_per_1k_tokens}
+            onChange={(v) => onChange((s) => ({ ...s, cost_per_1k_tokens: v }))}
+            error={errors.cost_per_1k_tokens}
+            hint={t("field_cost_per_1k_hint")}
+            disabled={disabled}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface TestConnectionStripProps {
+  testing: boolean;
+  testResult: StreamCheckResult | null;
+  testError: string | null;
+  onClick: () => void;
+  t: TFn;
+}
+
+function TestConnectionStrip({
+  testing,
+  testResult,
+  testError,
+  onClick,
+  t,
+}: TestConnectionStripProps) {
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-[var(--app-border-secondary)] bg-[var(--app-bg-subtle)] px-4 py-3">
+      <Button
+        type="default"
+        icon={
+          testing ? (
+            <LoadingOutlined
+              className="animate-spin"
+              aria-label=""
+              role="presentation"
+            />
+          ) : (
+            <ApiOutlined aria-label="" role="presentation" />
+          )
+        }
+        onClick={onClick}
+        disabled={testing}
+      >
+        {t("test_connection")}
+      </Button>
+      {testResult && (
+        <div className="text-xs text-muted-foreground">
+          <span
+            className={
+              testResult.success ? "text-green-600" : "text-destructive"
+            }
+          >
+            {testResult.success
+              ? t("test_connected", {
+                  latency: testResult.response_time_ms ?? 0,
+                })
+              : testResult.message}
+          </span>
+          {testResult.http_status != null && (
+            <span className="ml-2">HTTP {testResult.http_status}</span>
+          )}
+        </div>
+      )}
+      {testError && (
+        <span className="text-xs text-destructive">
+          {t("test_failed", { error: testError })}
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -507,7 +514,6 @@ function Field({
   const errorId = `${id}-error`;
   const hintId = `${id}-hint`;
   const describedBy = cn(error && errorId, hint && hintId) || undefined;
-  const status = error ? "error" : undefined;
   const commonProps = {
     id,
     value,
@@ -515,10 +521,10 @@ function Field({
     disabled,
     "aria-invalid": Boolean(error),
     "aria-describedby": describedBy,
-    status,
+    status: error ? ("error" as const) : undefined,
     onChange: (e: React.ChangeEvent<HTMLInputElement>) =>
       onChange(e.target.value),
-  } as const;
+  };
 
   return (
     <div className="space-y-1.5">
@@ -545,4 +551,79 @@ function Field({
       ) : null}
     </div>
   );
+}
+
+// ─── 校验 + 提交体构造 ────────────────────────────────────────────────
+
+function validate(values: FormValues, t: TFn): FieldErrors {
+  const errors: FieldErrors = {};
+  if (!values.name.trim()) errors.name = t("validation_name_required");
+
+  const trimmedUrl = values.base_url.trim();
+  const typeOption = PROVIDER_KIND_OPTIONS.find((o) => o.kind === values.kind);
+  if (!trimmedUrl) {
+    if (typeOption?.requiresBaseUrl) {
+      errors.base_url = t("validation_base_url_required");
+    }
+  } else {
+    try {
+      const url = new URL(trimmedUrl);
+      if (url.protocol !== "https:" && url.protocol !== "http:") {
+        errors.base_url = t("validation_base_url_protocol");
+      }
+    } catch {
+      errors.base_url = t("validation_base_url_invalid");
+    }
+  }
+
+  if (!values.api_key.trim()) errors.api_key = t("validation_api_key_required");
+
+  const priority = Number(values.priority);
+  if (!Number.isInteger(priority)) {
+    errors.priority = t("validation_priority_integer");
+  } else if (priority < PRIORITY_MIN || priority > PRIORITY_MAX) {
+    errors.priority = t("validation_priority_range", {
+      min: PRIORITY_MIN,
+      max: PRIORITY_MAX,
+    });
+  }
+
+  // 三个高级字段都是"留空视为不限"；只在用户实际填了内容时校验。
+  if (values.monthly_quota.trim()) {
+    const v = Number(values.monthly_quota);
+    if (isNaN(v) || v < 0)
+      errors.monthly_quota = t("validation_non_negative_number");
+  }
+  if (values.rate_limit_rpm.trim()) {
+    const v = Number(values.rate_limit_rpm);
+    if (!Number.isInteger(v) || v < 0)
+      errors.rate_limit_rpm = t("validation_non_negative_integer");
+  }
+  if (values.cost_per_1k_tokens.trim()) {
+    const v = Number(values.cost_per_1k_tokens);
+    if (isNaN(v) || v < 0)
+      errors.cost_per_1k_tokens = t("validation_non_negative_number");
+  }
+
+  return errors;
+}
+
+function optionalNumber(raw: string): number | null {
+  return raw.trim() ? Number(raw) : null;
+}
+
+function buildProviderInput(values: FormValues): ProviderInput {
+  return {
+    name: values.name.trim(),
+    kind: values.kind,
+    // 末尾斜杠会让 Rust 端拼接路径时出现 `//` —— 后端实际能容错，但
+    // 保持入库的形式整洁。
+    base_url: values.base_url.trim().replace(/\/$/, ""),
+    api_key: values.api_key.trim(),
+    priority: Number(values.priority),
+    enabled: values.enabled,
+    monthly_quota: optionalNumber(values.monthly_quota),
+    rate_limit_rpm: optionalNumber(values.rate_limit_rpm),
+    cost_per_1k_tokens: optionalNumber(values.cost_per_1k_tokens),
+  };
 }

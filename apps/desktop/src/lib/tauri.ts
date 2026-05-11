@@ -1,16 +1,53 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
-/** Wire shape returned by the `get_local_api_config` Tauri command.
- * Mirrors `proxy::runtime::LocalApiConfig` in the Rust backend. */
+/**
+ * 这个模块是 React 端与 Tauri 后端的唯一边界：所有 `invoke`/`listen`
+ * 调用都收拢在这里，组件不直接接触 `@tauri-apps/api`。
+ *
+ * 类型与字段名严格镜像 Rust 端（`apps/desktop/src-tauri/src/...`），
+ * 用下划线命名是因为后端用 serde 默认序列化，没必要在中间再加一层
+ * camelCase 转换。
+ */
+
+// ─── Local API 代理（本地 8787 端口的统一入口）─────────────────────────
+
+/** 后端 `proxy::runtime::LocalApiConfig` 的镜像。 */
 export interface LocalApiConfig {
   base_url: string;
   api_key: string;
 }
 
-/** Caller-supplied provider input. Mirrors
- * `providers::model::ProviderInput`; backend persistence lands in
- * T1.0.2.19's `add_provider` Tauri command. */
+export async function getLocalApiConfig(): Promise<LocalApiConfig> {
+  return invoke<LocalApiConfig>("get_local_api_config");
+}
+
+export async function regenerateApiKey(): Promise<LocalApiConfig> {
+  return invoke<LocalApiConfig>("regenerate_api_key");
+}
+
+export async function restartProxy(): Promise<LocalApiConfig> {
+  return invoke<LocalApiConfig>("restart_proxy");
+}
+
+/**
+ * 后端 key 轮换 / 端口变更后会发这个事件；组件用它即时刷新展示。
+ * 事件名固定，两端测试都钉住这个常量。
+ */
+export const EVENT_LOCAL_API_CONFIG_CHANGED = "local_api_config_changed";
+
+/** 订阅本地代理配置变更；返回值需要在 effect cleanup 中调用以取消订阅。 */
+export async function onLocalApiConfigChanged(
+  callback: (config: LocalApiConfig) => void,
+): Promise<UnlistenFn> {
+  return listen<LocalApiConfig>(EVENT_LOCAL_API_CONFIG_CHANGED, (event) => {
+    callback(event.payload);
+  });
+}
+
+// ─── Provider 增删改查 ─────────────────────────────────────────────────
+
+/** 用户在表单里填写的供应商输入，对应 Rust `ProviderInput`。 */
 export interface ProviderInput {
   name: string;
   kind: "openai" | "anthropic" | "gemini" | "relay" | "custom";
@@ -23,7 +60,7 @@ export interface ProviderInput {
   cost_per_1k_tokens?: number | null;
 }
 
-/** Persisted provider returned by `list_providers` / `add_provider`. */
+/** 持久化后的供应商；`api_key` 出于安全原因不回传，所以这里不存在。 */
 export interface Provider {
   id: string;
   name: string;
@@ -37,22 +74,6 @@ export interface Provider {
   created_at: string;
   updated_at: string;
 }
-
-export type StreamCheckStatus = "operational" | "degraded" | "failed";
-
-export interface StreamCheckResult {
-  status: StreamCheckStatus;
-  success: boolean;
-  message: string;
-  response_time_ms: number | null;
-  http_status: number | null;
-  model_used: string;
-  tested_at: number;
-  retry_count: number;
-  error_category?: string | null;
-}
-
-// ─── Provider CRUD (T1.0.2.19) ───────────────────────────────
 
 export async function listProviders(): Promise<Provider[]> {
   return invoke<Provider[]>("list_providers");
@@ -73,7 +94,7 @@ export async function deleteProvider(id: string): Promise<void> {
   return invoke<void>("delete_provider", { id });
 }
 
-// ─── Strategy (T1.0.2.20) ────────────────────────────────────
+// ─── 切换策略 ──────────────────────────────────────────────────────────
 
 export type SwitchStrategy =
   | "priority"
@@ -82,6 +103,7 @@ export type SwitchStrategy =
   | "load_balance"
   | "smart";
 
+/** 智能策略 4 个维度的权重；后端要求总和为 100。 */
 export interface SmartWeights {
   health: number;
   response_time: number;
@@ -114,7 +136,7 @@ export async function updateStrategyParams(
   return invoke<void>("update_strategy_params", { params });
 }
 
-// ─── Health (T1.0.2.21) ──────────────────────────────────────
+// ─── 健康检查与监控 ────────────────────────────────────────────────────
 
 export type HealthStatus = "healthy" | "degraded" | "down";
 
@@ -130,10 +152,12 @@ export interface HealthSnapshotResponse {
   providers: HealthSnapshot[];
 }
 
+/** 读取缓存的健康快照（便宜，秒级查询用）。 */
 export async function getHealthSnapshot(): Promise<HealthSnapshotResponse> {
   return invoke<HealthSnapshotResponse>("get_health_snapshot");
 }
 
+/** 强制立即对所有 provider 做一次健康探测（用户点"刷新"时调用）。 */
 export async function refreshHealthSnapshot(): Promise<HealthSnapshotResponse> {
   return invoke<HealthSnapshotResponse>("refresh_health_snapshot");
 }
@@ -146,11 +170,10 @@ export interface ProviderStatusChangedEvent {
   success_rate: number;
 }
 
-/** Stable event name; mirrors `health::EVENT_PROVIDER_STATUS_CHANGED`
- * on the Rust side. */
+/** 镜像 Rust `health::EVENT_PROVIDER_STATUS_CHANGED`。 */
 export const EVENT_PROVIDER_STATUS_CHANGED = "provider-status-changed";
 
-/** Subscribe to health status changes emitted by the backend checker. */
+/** 后端检测到 healthy↔down 状态切换时推这条事件。 */
 export async function onProviderStatusChanged(
   callback: (event: ProviderStatusChangedEvent) => void,
 ): Promise<UnlistenFn> {
@@ -162,33 +185,26 @@ export async function onProviderStatusChanged(
   );
 }
 
-/** Stable event name; mirrors `commands::EVENT_LOCAL_API_CONFIG_CHANGED`
- * on the Rust side. Pinned in tests on both sides. */
-export const EVENT_LOCAL_API_CONFIG_CHANGED = "local_api_config_changed";
+// ─── 单个供应商的连接测试 ─────────────────────────────────────────────
 
-/** Subscribe to proxy config changes (regenerate / restart).
- * Returns the unlisten function — wire it into a useEffect cleanup. */
-export async function onLocalApiConfigChanged(
-  callback: (config: LocalApiConfig) => void,
-): Promise<UnlistenFn> {
-  return listen<LocalApiConfig>(EVENT_LOCAL_API_CONFIG_CHANGED, (event) => {
-    callback(event.payload);
-  });
+export type StreamCheckStatus = "operational" | "degraded" | "failed";
+
+/**
+ * 一次连通性 / 流式探针的结构化结果；对齐 cc-switch 的 stream check
+ * 语义：除了 latency，还携带 HTTP 状态码、错误分类、实际使用的 model
+ * 名等，避免前端只能拿到 number 时各种猜测。
+ */
+export interface StreamCheckResult {
+  status: StreamCheckStatus;
+  success: boolean;
+  message: string;
+  response_time_ms: number | null;
+  http_status: number | null;
+  model_used: string;
+  tested_at: number;
+  retry_count: number;
+  error_category?: string | null;
 }
-
-export async function getLocalApiConfig(): Promise<LocalApiConfig> {
-  return invoke<LocalApiConfig>("get_local_api_config");
-}
-
-export async function regenerateApiKey(): Promise<LocalApiConfig> {
-  return invoke<LocalApiConfig>("regenerate_api_key");
-}
-
-export async function restartProxy(): Promise<LocalApiConfig> {
-  return invoke<LocalApiConfig>("restart_proxy");
-}
-
-// ─── Connection Test (T1.0.4.05) ─────────────────────────────
 
 export async function testProviderConnection(
   id: string,
@@ -196,7 +212,7 @@ export async function testProviderConnection(
   return invoke<StreamCheckResult>("test_provider_connection", { id });
 }
 
-// ─── Metrics & Timeline (T1.0.4.10-13) ──────────────────────
+// ─── 指标 / 时间序列 / 切换历史 ────────────────────────────────────────
 
 export interface MetricsBucket {
   timestamp: string;
@@ -236,7 +252,7 @@ export async function getSwitchTimeline(): Promise<SwitchEvent[]> {
   return invoke<SwitchEvent[]>("get_switch_timeline");
 }
 
-// ─── Notification (T1.0.4.17) ────────────────────────────────
+// ─── 桌面通知 ─────────────────────────────────────────────────────────
 
 export async function sendNotification(
   title: string,
@@ -245,11 +261,11 @@ export async function sendNotification(
   return invoke<void>("send_notification", { title, body });
 }
 
-// ─── Config Export / Import (T1.0.4.18-20) ───────────────────
+// ─── 配置导入导出 / 模板预设 ──────────────────────────────────────────
 
 export interface ExportProvider {
   name: string;
-  kind: "openai" | "anthropic" | "gemini" | "relay" | "custom";
+  kind: ProviderInput["kind"];
   base_url: string;
   priority: number;
   enabled: boolean;
@@ -265,6 +281,10 @@ export interface TemplatePreset {
   providers: ExportProvider[];
 }
 
+/**
+ * 后端用 `Vec<u8>` 返回二进制 blob，序列化到前端是 `number[]`，这里
+ * 包装一层转回 `Uint8Array`，方便直接喂给 `Blob`。
+ */
 export async function exportConfig(password: string): Promise<Uint8Array> {
   const raw = await invoke<number[]>("export_config_json", { password });
   return new Uint8Array(raw);
@@ -284,23 +304,7 @@ export async function getTemplatePresets(): Promise<TemplatePreset[]> {
   return invoke<TemplatePreset[]>("get_template_presets");
 }
 
-/** Copy text to the system clipboard.
- *
- * Browser Clipboard API is the happy path; we keep the
- * `document.execCommand` fallback because Tauri's webview on
- * older WebKit / WebView2 builds occasionally exposes neither. */
+/** 写入剪贴板；Tauri WebView 两端都支持 `navigator.clipboard`。 */
 export async function copyToClipboard(text: string): Promise<void> {
-  if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(text);
-    return;
-  }
-  if (typeof document === "undefined") return;
-  const textarea = document.createElement("textarea");
-  textarea.value = text;
-  textarea.setAttribute("readonly", "");
-  textarea.style.position = "fixed";
-  document.body.appendChild(textarea);
-  textarea.select();
-  document.execCommand("copy");
-  document.body.removeChild(textarea);
+  await navigator.clipboard.writeText(text);
 }

@@ -5,6 +5,10 @@ interface TopbarProps {
   description?: string;
 }
 
+/**
+ * 顶部条：左边是当前页面标题 + 描述（由 `AppShell` 根据路由表驱动），
+ * 右边是版本徽章。所有色值都走 CSS variable，跟随 `useColorScheme` 切换。
+ */
 export function Topbar({ title, description }: TopbarProps) {
   const { t } = useTranslation("common");
 
@@ -18,10 +22,7 @@ export function Topbar({ title, description }: TopbarProps) {
       className="flex h-16 items-center justify-between px-8"
     >
       <div>
-        <h1
-          className="text-lg font-semibold leading-apple-headline tracking-apple-tight"
-          style={{ color: "var(--app-text)" }}
-        >
+        <h1 className="text-lg font-semibold leading-apple-headline tracking-apple-tight">
           {title}
         </h1>
         {description ? (

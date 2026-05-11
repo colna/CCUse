@@ -1,21 +1,23 @@
-import { useCallback, useEffect, useState } from "react";
 import {
-  PieChart,
-  Pie,
   Cell,
-  Tooltip,
   Legend,
+  Pie,
+  PieChart,
   ResponsiveContainer,
+  Tooltip,
 } from "recharts";
+import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
-import { getProviderCostSummary, type ProviderCostSummary } from "@/lib/tauri";
+import { getProviderCostSummary } from "@/lib/tauri";
+import { useTimeseriesPoll } from "@/lib/useTimeseriesPoll";
 
-interface ChartSlice {
-  name: string;
-  value: number;
-  requests: number;
-}
+/**
+ * 按供应商展示成本分布的甜甜圈图。颜色环来自常见品牌色调，避免靠
+ * 主题变量决定（pie 图需要稳定可识别的多色）。
+ */
+
+const REFRESH_INTERVAL_MS = 30_000;
 
 const COLORS = [
   "hsl(var(--primary))",
@@ -28,64 +30,29 @@ const COLORS = [
   "hsl(170 60% 45%)",
 ];
 
-function CustomTooltip({
-  active,
-  payload,
-  t,
-}: {
-  active?: boolean;
-  payload?: { name: string; value: number; payload: { requests: number } }[];
-  t: (key: string, opts?: Record<string, string | number>) => string;
-}) {
-  if (!active || !payload?.length) return null;
-  const entry = payload[0];
-  return (
-    <div className="rounded-lg border border-border bg-card px-3 py-2 text-xs shadow-md">
-      <p className="font-medium">{entry.name}</p>
-      <p className="mt-1 text-muted-foreground">
-        {t("cost_label", { value: (entry.value as number).toFixed(4) })}
-      </p>
-      <p className="text-muted-foreground">
-        {t("requests_label", { value: entry.payload.requests })}
-      </p>
-    </div>
-  );
+interface ChartSlice {
+  name: string;
+  value: number;
+  requests: number;
 }
-
-const REFRESH_INTERVAL = 30_000;
 
 export function CostPieChart() {
   const { t } = useTranslation("monitor");
   const { t: tc } = useTranslation("common");
-  const [chartData, setChartData] = useState<ChartSlice[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data, loading, error } = useTimeseriesPoll(
+    getProviderCostSummary,
+    REFRESH_INTERVAL_MS,
+  );
 
-  const fetchData = useCallback(async () => {
-    try {
-      const summaries: ProviderCostSummary[] = await getProviderCostSummary();
-      const slices: ChartSlice[] = summaries.map((s) => ({
+  const chartData = useMemo<ChartSlice[]>(
+    () =>
+      (data ?? []).map((s) => ({
         name: s.provider_name,
         value: s.total_cost,
         requests: s.request_count,
-      }));
-      setChartData(slices);
-      setError(null);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-  useEffect(() => {
-    const id = setInterval(fetchData, REFRESH_INTERVAL);
-    return () => clearInterval(id);
-  }, [fetchData]);
+      })),
+    [data],
+  );
 
   if (error) {
     return (
@@ -130,7 +97,7 @@ export function CostPieChart() {
                 />
               ))}
             </Pie>
-            <Tooltip content={<CustomTooltip t={t} />} />
+            <Tooltip content={<CostTooltip t={t} />} />
             <Legend
               wrapperStyle={{ fontSize: 12 }}
               formatter={(value: string) => (
@@ -140,6 +107,30 @@ export function CostPieChart() {
           </PieChart>
         </ResponsiveContainer>
       )}
+    </div>
+  );
+}
+
+function CostTooltip({
+  active,
+  payload,
+  t,
+}: {
+  active?: boolean;
+  payload?: { name: string; value: number; payload: { requests: number } }[];
+  t: (key: string, opts?: Record<string, string | number>) => string;
+}) {
+  if (!active || !payload?.length) return null;
+  const entry = payload[0]!;
+  return (
+    <div className="rounded-lg border border-border bg-card px-3 py-2 text-xs shadow-md">
+      <p className="font-medium">{entry.name}</p>
+      <p className="mt-1 text-muted-foreground">
+        {t("cost_label", { value: entry.value.toFixed(4) })}
+      </p>
+      <p className="text-muted-foreground">
+        {t("requests_label", { value: entry.payload.requests })}
+      </p>
     </div>
   );
 }

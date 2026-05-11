@@ -12,583 +12,37 @@ import {
   arrayMove,
   SortableContext,
   sortableKeyboardCoordinates,
-  useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
-import {
-  CheckOutlined,
-  CloseOutlined,
-  DeleteOutlined,
-  EditOutlined,
-  ExperimentOutlined,
-  HolderOutlined,
-  LoadingOutlined,
-  ReloadOutlined,
-} from "@ant-design/icons";
-import { Tooltip } from "antd";
 import { useTranslation } from "react-i18next";
 
-import { Button } from "@/components/ui/button";
-import { PROVIDER_KIND_OPTIONS } from "@/lib/providerKinds";
-import { cn } from "@/lib/utils";
 import {
-  listProviders,
   deleteProvider,
-  updateProvider,
   getHealthSnapshot,
+  listProviders,
   onProviderStatusChanged,
   testProviderConnection,
+  updateProvider,
+  type HealthSnapshot,
   type Provider,
   type ProviderInput,
-  type HealthSnapshot,
-  type StreamCheckResult,
 } from "@/lib/tauri";
 
-function statusColor(status?: string): string {
-  switch (status) {
-    case "healthy":
-      return "bg-green-500";
-    case "degraded":
-      return "bg-yellow-500";
-    case "down":
-      return "bg-red-500";
-    default:
-      return "bg-muted-foreground/40";
-  }
-}
+import { DeleteDialog, ProviderErrorDialog } from "./dialogs";
+import { SortableProviderItem, type EditState } from "./SortableProviderItem";
 
-function formatSuccessRate(rate?: number): string {
-  if (rate == null) return "--";
-  return `${(rate * 100).toFixed(1)}%`;
-}
+/**
+ * Provider 列表的"容器组件"：
+ * - 拉取并维护 `providers` / `healthMap`；
+ * - 把 CRUD / 拖拽排序 / 测试连接的副作用整合到 Tauri command；
+ * - 复杂展示拆给 `SortableProviderItem`，弹窗拆给 `dialogs.tsx`。
+ *
+ * 排序策略：仪表盘里"优先级数字越小越优先"。拖拽后我们用每 10 一档的等差
+ * 数列重写优先级（10, 20, 30…），这样后续手填的数字 (15 之类) 还能插队。
+ */
 
-function streamStatusLabel(status?: StreamCheckResult["status"]): string {
-  switch (status) {
-    case "operational":
-      return "正常";
-    case "degraded":
-      return "降级";
-    case "failed":
-      return "失败";
-    default:
-      return "--";
-  }
-}
-
-interface DeleteDialogProps {
-  providerName: string;
-  deleting: boolean;
-  onConfirm: () => void;
-  onCancel: () => void;
-}
-
-function DeleteDialog({
-  providerName,
-  deleting,
-  onConfirm,
-  onCancel,
-}: DeleteDialogProps) {
-  const { t } = useTranslation("providers");
-  const { t: tc } = useTranslation("common");
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div
-        role="alertdialog"
-        aria-modal="true"
-        aria-labelledby="delete-provider-dialog-title"
-        aria-busy={deleting}
-        className="mx-4 w-full max-w-sm rounded-2xl border border-[var(--app-border-secondary)] bg-[var(--app-bg-elevated)] p-6 shadow-xl"
-      >
-        <h3
-          id="delete-provider-dialog-title"
-          className="text-base font-semibold"
-        >
-          {t("delete_title")}
-        </h3>
-        <p className="mt-2 text-sm text-muted-foreground">
-          {t("delete_confirm")}{" "}
-          <span className="font-medium text-foreground">{providerName}</span>?{" "}
-          {t("delete_undone")}
-        </p>
-        <div className="mt-5 flex justify-end gap-2">
-          <Button type="default" onClick={onCancel} disabled={deleting}>
-            {tc("cancel")}
-          </Button>
-          <Button
-            type="primary"
-            danger
-            onClick={onConfirm}
-            disabled={deleting}
-            icon={
-              deleting ? (
-                <LoadingOutlined
-                  className="animate-spin"
-                  aria-label=""
-                  role="presentation"
-                />
-              ) : undefined
-            }
-          >
-            {deleting ? t("deleting") : tc("delete")}
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-interface ProviderErrorDialogProps {
-  title: string;
-  providerName: string;
-  message: string;
-  onClose: () => void;
-}
-
-function ProviderErrorDialog({
-  title,
-  providerName,
-  message,
-  onClose,
-}: ProviderErrorDialogProps) {
-  const { t: tc } = useTranslation("common");
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div
-        role="alertdialog"
-        aria-modal="true"
-        aria-labelledby="provider-error-dialog-title"
-        aria-describedby="provider-error-dialog-message"
-        className="mx-4 w-full max-w-sm rounded-2xl border border-[var(--app-error-border)] bg-[var(--app-bg-elevated)] p-6 shadow-xl"
-      >
-        <h3
-          id="provider-error-dialog-title"
-          className="text-base font-semibold text-foreground"
-        >
-          {title}
-        </h3>
-        <p className="mt-2 text-sm text-muted-foreground">{providerName}</p>
-        <pre
-          id="provider-error-dialog-message"
-          className="mt-3 max-h-44 overflow-auto whitespace-pre-wrap rounded-md bg-[var(--app-bg-subtle)] p-3 text-xs text-destructive"
-        >
-          {message}
-        </pre>
-        <div className="mt-5 flex justify-end">
-          <Button type="default" onClick={onClose}>
-            {tc("close")}
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-interface EditState {
-  name: string;
-  kind: ProviderInput["kind"];
-  base_url: string;
-  api_key: string;
-  priority: string;
-  enabled: boolean;
-}
-
-interface SortableProviderItemProps {
-  provider: Provider;
-  health?: HealthSnapshot;
-  testing?: boolean;
-  deleting?: boolean;
-  onDelete: (id: string, name: string) => void;
-  onToggleEnabled: (id: string, enabled: boolean) => void;
-  onTestConnection: (id: string) => Promise<void>;
-  onSaveEdit: (id: string, patch: Partial<EditState>) => Promise<void>;
-}
-
-function SortableProviderItem({
-  provider,
-  health,
-  testing,
-  deleting,
-  onDelete,
-  onToggleEnabled,
-  onTestConnection,
-  onSaveEdit,
-}: SortableProviderItemProps) {
-  const { t } = useTranslation("providers");
-  const { t: tc } = useTranslation("common");
-  const [editing, setEditing] = useState(false);
-  const [editValues, setEditValues] = useState<EditState>({
-    name: provider.name,
-    kind: provider.kind,
-    base_url: provider.base_url,
-    api_key: "",
-    priority: String(provider.priority),
-    enabled: provider.enabled,
-  });
-  const [saving, setSaving] = useState(false);
-
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: provider.id });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  };
-
-  const handleStartEdit = useCallback(() => {
-    setEditValues({
-      name: provider.name,
-      kind: provider.kind,
-      base_url: provider.base_url,
-      api_key: "",
-      priority: String(provider.priority),
-      enabled: provider.enabled,
-    });
-    setEditing(true);
-  }, [provider]);
-
-  const handleCancelEdit = useCallback(() => {
-    setEditing(false);
-  }, []);
-
-  const handleSaveEdit = useCallback(async () => {
-    if (saving) return;
-    setSaving(true);
-    try {
-      await onSaveEdit(provider.id, editValues);
-      setEditing(false);
-    } finally {
-      setSaving(false);
-    }
-  }, [provider.id, editValues, saving, onSaveEdit]);
-
-  const inputClass =
-    "flex-1 rounded-md border border-[var(--app-border)] bg-[var(--app-bg-container)] px-2 py-1 text-sm outline-none focus-visible:border-[var(--app-primary)] disabled:cursor-not-allowed disabled:opacity-60";
-
-  if (editing) {
-    return (
-      <div
-        ref={setNodeRef}
-        style={style}
-        aria-busy={saving}
-        className="border-[var(--app-primary)]/40 space-y-3 rounded-2xl border bg-[var(--app-bg-container)] px-5 py-4"
-      >
-        <div className="flex items-center gap-2">
-          <label
-            htmlFor={`edit-name-${provider.id}`}
-            className="w-16 shrink-0 text-xs text-muted-foreground"
-          >
-            {t("edit_name_label")}
-          </label>
-          <input
-            id={`edit-name-${provider.id}`}
-            type="text"
-            value={editValues.name}
-            disabled={saving}
-            onChange={(e) =>
-              setEditValues((s) => ({ ...s, name: e.target.value }))
-            }
-            className={inputClass}
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <label
-            htmlFor={`edit-kind-${provider.id}`}
-            className="w-16 shrink-0 text-xs text-muted-foreground"
-          >
-            {t("edit_kind_label")}
-          </label>
-          <select
-            id={`edit-kind-${provider.id}`}
-            value={editValues.kind}
-            disabled={saving}
-            onChange={(e) =>
-              setEditValues((s) => ({
-                ...s,
-                kind: e.target.value as ProviderInput["kind"],
-              }))
-            }
-            className={cn(inputClass, "w-40 flex-none")}
-          >
-            {PROVIDER_KIND_OPTIONS.map((option) => (
-              <option
-                key={option.kind}
-                value={option.kind}
-                disabled={!option.supported}
-              >
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="flex items-center gap-2">
-          <label
-            htmlFor={`edit-url-${provider.id}`}
-            className="w-16 shrink-0 text-xs text-muted-foreground"
-          >
-            {t("edit_url_label")}
-          </label>
-          <input
-            id={`edit-url-${provider.id}`}
-            type="text"
-            value={editValues.base_url}
-            disabled={saving}
-            onChange={(e) =>
-              setEditValues((s) => ({ ...s, base_url: e.target.value }))
-            }
-            className={inputClass}
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <label
-            htmlFor={`edit-api-key-${provider.id}`}
-            className="w-16 shrink-0 text-xs text-muted-foreground"
-          >
-            {t("field_api_key")}
-          </label>
-          <input
-            id={`edit-api-key-${provider.id}`}
-            type="password"
-            value={editValues.api_key}
-            placeholder={t("edit_api_key_placeholder")}
-            disabled={saving}
-            onChange={(e) =>
-              setEditValues((s) => ({ ...s, api_key: e.target.value }))
-            }
-            className={inputClass}
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <label
-            htmlFor={`edit-priority-${provider.id}`}
-            className="w-16 shrink-0 text-xs text-muted-foreground"
-          >
-            {t("edit_priority_label")}
-          </label>
-          <input
-            id={`edit-priority-${provider.id}`}
-            type="text"
-            inputMode="numeric"
-            value={editValues.priority}
-            disabled={saving}
-            onChange={(e) =>
-              setEditValues((s) => ({ ...s, priority: e.target.value }))
-            }
-            className={cn(inputClass, "w-20 flex-none")}
-          />
-          <label className="ml-4 flex items-center gap-1 text-xs">
-            <input
-              type="checkbox"
-              checked={editValues.enabled}
-              disabled={saving}
-              onChange={(e) =>
-                setEditValues((s) => ({ ...s, enabled: e.target.checked }))
-              }
-              className="size-3.5 rounded border-border accent-primary"
-            />
-            {tc("enabled")}
-          </label>
-          <div className="ml-auto flex items-center gap-1.5">
-            <Button
-              type="text"
-              size="small"
-              shape="circle"
-              onClick={handleSaveEdit}
-              disabled={saving}
-              aria-label={t("save_changes_aria")}
-              icon={
-                saving ? (
-                  <LoadingOutlined
-                    className="animate-spin"
-                    aria-label=""
-                    role="presentation"
-                  />
-                ) : (
-                  <CheckOutlined aria-label="" role="presentation" />
-                )
-              }
-            />
-            <Button
-              type="text"
-              size="small"
-              shape="circle"
-              onClick={handleCancelEdit}
-              disabled={saving}
-              aria-label={t("cancel_editing_aria")}
-              icon={<CloseOutlined aria-label="" role="presentation" />}
-            />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={cn(
-        "flex items-center gap-4 rounded-2xl border border-[var(--app-border-secondary)] bg-[var(--app-bg-container)] px-5 py-3.5 transition-shadow",
-        isDragging && "ring-[var(--app-primary)]/30 z-50 shadow-lg ring-2",
-      )}
-    >
-      <button
-        {...attributes}
-        {...listeners}
-        className="cursor-grab touch-none text-muted-foreground hover:text-foreground"
-        aria-label={t("drag_to_reorder_aria")}
-      >
-        <HolderOutlined className="text-base" />
-      </button>
-
-      <span
-        className={cn(
-          "size-2.5 shrink-0 rounded-full",
-          statusColor(health?.status),
-        )}
-        title={health?.status ?? "unknown"}
-      />
-
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium">{provider.name}</p>
-        <p className="truncate text-xs text-muted-foreground">
-          {provider.kind} ·{" "}
-          {t("priority_display", { value: provider.priority })}
-        </p>
-      </div>
-
-      <div className="flex items-center gap-3 text-xs tabular-nums">
-        <span
-          className={cn(
-            health?.success_rate != null && health.success_rate < 0.9
-              ? "text-yellow-600"
-              : "text-muted-foreground",
-          )}
-          title={t("success_rate_title")}
-        >
-          {formatSuccessRate(health?.success_rate)}
-        </span>
-
-        {health?.response_time_us != null && (
-          <span className="text-muted-foreground">
-            {Math.round(health.response_time_us / 1000)}ms
-          </span>
-        )}
-
-        {health?.status && (
-          <span className="text-muted-foreground">
-            {streamStatusLabel(
-              health.status === "healthy"
-                ? "operational"
-                : health.status === "degraded"
-                  ? "degraded"
-                  : "failed",
-            )}
-          </span>
-        )}
-      </div>
-
-      <span
-        className="mx-1 h-6 w-px shrink-0 bg-[var(--app-border-secondary)]"
-        aria-hidden
-      />
-
-      <label className="flex items-center gap-1 text-xs">
-        <input
-          type="checkbox"
-          checked={provider.enabled}
-          onChange={(e) => onToggleEnabled(provider.id, e.target.checked)}
-          className="size-3.5 rounded border-border accent-primary"
-          aria-label={
-            provider.enabled
-              ? t("disable_provider_aria", { name: provider.name })
-              : t("enable_provider_aria", { name: provider.name })
-          }
-        />
-      </label>
-
-      <div className="flex items-center gap-1">
-        <Tooltip
-          title={t("test_connection_provider_aria", { name: provider.name })}
-        >
-          <Button
-            type="text"
-            size="small"
-            shape="circle"
-            onClick={() => onTestConnection(provider.id)}
-            disabled={testing}
-            aria-label={t("test_connection_provider_aria", {
-              name: provider.name,
-            })}
-            icon={
-              testing ? (
-                <ReloadOutlined spin aria-label="" role="presentation" />
-              ) : (
-                <ExperimentOutlined aria-label="" role="presentation" />
-              )
-            }
-          />
-        </Tooltip>
-        <Tooltip title={t("edit_provider_aria", { name: provider.name })}>
-          <Button
-            type="text"
-            size="small"
-            shape="circle"
-            onClick={handleStartEdit}
-            aria-label={t("edit_provider_aria", { name: provider.name })}
-            icon={<EditOutlined aria-label="" role="presentation" />}
-          />
-        </Tooltip>
-        <Tooltip title={t("delete_provider_aria", { name: provider.name })}>
-          <Button
-            type="text"
-            size="small"
-            shape="circle"
-            danger
-            onClick={() => onDelete(provider.id, provider.name)}
-            disabled={deleting}
-            aria-label={t("delete_provider_aria", { name: provider.name })}
-            icon={
-              deleting ? (
-                <LoadingOutlined
-                  className="animate-spin"
-                  aria-label=""
-                  role="presentation"
-                />
-              ) : (
-                <DeleteOutlined aria-label="" role="presentation" />
-              )
-            }
-          />
-        </Tooltip>
-      </div>
-    </div>
-  );
-}
-
-function providerToInput(
-  provider: Provider,
-  overrides: Partial<ProviderInput> = {},
-): ProviderInput {
-  return {
-    name: provider.name,
-    kind: provider.kind,
-    base_url: provider.base_url,
-    api_key: "",
-    priority: provider.priority,
-    enabled: provider.enabled,
-    monthly_quota: provider.monthly_quota ?? null,
-    rate_limit_rpm: provider.rate_limit_rpm ?? null,
-    cost_per_1k_tokens: provider.cost_per_1k_tokens ?? null,
-    ...overrides,
-  };
-}
+const HEALTH_REFRESH_INTERVAL_MS = 5_000;
+const PRIORITY_STEP = 10;
 
 interface ProviderListProps {
   refreshKey?: number;
@@ -614,24 +68,21 @@ export function ProviderList({ refreshKey }: ProviderListProps) {
 
   const fetchProviders = useCallback(async () => {
     try {
-      const list = await listProviders();
-      setProviders(list);
+      setProviders(await listProviders());
       setError(null);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(errorMessage(err));
     }
   }, []);
 
   const fetchHealth = useCallback(async () => {
+    // 健康快照拉失败不影响主列表；保持 catch 为空意图明确：背景刷新
+    // 失败不该弹错给用户。
     try {
       const snap = await getHealthSnapshot();
-      const map: Record<string, HealthSnapshot> = {};
-      for (const s of snap.providers) {
-        map[s.provider_id] = s;
-      }
-      setHealthMap(map);
+      setHealthMap(indexByProvider(snap.providers));
     } catch {
-      // Health snapshot not critical
+      /* 静默：见上 */
     }
   }, []);
 
@@ -641,11 +92,18 @@ export function ProviderList({ refreshKey }: ProviderListProps) {
   }, [fetchProviders, fetchHealth, refreshKey]);
 
   useEffect(() => {
-    const id = setInterval(fetchHealth, 5000);
+    const id = setInterval(fetchHealth, HEALTH_REFRESH_INTERVAL_MS);
     return () => clearInterval(id);
   }, [fetchHealth]);
 
   useEffect(() => {
+    // 后端推送状态变化时立刻 patch 当前 row，并触发一次完整刷新拿
+    // 到最新的 success_rate / response_time。
+    //
+    // `.catch(() => undefined)` 是为了消化非 Tauri 环境（测试 / 浏览
+    // 器预览）下 `listen()` 没有 `__TAURI_INTERNALS__` 而抛出的
+    // unhandled rejection；那种场合下我们就放弃订阅，但页面其余部
+    // 分仍然要可用。
     const unlistenPromise = onProviderStatusChanged((event) => {
       setHealthMap((current) => ({
         ...current,
@@ -659,7 +117,7 @@ export function ProviderList({ refreshKey }: ProviderListProps) {
         },
       }));
       void fetchHealth();
-    }).catch(() => null);
+    }).catch(() => undefined);
     return () => {
       void unlistenPromise.then((unlisten) => unlisten?.());
     };
@@ -680,22 +138,22 @@ export function ProviderList({ refreshKey }: ProviderListProps) {
       const oldIndex = providers.findIndex((p) => p.id === active.id);
       const newIndex = providers.findIndex((p) => p.id === over.id);
       const reordered = arrayMove(providers, oldIndex, newIndex);
-
       setProviders(reordered);
 
+      // 重写优先级时若任意一次写入失败，立刻 refetch 把 UI 与后端对齐
+      // 而不是部分写入半途留下脏状态。
       for (let i = 0; i < reordered.length; i++) {
-        const p = reordered[i];
-        const newPriority = (i + 1) * 10;
-        if (p.priority !== newPriority) {
-          try {
-            await updateProvider(p.id, {
-              ...providerToInput(p),
-              priority: newPriority,
-            });
-          } catch {
-            fetchProviders();
-            return;
-          }
+        const p = reordered[i]!;
+        const newPriority = (i + 1) * PRIORITY_STEP;
+        if (p.priority === newPriority) continue;
+        try {
+          await updateProvider(
+            p.id,
+            providerToInput(p, { priority: newPriority }),
+          );
+        } catch {
+          fetchProviders();
+          return;
         }
       }
       fetchProviders();
@@ -714,7 +172,7 @@ export function ProviderList({ refreshKey }: ProviderListProps) {
       await deleteProvider(deleteTarget.id);
       setProviders((prev) => prev.filter((p) => p.id !== deleteTarget.id));
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(errorMessage(err));
     } finally {
       setDeletingId(null);
       setDeleteTarget(null);
@@ -730,12 +188,14 @@ export function ProviderList({ refreshKey }: ProviderListProps) {
     async (id: string, enabled: boolean) => {
       const provider = providers.find((p) => p.id === id);
       if (!provider) return;
-      const input = providerToInput(provider, { enabled });
       try {
-        const updated = await updateProvider(id, input);
+        const updated = await updateProvider(
+          id,
+          providerToInput(provider, { enabled }),
+        );
         setProviders((prev) => prev.map((p) => (p.id === id ? updated : p)));
       } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : String(err));
+        setError(errorMessage(err));
       }
     },
     [providers],
@@ -744,49 +204,29 @@ export function ProviderList({ refreshKey }: ProviderListProps) {
   const handleTestConnection = useCallback(
     async (id: string) => {
       setTestingIds((current) => ({ ...current, [id]: true }));
+      const provider = providers.find((item) => item.id === id);
+      const providerName = provider?.name ?? id;
       try {
         const result = await testProviderConnection(id);
-        const provider = providers.find((item) => item.id === id);
         setHealthMap((current) => ({
           ...current,
-          [id]: {
-            provider_id: id,
-            provider_name: provider?.name ?? id,
-            status: result.success
-              ? result.status === "degraded"
-                ? "degraded"
-                : "healthy"
-              : "down",
-            success_rate: result.success ? 1 : 0,
-            response_time_us:
-              result.response_time_ms != null
-                ? result.response_time_ms * 1000
-                : null,
-          },
+          [id]: healthSnapshotFromCheckResult(
+            id,
+            providerName,
+            current[id],
+            result,
+          ),
         }));
         if (!result.success) {
           setTestErrorDialog({
-            providerName: provider?.name ?? id,
-            message: [
-              result.message,
-              result.http_status != null ? `HTTP ${result.http_status}` : null,
-              result.error_category
-                ? `Category: ${result.error_category}`
-                : null,
-              result.model_used ? `Model: ${result.model_used}` : null,
-            ]
-              .filter(Boolean)
-              .join("\n"),
+            providerName,
+            message: composeCheckErrorMessage(result),
           });
         } else {
           setError(null);
         }
       } catch (err: unknown) {
-        const provider = providers.find((item) => item.id === id);
-        setTestErrorDialog({
-          providerName: provider?.name ?? id,
-          message: err instanceof Error ? err.message : String(err),
-        });
+        setTestErrorDialog({ providerName, message: errorMessage(err) });
       } finally {
         setTestingIds((current) => ({ ...current, [id]: false }));
       }
@@ -795,24 +235,26 @@ export function ProviderList({ refreshKey }: ProviderListProps) {
   );
 
   const handleSaveEdit = useCallback(
-    async (id: string, patch: Partial<EditState>) => {
+    async (id: string, patch: EditState) => {
       const provider = providers.find((p) => p.id === id);
       if (!provider) return;
-      const input = providerToInput(provider, {
-        name: (patch.name ?? provider.name).trim(),
-        kind: patch.kind ?? provider.kind,
-        base_url: (patch.base_url ?? provider.base_url)
-          .trim()
-          .replace(/\/$/, ""),
-        api_key: (patch.api_key ?? "").trim(),
-        priority: patch.priority ? Number(patch.priority) : provider.priority,
-        enabled: patch.enabled ?? provider.enabled,
-      });
       try {
-        const updated = await updateProvider(id, input);
+        const updated = await updateProvider(
+          id,
+          providerToInput(provider, {
+            name: patch.name.trim(),
+            kind: patch.kind,
+            base_url: patch.base_url.trim().replace(/\/$/, ""),
+            api_key: patch.api_key.trim(),
+            priority: patch.priority
+              ? Number(patch.priority)
+              : provider.priority,
+            enabled: patch.enabled,
+          }),
+        );
         setProviders((prev) => prev.map((p) => (p.id === id ? updated : p)));
       } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : String(err));
+        setError(errorMessage(err));
       }
     },
     [providers],
@@ -882,4 +324,74 @@ export function ProviderList({ refreshKey }: ProviderListProps) {
       )}
     </>
   );
+}
+
+/** 把 Provider 复刻成可发回 Rust 的 ProviderInput；api_key 默认留空以
+ * 复用后端"空串=保留旧密钥"的约定。 */
+function providerToInput(
+  provider: Provider,
+  overrides: Partial<ProviderInput> = {},
+): ProviderInput {
+  return {
+    name: provider.name,
+    kind: provider.kind,
+    base_url: provider.base_url,
+    api_key: "",
+    priority: provider.priority,
+    enabled: provider.enabled,
+    monthly_quota: provider.monthly_quota ?? null,
+    rate_limit_rpm: provider.rate_limit_rpm ?? null,
+    cost_per_1k_tokens: provider.cost_per_1k_tokens ?? null,
+    ...overrides,
+  };
+}
+
+function indexByProvider(
+  snapshots: HealthSnapshot[],
+): Record<string, HealthSnapshot> {
+  const map: Record<string, HealthSnapshot> = {};
+  for (const s of snapshots) map[s.provider_id] = s;
+  return map;
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+/** 把一次 stream check 的结果折叠回 HealthSnapshot 的形状，方便和
+ * 后端 sliding-window 的数据共用一套渲染逻辑。 */
+function healthSnapshotFromCheckResult(
+  providerId: string,
+  providerName: string,
+  previous: HealthSnapshot | undefined,
+  result: import("@/lib/tauri").StreamCheckResult,
+): HealthSnapshot {
+  return {
+    provider_id: providerId,
+    provider_name: providerName,
+    status: result.success
+      ? result.status === "degraded"
+        ? "degraded"
+        : "healthy"
+      : "down",
+    success_rate: result.success ? 1 : 0,
+    response_time_us:
+      result.response_time_ms != null
+        ? result.response_time_ms * 1000
+        : (previous?.response_time_us ?? null),
+  };
+}
+
+/** 把后端的 stream check 错误聚合成多行可读文本，喂给错误弹窗。 */
+function composeCheckErrorMessage(
+  result: import("@/lib/tauri").StreamCheckResult,
+): string {
+  return [
+    result.message,
+    result.http_status != null ? `HTTP ${result.http_status}` : null,
+    result.error_category ? `Category: ${result.error_category}` : null,
+    result.model_used ? `Model: ${result.model_used}` : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
 }

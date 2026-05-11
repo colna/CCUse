@@ -18,6 +18,12 @@ import {
   type LocalApiConfig,
 } from "@/lib/tauri";
 
+/**
+ * 仪表盘上的"本地 API"卡片：展示代理 Base URL + API Key，并提供
+ * 轮换 / 重启动作。Key 默认遮罩，避免肩窥；重启 / 轮换由后端推送
+ * `local_api_config_changed` 事件，所以这里同时订阅事件以保持最新。
+ */
+
 type Status = "loading" | "running" | "stopped";
 
 interface CardState {
@@ -31,19 +37,13 @@ const INITIAL_STATE: CardState = {
   config: null,
   error: null,
 };
-
-function maskKey(key: string): string {
-  if (!key) return "";
-  const [head] = key.split("-");
-  const suffix = key.slice(-4);
-  return `${head ?? "sk"}-local---------${suffix}`;
-}
+const COPY_HINT_DURATION_MS = 1500;
 
 export function LocalApiCard() {
   const { t } = useTranslation("providers");
   const [state, setState] = useState<CardState>(INITIAL_STATE);
   const [keyVisible, setKeyVisible] = useState(false);
-  const [copyHint, setCopyHint] = useState<string | null>(null);
+  const [copyHint, setCopyHint] = useState<"base" | "key" | null>(null);
 
   const refresh = useCallback(async () => {
     setState((prev) => ({ ...prev, status: "loading", error: null }));
@@ -51,8 +51,7 @@ export function LocalApiCard() {
       const config = await getLocalApiConfig();
       setState({ status: "running", config, error: null });
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      setState({ status: "stopped", config: null, error: message });
+      setState({ status: "stopped", config: null, error: errorMessage(err) });
     }
   }, []);
 
@@ -61,9 +60,11 @@ export function LocalApiCard() {
   }, [refresh]);
 
   useEffect(() => {
+    // `.catch(() => undefined)` 消化非 Tauri 环境下 `listen()` 抛错
+    // （`__TAURI_INTERNALS__` 不存在），让事件订阅失败时 UI 仍可用。
     const unlistenPromise = onLocalApiConfigChanged((config) => {
       setState({ status: "running", config, error: null });
-    }).catch(() => null);
+    }).catch(() => undefined);
     return () => {
       void unlistenPromise.then((unlisten) => unlisten?.());
     };
@@ -75,8 +76,7 @@ export function LocalApiCard() {
       const config = await restartProxy();
       setState({ status: "running", config, error: null });
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      setState({ status: "stopped", config: null, error: message });
+      setState({ status: "stopped", config: null, error: errorMessage(err) });
     }
   }, []);
 
@@ -85,18 +85,20 @@ export function LocalApiCard() {
       const config = await regenerateApiKey();
       setState((prev) => ({ ...prev, config, error: null }));
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      setState((prev) => ({ ...prev, error: message }));
+      setState((prev) => ({ ...prev, error: errorMessage(err) }));
     }
   }, []);
 
-  const handleCopy = useCallback(async (label: string, text: string) => {
-    await copyToClipboard(text);
-    setCopyHint(label);
-    setTimeout(() => setCopyHint(null), 1500);
-  }, []);
+  const handleCopy = useCallback(
+    async (label: "base" | "key", text: string) => {
+      await copyToClipboard(text);
+      setCopyHint(label);
+      setTimeout(() => setCopyHint(null), COPY_HINT_DURATION_MS);
+    },
+    [],
+  );
 
-  const config = state.config;
+  const { config, status, error } = state;
   const displayedKey = config
     ? keyVisible
       ? config.api_key
@@ -121,7 +123,7 @@ export function LocalApiCard() {
             {t("local_api_desc")}
           </p>
         </div>
-        <StatusBadge status={state.status} />
+        <StatusBadge status={status} />
       </header>
 
       <dl className="mt-6 space-y-5 text-sm">
@@ -148,15 +150,15 @@ export function LocalApiCard() {
           aria-live="polite"
           className={cn(
             "text-xs",
-            copyHint && !state.error
+            copyHint && !error
               ? "text-[var(--app-primary)]"
-              : state.error
+              : error
                 ? "text-destructive"
                 : "text-muted-foreground",
           )}
         >
-          {state.error
-            ? state.error
+          {error
+            ? error
             : copyHint === "base"
               ? t("local_api_base_copied")
               : copyHint === "key"
@@ -168,7 +170,7 @@ export function LocalApiCard() {
             htmlType="button"
             type="default"
             onClick={handleRotate}
-            disabled={state.status !== "running"}
+            disabled={status !== "running"}
           >
             {t("local_api_rotate_key")}
           </Button>
@@ -176,7 +178,7 @@ export function LocalApiCard() {
             htmlType="button"
             type="primary"
             onClick={handleRestart}
-            disabled={state.status === "loading"}
+            disabled={status === "loading"}
             icon={<ReloadOutlined aria-label="" role="presentation" />}
           >
             {t("local_api_restart")}
@@ -312,4 +314,16 @@ function KeyField({
       </dd>
     </div>
   );
+}
+
+/** 把 key 中段隐藏，只保留前缀和最后 4 字符，方便用户对照核对又不暴露 key。 */
+function maskKey(key: string): string {
+  if (!key) return "";
+  const [head] = key.split("-");
+  const suffix = key.slice(-4);
+  return `${head ?? "sk"}-local---------${suffix}`;
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }

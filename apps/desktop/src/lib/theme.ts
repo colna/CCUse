@@ -1,5 +1,15 @@
 import { theme as antdTheme, type ThemeConfig } from "antd";
 
+/**
+ * antd v6 ConfigProvider 的 token 主题，按"Apple HIG 风格"调校。
+ *
+ * 设计原则：
+ * - 文字 / 背景 / 边框 等中性色全部走与 globals.css 同源的取值（CSS
+ *   variable 提供给 Tailwind 用，这里复制成 antd token 喂 antd 组件）。
+ * - 仅在 `algorithm` 与少数 token 上区分 light/dark；其余 component 配置
+ *   完全共享，避免两份巨大的对象漂移失同步。
+ */
+
 const APPLE_FONT_STACK = [
   "-apple-system",
   "BlinkMacSystemFont",
@@ -10,6 +20,7 @@ const APPLE_FONT_STACK = [
   "sans-serif",
 ].join(",");
 
+/** 浅/深色共享的尺寸 / 字体 / 圆角 / 动效 token。 */
 const SHARED_TOKEN = {
   colorPrimary: "#0071e3",
   colorInfo: "#0071e3",
@@ -26,6 +37,22 @@ const SHARED_TOKEN = {
   motionDurationMid: "0.18s",
   motionDurationFast: "0.12s",
 } as const;
+
+const SHARED_COMPONENTS: ThemeConfig["components"] = {
+  Button: {
+    primaryShadow: "none",
+    defaultShadow: "none",
+    dangerShadow: "none",
+    controlHeight: 32,
+    paddingInline: 14,
+  },
+  Card: { headerBg: "transparent" },
+  Menu: {
+    itemBg: "transparent",
+    itemBorderRadius: 8,
+    itemMarginInline: 8,
+  },
+};
 
 export const lightTheme: ThemeConfig = {
   algorithm: antdTheme.defaultAlgorithm,
@@ -44,28 +71,17 @@ export const lightTheme: ThemeConfig = {
       "0 1px 2px rgba(0, 0, 0, 0.03), 0 2px 6px rgba(0, 0, 0, 0.04)",
   },
   components: {
-    Button: {
-      primaryShadow: "none",
-      defaultShadow: "none",
-      dangerShadow: "none",
-      controlHeight: 32,
-      paddingInline: 14,
-    },
-    Card: {
-      headerBg: "transparent",
-    },
+    ...SHARED_COMPONENTS,
     Layout: {
       headerBg: "rgba(255, 255, 255, 0.72)",
       siderBg: "rgba(255, 255, 255, 0.6)",
       bodyBg: "#f5f5f7",
     },
     Menu: {
-      itemBg: "transparent",
+      ...SHARED_COMPONENTS.Menu,
       itemSelectedBg: "rgba(0, 113, 227, 0.08)",
       itemSelectedColor: "#0071e3",
       itemHoverBg: "rgba(0, 0, 0, 0.04)",
-      itemBorderRadius: 8,
-      itemMarginInline: 8,
     },
   },
 };
@@ -87,28 +103,17 @@ export const darkTheme: ThemeConfig = {
       "0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 6px rgba(0, 0, 0, 0.4)",
   },
   components: {
-    Button: {
-      primaryShadow: "none",
-      defaultShadow: "none",
-      dangerShadow: "none",
-      controlHeight: 32,
-      paddingInline: 14,
-    },
-    Card: {
-      headerBg: "transparent",
-    },
+    ...SHARED_COMPONENTS,
     Layout: {
       headerBg: "rgba(28, 28, 30, 0.72)",
       siderBg: "rgba(28, 28, 30, 0.6)",
       bodyBg: "#0a0a0a",
     },
     Menu: {
-      itemBg: "transparent",
+      ...SHARED_COMPONENTS.Menu,
       itemSelectedBg: "rgba(41, 151, 255, 0.16)",
       itemSelectedColor: "#2997ff",
       itemHoverBg: "rgba(255, 255, 255, 0.06)",
-      itemBorderRadius: 8,
-      itemMarginInline: 8,
     },
   },
 };

@@ -1,16 +1,26 @@
-import { useCallback, useEffect, useState } from "react";
 import {
-  LineChart,
+  CartesianGrid,
   Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
   XAxis,
   YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
 } from "recharts";
+import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
-import { getMetricsTimeseries, type MetricsBucket } from "@/lib/tauri";
+import { formatFullTime, formatShortTime } from "@/lib/timeFormat";
+import { getMetricsTimeseries } from "@/lib/tauri";
+import { useTimeseriesPoll } from "@/lib/useTimeseriesPoll";
+
+/**
+ * 后端成功率时间序列折线图。后端返回的 `success_rate` 是 0..1，前端
+ * 统一展示百分比 —— 转换发生在投影到 chart 数据时，tooltip / Y 轴
+ * 都按百分比走。
+ */
+
+const REFRESH_INTERVAL_MS = 30_000;
 
 interface ChartPoint {
   time: string;
@@ -18,72 +28,23 @@ interface ChartPoint {
   successRate: number;
 }
 
-function formatTime(timestamp: string): string {
-  const d = new Date(timestamp);
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
-
-function formatFullTime(timestamp: string): string {
-  const d = new Date(timestamp);
-  return d.toLocaleString([], {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function CustomTooltip({
-  active,
-  payload,
-}: {
-  active?: boolean;
-  payload?: { value: number; payload: { fullTime: string } }[];
-}) {
-  if (!active || !payload?.length) return null;
-  const point = payload[0];
-  return (
-    <div className="rounded-lg border border-border bg-card px-3 py-2 text-xs shadow-md">
-      <p className="text-muted-foreground">{point.payload.fullTime}</p>
-      <p className="mt-1 font-medium">{(point.value as number).toFixed(1)}%</p>
-    </div>
-  );
-}
-
-const REFRESH_INTERVAL = 30_000;
-
 export function SuccessRateChart() {
   const { t } = useTranslation("monitor");
   const { t: tc } = useTranslation("common");
-  const [chartData, setChartData] = useState<ChartPoint[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data, loading, error } = useTimeseriesPoll(
+    getMetricsTimeseries,
+    REFRESH_INTERVAL_MS,
+  );
 
-  const fetchData = useCallback(async () => {
-    try {
-      const buckets: MetricsBucket[] = await getMetricsTimeseries();
-      const points: ChartPoint[] = buckets.map((b) => ({
-        time: formatTime(b.timestamp),
+  const chartData = useMemo<ChartPoint[]>(
+    () =>
+      (data ?? []).map((b) => ({
+        time: formatShortTime(b.timestamp),
         fullTime: formatFullTime(b.timestamp),
         successRate: b.success_rate * 100,
-      }));
-      setChartData(points);
-      setError(null);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-  useEffect(() => {
-    const id = setInterval(fetchData, REFRESH_INTERVAL);
-    return () => clearInterval(id);
-  }, [fetchData]);
+      })),
+    [data],
+  );
 
   if (error) {
     return (
@@ -126,7 +87,7 @@ export function SuccessRateChart() {
               stroke="hsl(var(--muted-foreground))"
               width={45}
             />
-            <Tooltip content={<CustomTooltip />} />
+            <Tooltip content={<SuccessTooltip />} />
             <Line
               type="monotone"
               dataKey="successRate"
@@ -138,6 +99,23 @@ export function SuccessRateChart() {
           </LineChart>
         </ResponsiveContainer>
       )}
+    </div>
+  );
+}
+
+function SuccessTooltip({
+  active,
+  payload,
+}: {
+  active?: boolean;
+  payload?: { value: number; payload: { fullTime: string } }[];
+}) {
+  if (!active || !payload?.length) return null;
+  const point = payload[0]!;
+  return (
+    <div className="rounded-lg border border-border bg-card px-3 py-2 text-xs shadow-md">
+      <p className="text-muted-foreground">{point.payload.fullTime}</p>
+      <p className="mt-1 font-medium">{point.value.toFixed(1)}%</p>
     </div>
   );
 }

@@ -1,25 +1,23 @@
-import { useCallback, useEffect, useState } from "react";
 import {
   ArrowRightOutlined,
   CaretDownOutlined,
   CaretRightOutlined,
 } from "@ant-design/icons";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { cn } from "@/lib/utils";
 import { getSwitchTimeline, type SwitchEvent } from "@/lib/tauri";
+import { useTimeseriesPoll } from "@/lib/useTimeseriesPoll";
 
-function formatTimestamp(timestamp: string): string {
-  const d = new Date(timestamp);
-  return d.toLocaleString([], {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-}
+/**
+ * 后端切换历史时间线。每条记录可点击展开，展示触发原因、详情、ID。
+ * 数据后端默认按时间倒序返回。
+ */
 
+const REFRESH_INTERVAL_MS = 15_000;
+
+/** 策略标签的配色 —— 视觉上分组的"哪类策略导致切换"。 */
 function strategyBadgeColor(strategy: string): string {
   switch (strategy) {
     case "priority":
@@ -37,11 +35,58 @@ function strategyBadgeColor(strategy: string): string {
   }
 }
 
-interface TimelineRowProps {
-  event: SwitchEvent;
+function formatTimestamp(timestamp: string): string {
+  return new Date(timestamp).toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
 }
 
-function TimelineRow({ event }: TimelineRowProps) {
+export function SwitchTimeline() {
+  const { t } = useTranslation("monitor");
+  const { t: tc } = useTranslation("common");
+  const { data, loading, error } = useTimeseriesPoll(
+    getSwitchTimeline,
+    REFRESH_INTERVAL_MS,
+  );
+  const events = data ?? [];
+
+  if (error) {
+    return (
+      <div className="rounded-2xl border border-[var(--app-error-border)] bg-[var(--app-bg-container)] p-4 text-sm text-destructive">
+        {error}
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border border-[var(--app-border-secondary)] bg-[var(--app-bg-container)]">
+      <div className="border-b border-[var(--app-border-secondary)] px-4 py-3">
+        <h4 className="text-sm font-medium">{t("switch_timeline_title")}</h4>
+      </div>
+      {loading ? (
+        <div className="flex h-32 items-center justify-center text-sm text-muted-foreground">
+          {tc("loading")}
+        </div>
+      ) : events.length === 0 ? (
+        <div className="px-6 py-8 text-center text-sm text-muted-foreground">
+          {t("switch_no_events")}
+        </div>
+      ) : (
+        <div className="max-h-80 overflow-y-auto">
+          {events.map((event) => (
+            <TimelineRow key={event.id} event={event} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TimelineRow({ event }: { event: SwitchEvent }) {
   const [expanded, setExpanded] = useState(false);
   const { t } = useTranslation("monitor");
 
@@ -112,68 +157,6 @@ function TimelineRow({ event }: TimelineRowProps) {
             <span className="text-muted-foreground">{t("switch_id")}</span>
             <span className="font-mono">{event.id}</span>
           </p>
-        </div>
-      )}
-    </div>
-  );
-}
-
-const REFRESH_INTERVAL = 15_000;
-
-export function SwitchTimeline() {
-  const { t } = useTranslation("monitor");
-  const { t: tc } = useTranslation("common");
-  const [events, setEvents] = useState<SwitchEvent[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchData = useCallback(async () => {
-    try {
-      const timeline: SwitchEvent[] = await getSwitchTimeline();
-      setEvents(timeline);
-      setError(null);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-  useEffect(() => {
-    const id = setInterval(fetchData, REFRESH_INTERVAL);
-    return () => clearInterval(id);
-  }, [fetchData]);
-
-  if (error) {
-    return (
-      <div className="rounded-2xl border border-[var(--app-error-border)] bg-[var(--app-bg-container)] p-4 text-sm text-destructive">
-        {error}
-      </div>
-    );
-  }
-
-  return (
-    <div className="rounded-2xl border border-[var(--app-border-secondary)] bg-[var(--app-bg-container)]">
-      <div className="border-b border-[var(--app-border-secondary)] px-4 py-3">
-        <h4 className="text-sm font-medium">{t("switch_timeline_title")}</h4>
-      </div>
-      {loading ? (
-        <div className="flex h-32 items-center justify-center text-sm text-muted-foreground">
-          {tc("loading")}
-        </div>
-      ) : events.length === 0 ? (
-        <div className="px-6 py-8 text-center text-sm text-muted-foreground">
-          {t("switch_no_events")}
-        </div>
-      ) : (
-        <div className="max-h-80 overflow-y-auto">
-          {events.map((event) => (
-            <TimelineRow key={event.id} event={event} />
-          ))}
         </div>
       )}
     </div>

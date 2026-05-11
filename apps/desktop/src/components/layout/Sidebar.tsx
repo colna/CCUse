@@ -16,12 +16,15 @@ interface NavItem {
   Icon: ComponentType<{ className?: string }>;
 }
 
+/**
+ * 主导航项。顺序即视觉顺序；i18n key 必须存在于 `common.json` 中。
+ */
 const NAV_ITEMS: readonly NavItem[] = [
   { to: "/dashboard", labelKey: "nav_dashboard", Icon: AppstoreOutlined },
   { to: "/providers", labelKey: "nav_providers", Icon: CloudServerOutlined },
   { to: "/strategy", labelKey: "nav_strategy", Icon: SwapOutlined },
   { to: "/settings", labelKey: "nav_settings", Icon: SettingOutlined },
-] as const;
+];
 
 export function Sidebar() {
   const { t } = useTranslation("common");
@@ -59,9 +62,7 @@ export function Sidebar() {
                       background: "var(--app-primary-bg)",
                       color: "var(--app-primary)",
                     }
-                  : {
-                      color: "var(--app-text-secondary)",
-                    }
+                  : { color: "var(--app-text-secondary)" }
               }
             >
               <Icon className="text-base" />

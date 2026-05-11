@@ -1,17 +1,27 @@
-import { useCallback, useEffect, useState } from "react";
 import {
-  LineChart,
+  CartesianGrid,
+  Legend,
   Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
   XAxis,
   YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
 } from "recharts";
+import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
-import { getMetricsTimeseries, type MetricsBucket } from "@/lib/tauri";
+import { formatFullTime, formatShortTime } from "@/lib/timeFormat";
+import { getMetricsTimeseries } from "@/lib/tauri";
+import { useTimeseriesPoll } from "@/lib/useTimeseriesPoll";
+
+/**
+ * 后端延迟时间序列折线图。同时画"均值"和"p95"两条线，p95 用 dashed
+ * 区分；颜色固定使用 antd primary + 视觉互补的橙色，避免依赖外部
+ * 主题里没有的"warning"色。
+ */
+
+const REFRESH_INTERVAL_MS = 30_000;
 
 interface ChartPoint {
   time: string;
@@ -20,84 +30,24 @@ interface ChartPoint {
   p95Latency: number;
 }
 
-function formatTime(timestamp: string): string {
-  const d = new Date(timestamp);
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
-
-function formatFullTime(timestamp: string): string {
-  const d = new Date(timestamp);
-  return d.toLocaleString([], {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function CustomTooltip({
-  active,
-  payload,
-  t,
-}: {
-  active?: boolean;
-  payload?: {
-    payload: { fullTime: string; avgLatency: number; p95Latency: number };
-  }[];
-  t: (key: string, opts?: Record<string, string | number>) => string;
-}) {
-  if (!active || !payload?.length) return null;
-  const data = payload[0]?.payload;
-  return (
-    <div className="rounded-lg border border-border bg-card px-3 py-2 text-xs shadow-md">
-      <p className="text-muted-foreground">{data.fullTime}</p>
-      <p className="mt-1">
-        <span className="mr-1.5 inline-block h-0.5 w-3 bg-primary align-middle" />
-        {t("latency_avg_value", { value: Math.round(data.avgLatency) })}
-      </p>
-      <p>
-        <span className="mr-1.5 inline-block h-0.5 w-3 bg-orange-500 align-middle" />
-        {t("latency_p95_value", { value: Math.round(data.p95Latency) })}
-      </p>
-    </div>
-  );
-}
-
-const REFRESH_INTERVAL = 30_000;
-
 export function LatencyChart() {
   const { t } = useTranslation("monitor");
   const { t: tc } = useTranslation("common");
-  const [chartData, setChartData] = useState<ChartPoint[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data, loading, error } = useTimeseriesPoll(
+    getMetricsTimeseries,
+    REFRESH_INTERVAL_MS,
+  );
 
-  const fetchData = useCallback(async () => {
-    try {
-      const buckets: MetricsBucket[] = await getMetricsTimeseries();
-      const points: ChartPoint[] = buckets.map((b) => ({
-        time: formatTime(b.timestamp),
+  const chartData = useMemo<ChartPoint[]>(
+    () =>
+      (data ?? []).map((b) => ({
+        time: formatShortTime(b.timestamp),
         fullTime: formatFullTime(b.timestamp),
         avgLatency: b.avg_latency_ms,
         p95Latency: b.p95_latency_ms,
-      }));
-      setChartData(points);
-      setError(null);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-  useEffect(() => {
-    const id = setInterval(fetchData, REFRESH_INTERVAL);
-    return () => clearInterval(id);
-  }, [fetchData]);
+      })),
+    [data],
+  );
 
   if (error) {
     return (
@@ -137,7 +87,7 @@ export function LatencyChart() {
               stroke="hsl(var(--muted-foreground))"
               width={55}
             />
-            <Tooltip content={<CustomTooltip t={t} />} />
+            <Tooltip content={<LatencyTooltip t={t} />} />
             <Legend wrapperStyle={{ fontSize: 12 }} />
             <Line
               type="monotone"
@@ -161,6 +111,34 @@ export function LatencyChart() {
           </LineChart>
         </ResponsiveContainer>
       )}
+    </div>
+  );
+}
+
+function LatencyTooltip({
+  active,
+  payload,
+  t,
+}: {
+  active?: boolean;
+  payload?: {
+    payload: { fullTime: string; avgLatency: number; p95Latency: number };
+  }[];
+  t: (key: string, opts?: Record<string, string | number>) => string;
+}) {
+  if (!active || !payload?.length) return null;
+  const data = payload[0]!.payload;
+  return (
+    <div className="rounded-lg border border-border bg-card px-3 py-2 text-xs shadow-md">
+      <p className="text-muted-foreground">{data.fullTime}</p>
+      <p className="mt-1">
+        <span className="mr-1.5 inline-block h-0.5 w-3 bg-primary align-middle" />
+        {t("latency_avg_value", { value: Math.round(data.avgLatency) })}
+      </p>
+      <p>
+        <span className="mr-1.5 inline-block h-0.5 w-3 bg-orange-500 align-middle" />
+        {t("latency_p95_value", { value: Math.round(data.p95Latency) })}
+      </p>
     </div>
   );
 }

@@ -4,36 +4,28 @@ type ColorScheme = "light" | "dark";
 
 const QUERY = "(prefers-color-scheme: dark)";
 
-function getInitialScheme(): ColorScheme {
-  if (typeof window === "undefined" || !window.matchMedia) return "light";
-  return window.matchMedia(QUERY).matches ? "dark" : "light";
-}
-
+/**
+ * 监听系统深浅色偏好，并把结果同步到 `<html>` 的 `.dark` class 与
+ * `color-scheme` 上 —— 后者让浏览器原生控件（滚动条 / form 控件）也
+ * 跟随主题。返回当前 scheme，供 antd `ConfigProvider` 切换 token。
+ */
 export function useColorScheme(): ColorScheme {
-  const [scheme, setScheme] = useState<ColorScheme>(getInitialScheme);
+  const [scheme, setScheme] = useState<ColorScheme>(() =>
+    window.matchMedia(QUERY).matches ? "dark" : "light",
+  );
 
   useEffect(() => {
-    if (typeof window === "undefined" || !window.matchMedia) return;
     const media = window.matchMedia(QUERY);
     const handler = (e: MediaQueryListEvent) => {
       setScheme(e.matches ? "dark" : "light");
     };
-    if (media.addEventListener) {
-      media.addEventListener("change", handler);
-      return () => media.removeEventListener("change", handler);
-    }
-    media.addListener(handler);
-    return () => media.removeListener(handler);
+    media.addEventListener("change", handler);
+    return () => media.removeEventListener("change", handler);
   }, []);
 
   useEffect(() => {
-    if (typeof document === "undefined") return;
     const root = document.documentElement;
-    if (scheme === "dark") {
-      root.classList.add("dark");
-    } else {
-      root.classList.remove("dark");
-    }
+    root.classList.toggle("dark", scheme === "dark");
     root.style.colorScheme = scheme;
   }, [scheme]);
 
