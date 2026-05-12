@@ -1,5 +1,5 @@
-//! `axum` middleware that enforces the `sk-local-…` API key on
-//! the proxy's `/v1/*` routes.
+//! `axum` middleware that enforces protocol-scoped `sk-local-…` API
+//! keys on the proxy's `/v1/*` routes.
 //!
 //! Two header forms accepted, in priority order: `Authorization:
 //! Bearer <key>` (`OpenAI` / Anthropic newer SDKs) and `x-api-key`
@@ -15,13 +15,61 @@ use subtle::ConstantTimeEq;
 
 use crate::proxy::error::{ApiError, ErrorProtocol};
 
-/// Live, mutably-shared expected key. `RwLock` because regeneration
-/// happens off the hot request path; reads are cheap and uncontended.
-pub type KeyStore = Arc<RwLock<String>>;
+/// Local proxy keys scoped by inbound API protocol. OpenAI-compatible
+/// clients receive the `openai` key; Anthropic-compatible clients
+/// receive the `anthropic` key.
+#[derive(Clone, PartialEq, Eq)]
+pub struct LocalApiKeySet {
+    pub openai: String,
+    pub anthropic: String,
+}
 
-/// Build a fresh [`KeyStore`] seeded with `initial`.
+impl std::fmt::Debug for LocalApiKeySet {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LocalApiKeySet")
+            .field("openai", &"<redacted>")
+            .field("anthropic", &"<redacted>")
+            .finish()
+    }
+}
+
+impl LocalApiKeySet {
+    #[must_use]
+    pub fn new(openai: impl Into<String>, anthropic: impl Into<String>) -> Self {
+        Self {
+            openai: openai.into(),
+            anthropic: anthropic.into(),
+        }
+    }
+
+    fn expected_for_path(&self, path: &str) -> &str {
+        match ErrorProtocol::for_path(path) {
+            ErrorProtocol::Anthropic => &self.anthropic,
+            ErrorProtocol::OpenAi => &self.openai,
+        }
+    }
+}
+
+impl From<String> for LocalApiKeySet {
+    fn from(value: String) -> Self {
+        Self::new(value.clone(), value)
+    }
+}
+
+impl From<&str> for LocalApiKeySet {
+    fn from(value: &str) -> Self {
+        Self::new(value, value)
+    }
+}
+
+/// Live, mutably-shared expected keys. `RwLock` because regeneration
+/// happens off the hot request path; reads are cheap and uncontended.
+pub type KeyStore = Arc<RwLock<LocalApiKeySet>>;
+
+/// Build a fresh [`KeyStore`] seeded with one legacy key or a
+/// protocol-scoped key set.
 #[must_use]
-pub fn key_store(initial: impl Into<String>) -> KeyStore {
+pub fn key_store(initial: impl Into<LocalApiKeySet>) -> KeyStore {
     Arc::new(RwLock::new(initial.into()))
 }
 
@@ -73,7 +121,7 @@ pub async fn require_local_api_key(
         let guard = store.read().map_err(|_| {
             ApiError::internal("auth keystore lock poisoned").with_protocol(protocol)
         })?;
-        guard.clone()
+        guard.expected_for_path(request.uri().path()).to_owned()
     };
     if presented.as_bytes().ct_eq(expected.as_bytes()).into() {
         Ok(next.run(request).await)
@@ -138,5 +186,31 @@ mod tests {
         // to x-api-key. Without one, no key.
         let h = headers_with("authorization", "Basic Zm9vOmJhcg==");
         assert!(extract_presented_key(&h).is_none());
+    }
+
+    #[test]
+    fn protocol_key_set_uses_openai_key_for_openai_surfaces() {
+        let keys = LocalApiKeySet::new("sk-local-openai", "sk-local-anthropic");
+
+        assert_eq!(
+            keys.expected_for_path("/v1/chat/completions"),
+            "sk-local-openai"
+        );
+        assert_eq!(keys.expected_for_path("/v1/models"), "sk-local-openai");
+    }
+
+    #[test]
+    fn protocol_key_set_uses_anthropic_key_for_messages() {
+        let keys = LocalApiKeySet::new("sk-local-openai", "sk-local-anthropic");
+
+        assert_eq!(keys.expected_for_path("/v1/messages"), "sk-local-anthropic");
+    }
+
+    #[test]
+    fn legacy_single_key_populates_both_protocols() {
+        let keys = LocalApiKeySet::from("sk-local-legacy");
+
+        assert_eq!(keys.openai, "sk-local-legacy");
+        assert_eq!(keys.anthropic, "sk-local-legacy");
     }
 }

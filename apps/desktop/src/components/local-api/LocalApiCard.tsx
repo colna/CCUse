@@ -16,15 +16,20 @@ import {
   regenerateApiKey,
   restartProxy,
   type LocalApiConfig,
+  type LocalApiEndpointConfig,
 } from "@/lib/tauri";
 
 /**
- * 仪表盘上的"本地 API"卡片：展示代理 Base URL + API Key，并提供
- * 轮换 / 重启动作。Key 默认遮罩，避免肩窥；重启 / 轮换由后端推送
- * `local_api_config_changed` 事件，所以这里同时订阅事件以保持最新。
+ * 仪表盘上的"本地 API"卡片：按 OpenAI-compatible / Anthropic 两个
+ * 入站协议展示 Base URL + API Key，并提供轮换 / 重启动作。Key 默认
+ * 遮罩，避免肩窥；重启 / 轮换由后端推送 `local_api_config_changed`
+ * 事件，所以这里同时订阅事件以保持最新。
  */
 
 type Status = "loading" | "running" | "stopped";
+type Protocol = "openai" | "anthropic";
+type CopyTarget = `${Protocol}-base` | `${Protocol}-key`;
+type TFn = (key: string, opts?: Record<string, string | number>) => string;
 
 interface CardState {
   status: Status;
@@ -38,12 +43,18 @@ const INITIAL_STATE: CardState = {
   error: null,
 };
 const COPY_HINT_DURATION_MS = 1500;
+const INITIAL_VISIBLE_KEYS: Record<Protocol, boolean> = {
+  openai: false,
+  anthropic: false,
+};
+
+const PROTOCOLS: readonly Protocol[] = ["openai", "anthropic"] as const;
 
 export function LocalApiCard() {
   const { t } = useTranslation("providers");
   const [state, setState] = useState<CardState>(INITIAL_STATE);
-  const [keyVisible, setKeyVisible] = useState(false);
-  const [copyHint, setCopyHint] = useState<"base" | "key" | null>(null);
+  const [visibleKeys, setVisibleKeys] = useState(INITIAL_VISIBLE_KEYS);
+  const [copyHint, setCopyHint] = useState<CopyTarget | null>(null);
 
   const refresh = useCallback(async () => {
     setState((prev) => ({ ...prev, status: "loading", error: null }));
@@ -89,21 +100,14 @@ export function LocalApiCard() {
     }
   }, []);
 
-  const handleCopy = useCallback(
-    async (label: "base" | "key", text: string) => {
-      await copyToClipboard(text);
-      setCopyHint(label);
-      setTimeout(() => setCopyHint(null), COPY_HINT_DURATION_MS);
-    },
-    [],
-  );
+  const handleCopy = useCallback(async (label: CopyTarget, text: string) => {
+    await copyToClipboard(text);
+    setCopyHint(label);
+    setTimeout(() => setCopyHint(null), COPY_HINT_DURATION_MS);
+  }, []);
 
   const { config, status, error } = state;
-  const displayedKey = config
-    ? keyVisible
-      ? config.api_key
-      : maskKey(config.api_key)
-    : "--";
+  const endpoints = buildProtocolConfigs(config);
 
   return (
     <article
@@ -126,24 +130,35 @@ export function LocalApiCard() {
         <StatusBadge status={status} />
       </header>
 
-      <dl className="mt-6 space-y-5 text-sm">
-        <Field
-          label={t("local_api_base_url")}
-          value={config?.base_url ?? "--"}
-          testId="local-api-base-url"
-          copyable={Boolean(config?.base_url)}
-          onCopy={() => handleCopy("base", config?.base_url ?? "")}
-          copyAriaLabel={t("local_api_copy_aria", { label: "Base URL" })}
-        />
-        <KeyField
-          value={displayedKey}
-          visible={keyVisible}
-          testId="local-api-key"
-          onToggleVisible={() => setKeyVisible((v) => !v)}
-          copyable={Boolean(config?.api_key)}
-          onCopy={() => handleCopy("key", config?.api_key ?? "")}
-        />
-      </dl>
+      <div className="mt-6 space-y-6 text-sm">
+        {PROTOCOLS.map((protocol, index) => {
+          const endpoint = endpoints[protocol];
+          const protocolLabel = t(`local_api_${protocol}_title`);
+          return (
+            <ProtocolConfigSection
+              key={protocol}
+              protocol={protocol}
+              protocolLabel={protocolLabel}
+              description={t(`local_api_${protocol}_desc`)}
+              endpoint={endpoint}
+              visible={visibleKeys[protocol]}
+              separated={index > 0}
+              onToggleVisible={() =>
+                setVisibleKeys((current) => ({
+                  ...current,
+                  [protocol]: !current[protocol],
+                }))
+              }
+              onCopyBase={() =>
+                handleCopy(`${protocol}-base`, endpoint?.base_url ?? "")
+              }
+              onCopyKey={() =>
+                handleCopy(`${protocol}-key`, endpoint?.api_key ?? "")
+              }
+            />
+          );
+        })}
+      </div>
 
       <footer className="mt-6 flex items-center justify-between gap-3">
         <p
@@ -159,11 +174,9 @@ export function LocalApiCard() {
         >
           {error
             ? error
-            : copyHint === "base"
-              ? t("local_api_base_copied")
-              : copyHint === "key"
-                ? t("local_api_key_copied")
-                : ""}
+            : copyHint
+              ? t("local_api_copied", copyHintParams(copyHint, t))
+              : ""}
         </p>
         <div className="flex items-center gap-2">
           <Button
@@ -214,6 +227,78 @@ function StatusBadge({ status }: { status: Status }) {
   );
 }
 
+interface ProtocolConfigSectionProps {
+  protocol: Protocol;
+  protocolLabel: string;
+  description: string;
+  endpoint: LocalApiEndpointConfig | null;
+  visible: boolean;
+  separated: boolean;
+  onToggleVisible: () => void;
+  onCopyBase: () => void;
+  onCopyKey: () => void;
+}
+
+function ProtocolConfigSection({
+  protocol,
+  protocolLabel,
+  description,
+  endpoint,
+  visible,
+  separated,
+  onToggleVisible,
+  onCopyBase,
+  onCopyKey,
+}: ProtocolConfigSectionProps) {
+  const { t } = useTranslation("providers");
+  const displayedKey = endpoint
+    ? visible
+      ? endpoint.api_key
+      : maskKey(endpoint.api_key)
+    : "--";
+  return (
+    <section
+      aria-labelledby={`local-api-${protocol}-title`}
+      className={cn(
+        separated && "border-t border-[var(--app-border-secondary)] pt-5",
+      )}
+    >
+      <div className="mb-4">
+        <h4
+          id={`local-api-${protocol}-title`}
+          className="text-sm font-semibold leading-apple-headline tracking-apple-tight"
+        >
+          {protocolLabel}
+        </h4>
+        <p className="mt-1 text-xs text-muted-foreground">{description}</p>
+      </div>
+      <dl className="space-y-4">
+        <Field
+          label={t("local_api_base_url")}
+          value={endpoint?.base_url ?? "--"}
+          testId={`local-api-${protocol}-base-url`}
+          copyable={Boolean(endpoint?.base_url)}
+          onCopy={onCopyBase}
+          copyAriaLabel={t("local_api_copy_protocol_aria", {
+            protocol: protocolLabel,
+            label: "Base URL",
+          })}
+        />
+        <KeyField
+          protocol={protocol}
+          protocolLabel={protocolLabel}
+          value={displayedKey}
+          visible={visible}
+          testId={`local-api-${protocol}-key`}
+          onToggleVisible={onToggleVisible}
+          copyable={Boolean(endpoint?.api_key)}
+          onCopy={onCopyKey}
+        />
+      </dl>
+    </section>
+  );
+}
+
 interface FieldProps {
   label: string;
   value: string;
@@ -258,6 +343,8 @@ function Field({
 }
 
 interface KeyFieldProps {
+  protocol: Protocol;
+  protocolLabel: string;
   value: string;
   visible: boolean;
   testId?: string;
@@ -267,6 +354,8 @@ interface KeyFieldProps {
 }
 
 function KeyField({
+  protocol,
+  protocolLabel,
   value,
   visible,
   testId,
@@ -292,11 +381,15 @@ function KeyField({
           htmlType="button"
           type="text"
           shape="circle"
-          data-testid="local-api-toggle-key"
+          data-testid={`local-api-${protocol}-toggle-key`}
           aria-label={
             visible
-              ? t("local_api_hide_key_aria")
-              : t("local_api_show_key_aria")
+              ? t("local_api_hide_protocol_key_aria", {
+                  protocol: protocolLabel,
+                })
+              : t("local_api_show_protocol_key_aria", {
+                  protocol: protocolLabel,
+                })
           }
           onClick={onToggleVisible}
           disabled={!copyable}
@@ -306,7 +399,10 @@ function KeyField({
           htmlType="button"
           type="text"
           shape="circle"
-          aria-label={t("local_api_copy_key_aria")}
+          aria-label={t("local_api_copy_protocol_aria", {
+            protocol: protocolLabel,
+            label: "API Key",
+          })}
           onClick={onCopy}
           disabled={!copyable}
           icon={<CopyOutlined aria-label="" role="presentation" />}
@@ -314,6 +410,30 @@ function KeyField({
       </dd>
     </div>
   );
+}
+
+function buildProtocolConfigs(
+  config: LocalApiConfig | null,
+): Record<Protocol, LocalApiEndpointConfig | null> {
+  if (!config) return { openai: null, anthropic: null };
+  return {
+    openai: config.openai ?? {
+      base_url: `${config.base_url.replace(/\/$/, "")}/v1`,
+      api_key: config.api_key,
+    },
+    anthropic: config.anthropic ?? {
+      base_url: config.base_url,
+      api_key: config.api_key,
+    },
+  };
+}
+
+function copyHintParams(copyHint: CopyTarget, t: TFn) {
+  const [protocol, kind] = copyHint.split("-") as [Protocol, "base" | "key"];
+  return {
+    protocol: t(`local_api_${protocol}_title`),
+    label: kind === "base" ? "Base URL" : "API Key",
+  };
 }
 
 /** 把 key 中段隐藏，只保留前缀和最后 4 字符，方便用户对照核对又不暴露 key。 */

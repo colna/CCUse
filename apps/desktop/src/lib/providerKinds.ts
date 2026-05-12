@@ -41,13 +41,13 @@ export const PROVIDER_KIND_OPTIONS: readonly ProviderKindOption[] = [
     label: "Relay",
     defaultBaseUrl: "",
     requiresBaseUrl: true,
-    supported: false,
+    supported: true,
   },
   {
     kind: "custom",
     label: "Custom",
     defaultBaseUrl: "",
     requiresBaseUrl: true,
-    supported: false,
+    supported: true,
   },
 ] as const;

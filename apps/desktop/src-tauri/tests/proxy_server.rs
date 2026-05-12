@@ -9,7 +9,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use ccuse_desktop_lib::auth::key_store;
+use ccuse_desktop_lib::auth::{key_store, LocalApiKeySet};
 use ccuse_desktop_lib::commands::switch::SwitchEngineHandle;
 use ccuse_desktop_lib::providers::ProviderManager;
 use ccuse_desktop_lib::proxy::{ProxyAppState, ProxyServer, ServerError};
@@ -270,8 +270,9 @@ async fn cors_preflight_from_foreign_origin_is_rejected() {
 
 /// Spin up a proxy with the auth middleware mounted; used by the
 /// T1.0.1.13 integration tests. Returns
-/// `(base_url, expected_key, shutdown_tx, serve_handle)`.
+/// `(base_url, openai_key, anthropic_key, shutdown_tx, serve_handle)`.
 async fn start_authenticated_test_server() -> (
+    String,
     String,
     String,
     oneshot::Sender<()>,
@@ -281,8 +282,12 @@ async fn start_authenticated_test_server() -> (
         .await
         .expect("bind to ephemeral port should succeed");
     let base = format!("http://{}", server.local_addr());
-    let key = "sk-local-integration-test-key".to_owned();
-    let store = key_store(key.clone());
+    let openai_key = "sk-local-openai-integration-test-key".to_owned();
+    let anthropic_key = "sk-local-anthropic-integration-test-key".to_owned();
+    let store = key_store(LocalApiKeySet::new(
+        openai_key.clone(),
+        anthropic_key.clone(),
+    ));
     let (tx, rx) = oneshot::channel::<()>();
     let handle =
         tokio::spawn(
@@ -291,12 +296,12 @@ async fn start_authenticated_test_server() -> (
             }),
         );
     tokio::time::sleep(Duration::from_millis(50)).await;
-    (base, key, tx, handle)
+    (base, openai_key, anthropic_key, tx, handle)
 }
 
 #[tokio::test]
 async fn auth_v1_models_returns_401_when_no_key_provided() {
-    let (base, _key, tx, handle) = start_authenticated_test_server().await;
+    let (base, _openai_key, _anthropic_key, tx, handle) = start_authenticated_test_server().await;
     let response = reqwest::get(format!("{base}/v1/models"))
         .await
         .expect("request reaches server");
@@ -308,7 +313,7 @@ async fn auth_v1_models_returns_401_when_no_key_provided() {
 
 #[tokio::test]
 async fn auth_v1_messages_returns_anthropic_401_when_no_key_provided() {
-    let (base, _key, tx, handle) = start_authenticated_test_server().await;
+    let (base, _openai_key, _anthropic_key, tx, handle) = start_authenticated_test_server().await;
     let response = reqwest::Client::new()
         .post(format!("{base}/v1/messages"))
         .json(&serde_json::json!({"model": "claude", "messages": []}))
@@ -324,10 +329,10 @@ async fn auth_v1_messages_returns_anthropic_401_when_no_key_provided() {
 
 #[tokio::test]
 async fn auth_v1_chat_completions_accepts_bearer_authorization() {
-    let (base, key, tx, handle) = start_authenticated_test_server().await;
+    let (base, openai_key, _anthropic_key, tx, handle) = start_authenticated_test_server().await;
     let response = reqwest::Client::new()
         .post(format!("{base}/v1/chat/completions"))
-        .bearer_auth(&key)
+        .bearer_auth(&openai_key)
         .json(&serde_json::json!({"model": "gpt-5.4", "messages": []}))
         .send()
         .await
@@ -341,10 +346,10 @@ async fn auth_v1_chat_completions_accepts_bearer_authorization() {
 
 #[tokio::test]
 async fn auth_v1_messages_accepts_x_api_key_header() {
-    let (base, key, tx, handle) = start_authenticated_test_server().await;
+    let (base, _openai_key, anthropic_key, tx, handle) = start_authenticated_test_server().await;
     let response = reqwest::Client::new()
         .post(format!("{base}/v1/messages"))
-        .header("x-api-key", &key)
+        .header("x-api-key", &anthropic_key)
         .json(&serde_json::json!({"model": "claude", "messages": []}))
         .send()
         .await
@@ -357,8 +362,41 @@ async fn auth_v1_messages_accepts_x_api_key_header() {
 }
 
 #[tokio::test]
+async fn auth_v1_chat_completions_rejects_anthropic_key() {
+    let (base, _openai_key, anthropic_key, tx, handle) = start_authenticated_test_server().await;
+    let response = reqwest::Client::new()
+        .post(format!("{base}/v1/chat/completions"))
+        .bearer_auth(&anthropic_key)
+        .json(&serde_json::json!({"model": "gpt-5.4", "messages": []}))
+        .send()
+        .await
+        .expect("request reaches server");
+    assert_eq!(response.status(), reqwest::StatusCode::UNAUTHORIZED);
+    let body: Value = response.json().await.expect("body decodes");
+    assert_eq!(body["error"]["type"], "unauthorized");
+    shutdown_test_server(tx, handle).await;
+}
+
+#[tokio::test]
+async fn auth_v1_messages_rejects_openai_key() {
+    let (base, openai_key, _anthropic_key, tx, handle) = start_authenticated_test_server().await;
+    let response = reqwest::Client::new()
+        .post(format!("{base}/v1/messages"))
+        .header("x-api-key", &openai_key)
+        .json(&serde_json::json!({"model": "claude", "messages": []}))
+        .send()
+        .await
+        .expect("request reaches server");
+    assert_eq!(response.status(), reqwest::StatusCode::UNAUTHORIZED);
+    let body: Value = response.json().await.expect("body decodes");
+    assert_eq!(body["type"], "error");
+    assert_eq!(body["error"]["type"], "authentication_error");
+    shutdown_test_server(tx, handle).await;
+}
+
+#[tokio::test]
 async fn auth_rejects_wrong_key_with_401() {
-    let (base, _key, tx, handle) = start_authenticated_test_server().await;
+    let (base, _openai_key, _anthropic_key, tx, handle) = start_authenticated_test_server().await;
     let response = reqwest::Client::new()
         .get(format!("{base}/v1/models"))
         .bearer_auth("sk-local-wrong-key-0000000000000000000000")
@@ -371,7 +409,7 @@ async fn auth_rejects_wrong_key_with_401() {
 
 #[tokio::test]
 async fn auth_does_not_apply_to_healthz() {
-    let (base, _key, tx, handle) = start_authenticated_test_server().await;
+    let (base, _openai_key, _anthropic_key, tx, handle) = start_authenticated_test_server().await;
     let response = reqwest::get(format!("{base}/healthz"))
         .await
         .expect("request reaches server");

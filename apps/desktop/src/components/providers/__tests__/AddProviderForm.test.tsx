@@ -108,16 +108,31 @@ describe("AddProviderForm", () => {
     expect(addProvider).not.toHaveBeenCalled();
   });
 
-  it("disables unsupported provider kinds", () => {
+  it("enables OpenAI-compatible provider kinds and disables only unsupported native kinds", () => {
     render(<AddProviderForm />);
 
     expect(screen.getByRole("button", { name: "Gemini" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Relay" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Custom" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Relay" })).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: "Custom" })).not.toBeDisabled();
     expect(screen.getByRole("button", { name: "OpenAI" })).not.toBeDisabled();
     expect(
       screen.getByRole("button", { name: "Anthropic" }),
     ).not.toBeDisabled();
+  });
+
+  it("requires Base URL for custom OpenAI-compatible providers", async () => {
+    render(<AddProviderForm />);
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: "Custom" }));
+    await user.type(screen.getByLabelText("名称"), "Local Gateway");
+    await user.type(screen.getByLabelText("API Key"), "sk-custom");
+    await user.click(screen.getByRole("button", { name: "添加" }));
+
+    expect(
+      await screen.findByText("此类型供应商需要填写 Base URL"),
+    ).toBeInTheDocument();
+    expect(addProvider).not.toHaveBeenCalled();
   });
 
   it("rejects malformed Base URL", async () => {

@@ -95,6 +95,7 @@ mod tests {
         let first = runtime.start().await.expect("start ok");
         let second = runtime.regenerate_api_key().await.expect("regen ok");
         assert_ne!(first.api_key, second.api_key);
+        assert_ne!(first.anthropic.api_key, second.anthropic.api_key);
         runtime.stop().await.expect("stop ok");
     }
 
@@ -104,6 +105,7 @@ mod tests {
         let before = runtime.start().await.expect("start ok");
         let after = runtime.restart().await.expect("restart ok");
         assert_ne!(before.api_key, after.api_key);
+        assert_ne!(before.anthropic.api_key, after.anthropic.api_key);
         runtime.stop().await.expect("stop ok");
     }
 

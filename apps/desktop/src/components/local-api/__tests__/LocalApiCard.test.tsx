@@ -24,7 +24,15 @@ let lastEventCallback: ((config: LocalApiConfig) => void) | null = null;
 
 const SAMPLE = {
   base_url: "http://127.0.0.1:8787",
-  api_key: "sk-local-abcdefghijklmnopqrstuvwxyzABCD12",
+  api_key: "sk-local-openaiabcdefghijklmnopqrstuvwxyzABCD12",
+  openai: {
+    base_url: "http://127.0.0.1:8787/v1",
+    api_key: "sk-local-openaiabcdefghijklmnopqrstuvwxyzABCD12",
+  },
+  anthropic: {
+    base_url: "http://127.0.0.1:8787",
+    api_key: "sk-local-anthropicabcdefghijklmnopqrstuvwxyzWXYZ",
+  },
 };
 
 beforeEach(() => {
@@ -50,43 +58,66 @@ describe("LocalApiCard", () => {
   it("loads the local config on mount and renders running status", async () => {
     render(<LocalApiCard />);
     expect(await screen.findByText("运行中")).toBeInTheDocument();
-    expect(screen.getByText(SAMPLE.base_url)).toBeInTheDocument();
+    expect(screen.getByText(SAMPLE.openai.base_url)).toBeInTheDocument();
+    expect(screen.getByText(SAMPLE.anthropic.base_url)).toBeInTheDocument();
   });
 
-  it("masks the api key by default and reveals it on toggle", async () => {
+  it("masks both protocol keys by default and reveals one on toggle", async () => {
     render(<LocalApiCard />);
     await screen.findByText("运行中");
     // Default: full key is NOT in the DOM, masked tail is.
-    expect(screen.queryByText(SAMPLE.api_key)).not.toBeInTheDocument();
+    expect(screen.queryByText(SAMPLE.openai.api_key)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(SAMPLE.anthropic.api_key),
+    ).not.toBeInTheDocument();
     expect(screen.getByText("sk-local---------CD12")).toBeInTheDocument();
+    expect(screen.getByText("sk-local---------WXYZ")).toBeInTheDocument();
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "显示 API Key" }));
-    expect(await screen.findByText(SAMPLE.api_key)).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: "显示 OpenAI API Key" }),
+    );
+    expect(await screen.findByText(SAMPLE.openai.api_key)).toBeInTheDocument();
+    expect(
+      screen.queryByText(SAMPLE.anthropic.api_key),
+    ).not.toBeInTheDocument();
   });
 
-  it("copies the base url to the clipboard", async () => {
+  it("copies the OpenAI base url to the clipboard", async () => {
     render(<LocalApiCard />);
     await screen.findByText("运行中");
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "复制 Base URL" }));
-    expect(copyToClipboard).toHaveBeenCalledWith(SAMPLE.base_url);
-    expect(await screen.findByText("Base URL 已复制")).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: "复制 OpenAI Base URL" }),
+    );
+    expect(copyToClipboard).toHaveBeenCalledWith(SAMPLE.openai.base_url);
+    expect(
+      await screen.findByText("OpenAI Base URL 已复制"),
+    ).toBeInTheDocument();
   });
 
-  it("triggers regenerate_api_key and reflects the rotated key", async () => {
+  it("triggers regenerate_api_key and reflects rotated protocol keys", async () => {
     render(<LocalApiCard />);
     await screen.findByText("运行中");
     const rotated = {
       base_url: SAMPLE.base_url,
-      api_key: "sk-local-zzzzzzzzzzzzzzzzzzzzzzzzzzzzZZZZ",
+      api_key: "sk-local-openairotatedzzzzzzzzzzzzzzzzZZZZ",
+      openai: {
+        base_url: SAMPLE.openai.base_url,
+        api_key: "sk-local-openairotatedzzzzzzzzzzzzzzzzZZZZ",
+      },
+      anthropic: {
+        base_url: SAMPLE.anthropic.base_url,
+        api_key: "sk-local-anthropicrotatedzzzzzzzzzzYYYY",
+      },
     };
     vi.mocked(regenerateApiKey).mockResolvedValueOnce(rotated);
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "轮换 Key" }));
+    await user.click(screen.getByRole("button", { name: "轮换全部 Key" }));
     await waitFor(() => expect(regenerateApiKey).toHaveBeenCalledTimes(1));
     expect(
       await screen.findByText("sk-local---------ZZZZ"),
     ).toBeInTheDocument();
+    expect(screen.getByText("sk-local---------YYYY")).toBeInTheDocument();
   });
 
   it("renders stopped state when get_local_api_config rejects", async () => {
@@ -107,12 +138,21 @@ describe("LocalApiCard", () => {
     // Simulate the backend emitting a rotated key.
     const rotated: LocalApiConfig = {
       base_url: SAMPLE.base_url,
-      api_key: "sk-local-rrrrrrrrrrrrrrrrrrrrrrrrrrrrRRRR",
+      api_key: "sk-local-openairrrrrrrrrrrrrrrrrrrrrrrrrRRRR",
+      openai: {
+        base_url: SAMPLE.openai.base_url,
+        api_key: "sk-local-openairrrrrrrrrrrrrrrrrrrrrrrrrRRRR",
+      },
+      anthropic: {
+        base_url: SAMPLE.anthropic.base_url,
+        api_key: "sk-local-anthropicrrrrrrrrrrrrrrrrrrrrSSSS",
+      },
     };
     lastEventCallback?.(rotated);
     expect(
       await screen.findByText("sk-local---------RRRR"),
     ).toBeInTheDocument();
+    expect(screen.getByText("sk-local---------SSSS")).toBeInTheDocument();
   });
 
   it("calls restart_proxy and refreshes config", async () => {
@@ -120,12 +160,21 @@ describe("LocalApiCard", () => {
     await screen.findByText("运行中");
     const next = {
       base_url: "http://127.0.0.1:8788",
-      api_key: SAMPLE.api_key,
+      api_key: SAMPLE.openai.api_key,
+      openai: {
+        base_url: "http://127.0.0.1:8788/v1",
+        api_key: SAMPLE.openai.api_key,
+      },
+      anthropic: {
+        base_url: "http://127.0.0.1:8788",
+        api_key: SAMPLE.anthropic.api_key,
+      },
     };
     vi.mocked(restartProxy).mockResolvedValueOnce(next);
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /重启服务/ }));
     await waitFor(() => expect(restartProxy).toHaveBeenCalledTimes(1));
-    expect(await screen.findByText(next.base_url)).toBeInTheDocument();
+    expect(await screen.findByText(next.openai.base_url)).toBeInTheDocument();
+    expect(screen.getByText(next.anthropic.base_url)).toBeInTheDocument();
   });
 });

@@ -80,10 +80,32 @@ fn user_manual_documents_auth_and_unsupported_local_api_surfaces() {
 }
 
 #[test]
+fn docs_document_protocol_scoped_local_credentials() {
+    for needle in [
+        "OpenAI and Anthropic local keys are separate",
+        "`http://127.0.0.1:8787/v1`",
+        "Grouped lists",
+        "Copy OpenAI Key",
+        "Copy Anthropic Key",
+        "OpenAI 与 Anthropic 的本地 Key 彼此独立",
+        "分组列表",
+    ] {
+        assert_manual_contains(needle);
+    }
+    for needle in [
+        "**OpenAI** Base URL",
+        "protocol-scoped local API key",
+        "**Anthropic** Base URL/key pair",
+    ] {
+        assert_readme_contains(needle);
+    }
+}
+
+#[test]
 fn readme_documents_chat_completions_curl_quick_check() {
     for needle in [
-        "## 快速开始",
-        "### 本地 API 快速验证",
+        "## Quick Start",
+        "### Verify the local API",
         "curl -sS http://127.0.0.1:8787/v1/chat/completions",
         "-H \"Authorization: Bearer sk-local-...\"",
         "\"model\": \"gpt-5.4\"",

@@ -94,7 +94,7 @@ pnpm typecheck
 
 ### Verify the local API
 
-After adding and enabling at least one provider in the desktop app, copy the Base URL and local API key from the Dashboard. Replace `sk-local-...` below with the key shown in the UI; if your proxy port is not `8787`, update the URL too.
+After adding and enabling at least one provider in the desktop app, copy the **OpenAI** Base URL and protocol-scoped local API key from the Dashboard. OpenAI-compatible clients use a Base URL ending in `/v1`, for example `http://127.0.0.1:8787/v1`; Anthropic clients use the separate **Anthropic** Base URL/key pair shown beside it.
 
 ```bash
 curl -sS http://127.0.0.1:8787/v1/chat/completions \
@@ -124,7 +124,7 @@ A successful call returns an OpenAI-compatible `chat.completion` JSON and the da
 | POST   | `/v1/chat/completions` | OpenAI Chat Completions (+ SSE) |
 | POST   | `/v1/messages`         | Anthropic Messages (+ SSE)      |
 
-**Auth** — `Authorization: Bearer sk-local-…` (OpenAI-style) or `x-api-key: sk-local-…` (Anthropic-style). CORS is restricted to localhost.
+**Auth** — OpenAI-compatible routes use the OpenAI key with `Authorization: Bearer sk-local-…`; Anthropic Messages uses the Anthropic key with `x-api-key: sk-local-…`. CORS is restricted to localhost.
 
 ---
 

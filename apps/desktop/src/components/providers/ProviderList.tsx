@@ -43,6 +43,26 @@ import { SortableProviderItem, type EditState } from "./SortableProviderItem";
 
 const HEALTH_REFRESH_INTERVAL_MS = 5_000;
 const PRIORITY_STEP = 10;
+const PROVIDER_GROUPS = [
+  {
+    id: "openai",
+    titleKey: "provider_group_openai_title",
+    descKey: "provider_group_openai_desc",
+    kinds: new Set<ProviderInput["kind"]>(["openai", "relay", "custom"]),
+  },
+  {
+    id: "anthropic",
+    titleKey: "provider_group_anthropic_title",
+    descKey: "provider_group_anthropic_desc",
+    kinds: new Set<ProviderInput["kind"]>(["anthropic"]),
+  },
+  {
+    id: "gemini",
+    titleKey: "provider_group_gemini_title",
+    descKey: "provider_group_gemini_desc",
+    kinds: new Set<ProviderInput["kind"]>(["gemini"]),
+  },
+] as const;
 
 interface ProviderListProps {
   refreshKey?: number;
@@ -276,6 +296,11 @@ export function ProviderList({ refreshKey }: ProviderListProps) {
     );
   }
 
+  const groupedProviders = groupProviders(providers);
+  const sortableProviderIds = groupedProviders.flatMap(({ providers }) =>
+    providers.map((provider) => provider.id),
+  );
+
   return (
     <>
       <DndContext
@@ -284,22 +309,42 @@ export function ProviderList({ refreshKey }: ProviderListProps) {
         onDragEnd={handleDragEnd}
       >
         <SortableContext
-          items={providers.map((p) => p.id)}
+          items={sortableProviderIds}
           strategy={verticalListSortingStrategy}
         >
-          <div className="space-y-2.5">
-            {providers.map((provider) => (
-              <SortableProviderItem
-                key={provider.id}
-                provider={provider}
-                health={healthMap[provider.id]}
-                testing={testingIds[provider.id] ?? false}
-                deleting={deletingId === provider.id}
-                onDelete={handleRequestDelete}
-                onToggleEnabled={handleToggleEnabled}
-                onTestConnection={handleTestConnection}
-                onSaveEdit={handleSaveEdit}
-              />
+          <div className="space-y-5">
+            {groupedProviders.map(({ group, providers }) => (
+              <section
+                key={group.id}
+                aria-labelledby={`${group.id}-providers-title`}
+              >
+                <header className="mb-2.5">
+                  <h3
+                    id={`${group.id}-providers-title`}
+                    className="text-sm font-semibold leading-apple-headline tracking-apple-tight"
+                  >
+                    {t(group.titleKey)}
+                  </h3>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {t(group.descKey)}
+                  </p>
+                </header>
+                <div className="space-y-2.5">
+                  {providers.map((provider) => (
+                    <SortableProviderItem
+                      key={provider.id}
+                      provider={provider}
+                      health={healthMap[provider.id]}
+                      testing={testingIds[provider.id] ?? false}
+                      deleting={deletingId === provider.id}
+                      onDelete={handleRequestDelete}
+                      onToggleEnabled={handleToggleEnabled}
+                      onTestConnection={handleTestConnection}
+                      onSaveEdit={handleSaveEdit}
+                    />
+                  ))}
+                </div>
+              </section>
             ))}
           </div>
         </SortableContext>
@@ -356,6 +401,13 @@ function indexByProvider(
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+function groupProviders(providers: Provider[]) {
+  return PROVIDER_GROUPS.map((group) => ({
+    group,
+    providers: providers.filter((provider) => group.kinds.has(provider.kind)),
+  })).filter((entry) => entry.providers.length > 0);
 }
 
 /** 把一次 stream check 的结果折叠回 HealthSnapshot 的形状，方便和

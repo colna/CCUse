@@ -31,6 +31,14 @@ const provider = {
   created_at: "2026-04-29T00:00:00.000Z",
   updated_at: "2026-04-29T00:00:00.000Z",
 };
+const openaiProvider = {
+  ...provider,
+  id: "provider-2",
+  name: "OpenAI Prod",
+  kind: "openai" as const,
+  base_url: "https://api.openai.com",
+  priority: 20,
+};
 
 function createDeferred<T>() {
   let resolve!: (value: T) => void;
@@ -76,6 +84,17 @@ beforeEach(() => {
 });
 
 describe("ProviderList", () => {
+  it("groups providers by outbound protocol family", async () => {
+    vi.mocked(listProviders).mockResolvedValueOnce([provider, openaiProvider]);
+
+    render(<ProviderList />);
+
+    expect(await screen.findByText("OpenAI-compatible")).toBeInTheDocument();
+    expect(screen.getByText("Anthropic")).toBeInTheDocument();
+    expect(screen.getByText("OpenAI Prod")).toBeInTheDocument();
+    expect(screen.getByText("Claude Prod")).toBeInTheDocument();
+  });
+
   it("shows a per-provider health test button", async () => {
     render(<ProviderList />);
     expect(
@@ -163,8 +182,8 @@ describe("ProviderList", () => {
     );
     await user.selectOptions(screen.getByLabelText("供应商类型"), "openai");
     expect(screen.getByRole("option", { name: "Gemini" })).toBeDisabled();
-    expect(screen.getByRole("option", { name: "Relay" })).toBeDisabled();
-    expect(screen.getByRole("option", { name: "Custom" })).toBeDisabled();
+    expect(screen.getByRole("option", { name: "Relay" })).not.toBeDisabled();
+    expect(screen.getByRole("option", { name: "Custom" })).not.toBeDisabled();
     await user.click(screen.getByRole("button", { name: "保存修改" }));
 
     await waitFor(() =>

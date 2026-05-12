@@ -144,7 +144,7 @@ fn csp_is_set_and_does_not_allow_unsafe_eval() {
 fn version_field_is_present_and_semver_shaped() {
     let conf = load_conf();
     let version = conf["version"].as_str().expect("version must be a string");
-    assert_eq!(version, "1.0.1", "release version must be 1.0.1");
+    assert_eq!(version, "1.1.2", "release version must be 1.1.2");
     let parts: Vec<&str> = version.split('.').collect();
     assert_eq!(
         parts.len(),

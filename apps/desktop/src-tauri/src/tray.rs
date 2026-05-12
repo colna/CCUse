@@ -14,7 +14,8 @@ use crate::proxy::ProxyRuntime;
 
 /// Menu-item IDs — stable strings so event matching is reliable.
 const ID_SHOW_WINDOW: &str = "tray_show_window";
-const ID_COPY_API_KEY: &str = "tray_copy_api_key";
+const ID_COPY_OPENAI_API_KEY: &str = "tray_copy_openai_api_key";
+const ID_COPY_ANTHROPIC_API_KEY: &str = "tray_copy_anthropic_api_key";
 const ID_RESTART_PROXY: &str = "tray_restart_proxy";
 const ID_QUIT: &str = "tray_quit";
 const TRAY_ICON: &[u8] = include_bytes!("../icons/tray-icon.png");
@@ -26,7 +27,10 @@ const TRAY_ICON: &[u8] = include_bytes!("../icons/tray-icon.png");
 /// Returns a boxed error if the tray icon or menu cannot be created.
 pub fn setup(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let show = MenuItemBuilder::with_id(ID_SHOW_WINDOW, "Show Window").build(app)?;
-    let copy_key = MenuItemBuilder::with_id(ID_COPY_API_KEY, "Copy API Key").build(app)?;
+    let copy_openai_key =
+        MenuItemBuilder::with_id(ID_COPY_OPENAI_API_KEY, "Copy OpenAI Key").build(app)?;
+    let copy_anthropic_key =
+        MenuItemBuilder::with_id(ID_COPY_ANTHROPIC_API_KEY, "Copy Anthropic Key").build(app)?;
     let restart = MenuItemBuilder::with_id(ID_RESTART_PROXY, "Restart Proxy").build(app)?;
     let quit = MenuItemBuilder::with_id(ID_QUIT, "Quit").build(app)?;
 
@@ -34,7 +38,8 @@ pub fn setup(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         .text("tray_status", "CCUse \u{2014} Running")
         .separator()
         .item(&show)
-        .item(&copy_key)
+        .item(&copy_openai_key)
+        .item(&copy_anthropic_key)
         .item(&restart)
         .separator()
         .item(&quit)
@@ -63,16 +68,22 @@ fn handle_menu_event(app: &AppHandle, id: &str) {
                 let _ = window.set_focus();
             }
         }
-        ID_COPY_API_KEY => {
+        ID_COPY_OPENAI_API_KEY | ID_COPY_ANTHROPIC_API_KEY => {
             let runtime = app.state::<Arc<ProxyRuntime>>();
             let rt = runtime.inner().clone();
             let app_handle = app.clone();
+            let copy_anthropic = id == ID_COPY_ANTHROPIC_API_KEY;
             tauri::async_runtime::spawn(async move {
                 if let Some(config) = rt.current_config().await {
                     if let Some(window) = app_handle.get_webview_window("main") {
+                        let key = if copy_anthropic {
+                            &config.anthropic.api_key
+                        } else {
+                            &config.openai.api_key
+                        };
                         let js = format!(
                             "navigator.clipboard.writeText({0})",
-                            serde_json::to_string(&config.api_key).unwrap_or_default()
+                            serde_json::to_string(key).unwrap_or_default()
                         );
                         let _ = window.eval(&js);
                     }
@@ -111,7 +122,8 @@ mod tests {
     #[test]
     fn menu_item_ids_are_stable() {
         assert_eq!(ID_SHOW_WINDOW, "tray_show_window");
-        assert_eq!(ID_COPY_API_KEY, "tray_copy_api_key");
+        assert_eq!(ID_COPY_OPENAI_API_KEY, "tray_copy_openai_api_key");
+        assert_eq!(ID_COPY_ANTHROPIC_API_KEY, "tray_copy_anthropic_api_key");
         assert_eq!(ID_RESTART_PROXY, "tray_restart_proxy");
         assert_eq!(ID_QUIT, "tray_quit");
     }

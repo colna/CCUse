@@ -1,6 +1,6 @@
 //! Runtime supervisor for the local proxy.
 //!
-//! Holds the live [`ProxyServer`] handle, the issued [`LocalApiKey`],
+//! Holds the live [`ProxyServer`] handle, the issued protocol key set,
 //! and the shutdown channel — i.e. everything T1.0.1.12 commands need
 //! to mutate. Pure-Rust API so tests don't have to spin up `Tauri`.
 
@@ -11,7 +11,7 @@ use serde::Serialize;
 use tokio::sync::{oneshot, Mutex};
 use tokio::task::JoinHandle;
 
-use crate::auth::{generate_local_api_key, key_store, KeyStore, LocalApiKey};
+use crate::auth::{generate_local_api_key, key_store, KeyStore, LocalApiKeySet};
 use crate::commands::switch::SwitchEngineHandle;
 use crate::db::Database;
 use crate::providers::ProviderManager;
@@ -26,14 +26,46 @@ pub const DEFAULT_PROXY_PORT: u16 = 8787;
 /// Probe budget when [`DEFAULT_PROXY_PORT`] is busy.
 pub const DEFAULT_PROXY_ATTEMPTS: u16 = 100;
 
-/// Snapshot returned to the UI / clipboard. Cheap to clone (two
-/// owned strings) — UI re-renders should not dictate this struct.
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
-pub struct LocalApiConfig {
-    /// Loopback HTTP base URL, e.g. `http://127.0.0.1:8787`.
+/// Protocol-specific local endpoint returned to the UI / clipboard.
+#[derive(Clone, Serialize, PartialEq, Eq)]
+pub struct LocalApiEndpointConfig {
+    /// Base URL that should be pasted into clients for this protocol.
     pub base_url: String,
-    /// `sk-local-{32}` token issued at start / regenerate.
+    /// Protocol-scoped `sk-local-{32}` token issued at start / regenerate.
     pub api_key: String,
+}
+
+impl std::fmt::Debug for LocalApiEndpointConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LocalApiEndpointConfig")
+            .field("base_url", &self.base_url)
+            .field("api_key", &"<redacted>")
+            .finish()
+    }
+}
+
+/// Snapshot returned to the UI / clipboard. Top-level `base_url` /
+/// `api_key` remain for old UI/tray callers; new surfaces should use
+/// the protocol-specific `openai` / `anthropic` fields.
+#[derive(Clone, Serialize, PartialEq, Eq)]
+pub struct LocalApiConfig {
+    /// Legacy root URL, e.g. `http://127.0.0.1:8787`.
+    pub base_url: String,
+    /// Legacy key alias for OpenAI-compatible clients.
+    pub api_key: String,
+    pub openai: LocalApiEndpointConfig,
+    pub anthropic: LocalApiEndpointConfig,
+}
+
+impl std::fmt::Debug for LocalApiConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LocalApiConfig")
+            .field("base_url", &self.base_url)
+            .field("api_key", &"<redacted>")
+            .field("openai", &self.openai)
+            .field("anthropic", &self.anthropic)
+            .finish()
+    }
 }
 
 /// Errors surfaced through the runtime / Tauri command layer.
@@ -55,7 +87,7 @@ pub enum RuntimeError {
 /// next `start`.
 struct RunningState {
     addr: SocketAddr,
-    api_key: LocalApiKey,
+    api_keys: LocalApiKeySet,
     /// Shared with the auth middleware. Updating this in place is
     /// what makes `regenerate_api_key` not require a server bounce.
     key_store: KeyStore,
@@ -67,7 +99,7 @@ impl std::fmt::Debug for RunningState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("RunningState")
             .field("addr", &self.addr)
-            .field("api_key", &"<redacted>")
+            .field("api_keys", &"<redacted>")
             .finish_non_exhaustive()
     }
 }
@@ -141,8 +173,8 @@ impl ProxyRuntime {
         runtime
     }
 
-    /// Start the proxy if it's not already running. Generates a fresh
-    /// `sk-local-…` key and returns the resulting config snapshot.
+    /// Start the proxy if it's not already running. Generates fresh
+    /// protocol-scoped `sk-local-…` keys and returns the config snapshot.
     pub async fn start(&self) -> Result<LocalApiConfig, RuntimeError> {
         let mut guard = self.inner.lock().await;
         if let Some(state) = guard.as_ref() {
@@ -158,8 +190,8 @@ impl ProxyRuntime {
                 addr.port(),
             );
         }
-        let api_key = generate_local_api_key();
-        let store = key_store(api_key.as_str().to_owned());
+        let api_keys = generate_protocol_key_set();
+        let store = key_store(api_keys.clone());
         let (shutdown, rx) = oneshot::channel::<()>();
         let handle = tokio::spawn(server.serve_with_auth_and_shutdown(
             store.clone(),
@@ -168,13 +200,10 @@ impl ProxyRuntime {
                 let _ = rx.await;
             },
         ));
-        let config = LocalApiConfig {
-            base_url: format!("http://{addr}"),
-            api_key: api_key.as_str().to_owned(),
-        };
+        let config = local_api_config(addr, &api_keys);
         *guard = Some(RunningState {
             addr,
-            api_key,
+            api_keys,
             key_store: store,
             shutdown,
             handle,
@@ -185,13 +214,12 @@ impl ProxyRuntime {
     /// Snapshot the current config, or `None` if the proxy isn't up.
     pub async fn current_config(&self) -> Option<LocalApiConfig> {
         let guard = self.inner.lock().await;
-        guard.as_ref().map(|state| LocalApiConfig {
-            base_url: format!("http://{}", state.addr),
-            api_key: state.api_key.as_str().to_owned(),
-        })
+        guard
+            .as_ref()
+            .map(|state| local_api_config(state.addr, &state.api_keys))
     }
 
-    /// Replace the in-memory key with a freshly generated one. Does
+    /// Replace the in-memory keys with freshly generated ones. Does
     /// not bounce the server — existing connections keep their
     /// (already-authorised) request handles. `T1.0.1.13` middleware
     /// reads the current key per-request, so the swap takes effect
@@ -199,7 +227,7 @@ impl ProxyRuntime {
     pub async fn regenerate_api_key(&self) -> Result<LocalApiConfig, RuntimeError> {
         let mut guard = self.inner.lock().await;
         let state = guard.as_mut().ok_or(RuntimeError::NotRunning)?;
-        let fresh = generate_local_api_key();
+        let fresh = generate_protocol_key_set();
         // Push the new key into the auth keystore *before* swapping
         // the in-runtime copy: a request that races with rotation
         // either sees the old expected key (still valid) or the new
@@ -209,13 +237,10 @@ impl ProxyRuntime {
                 .key_store
                 .write()
                 .map_err(|_| RuntimeError::Serve("auth keystore lock poisoned".into()))?;
-            fresh.as_str().clone_into(&mut guard);
+            *guard = fresh.clone();
         }
-        state.api_key = fresh;
-        Ok(LocalApiConfig {
-            base_url: format!("http://{}", state.addr),
-            api_key: state.api_key.as_str().to_owned(),
-        })
+        state.api_keys = fresh;
+        Ok(local_api_config(state.addr, &state.api_keys))
     }
 
     /// Stop the running proxy, then start a fresh one. Reuses the
@@ -239,6 +264,31 @@ impl ProxyRuntime {
             Ok(Err(err)) => Err(RuntimeError::Serve(err.to_string())),
             Err(join_err) => Err(RuntimeError::Panic(join_err.to_string())),
         }
+    }
+}
+
+fn generate_protocol_key_set() -> LocalApiKeySet {
+    let openai = generate_local_api_key().into_string();
+    let mut anthropic = generate_local_api_key().into_string();
+    while anthropic == openai {
+        anthropic = generate_local_api_key().into_string();
+    }
+    LocalApiKeySet::new(openai, anthropic)
+}
+
+fn local_api_config(addr: SocketAddr, keys: &LocalApiKeySet) -> LocalApiConfig {
+    let root = format!("http://{addr}");
+    LocalApiConfig {
+        base_url: root.clone(),
+        api_key: keys.openai.clone(),
+        openai: LocalApiEndpointConfig {
+            base_url: format!("{root}/v1"),
+            api_key: keys.openai.clone(),
+        },
+        anthropic: LocalApiEndpointConfig {
+            base_url: root,
+            api_key: keys.anthropic.clone(),
+        },
     }
 }
 
@@ -275,6 +325,11 @@ mod tests {
         let config = runtime.start().await.expect("start should succeed");
         assert!(config.base_url.starts_with("http://127.0.0.1:"));
         assert!(config.api_key.starts_with("sk-local-"));
+        assert_eq!(config.api_key, config.openai.api_key);
+        assert_eq!(config.anthropic.base_url, config.base_url);
+        assert_eq!(config.openai.base_url, format!("{}/v1", config.base_url));
+        assert!(config.anthropic.api_key.starts_with("sk-local-"));
+        assert_ne!(config.openai.api_key, config.anthropic.api_key);
         runtime.stop().await.expect("stop should succeed");
     }
 
@@ -304,7 +359,11 @@ mod tests {
         );
         assert_ne!(
             first.api_key, second.api_key,
-            "regenerate must rotate the key",
+            "regenerate must rotate the OpenAI-compatible key",
+        );
+        assert_ne!(
+            first.anthropic.api_key, second.anthropic.api_key,
+            "regenerate must rotate the Anthropic key",
         );
         runtime.stop().await.expect("stop should succeed");
     }
@@ -326,9 +385,14 @@ mod tests {
         let after = runtime.restart().await.expect("restart should succeed");
         assert_ne!(
             before.api_key, after.api_key,
-            "restart must produce a new key",
+            "restart must produce a new OpenAI-compatible key",
+        );
+        assert_ne!(
+            before.anthropic.api_key, after.anthropic.api_key,
+            "restart must produce a new Anthropic key",
         );
         assert!(after.base_url.starts_with("http://127.0.0.1:"));
+        assert_eq!(after.openai.base_url, format!("{}/v1", after.base_url));
         runtime.stop().await.expect("stop should succeed");
     }
 

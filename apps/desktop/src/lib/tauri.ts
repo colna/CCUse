@@ -12,10 +12,20 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 // ─── Local API 代理（本地 8787 端口的统一入口）─────────────────────────
 
-/** 后端 `proxy::runtime::LocalApiConfig` 的镜像。 */
-export interface LocalApiConfig {
+/** 后端 `proxy::runtime::LocalApiEndpointConfig` 的镜像。 */
+export interface LocalApiEndpointConfig {
   base_url: string;
   api_key: string;
+}
+
+/** 后端 `proxy::runtime::LocalApiConfig` 的镜像。 */
+export interface LocalApiConfig {
+  /** 旧版根 URL；新 UI 使用协议分组里的 URL。 */
+  base_url: string;
+  /** 旧版 Key；等同于 OpenAI-compatible key。 */
+  api_key: string;
+  openai: LocalApiEndpointConfig;
+  anthropic: LocalApiEndpointConfig;
 }
 
 export async function getLocalApiConfig(): Promise<LocalApiConfig> {
