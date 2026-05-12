@@ -8,6 +8,7 @@ pub mod anthropic;
 pub mod gemini;
 pub mod model_mapping;
 pub mod openai;
+pub mod responses;
 pub mod sse;
 pub mod types;
 
@@ -17,6 +18,7 @@ pub use anthropic::AnthropicConverter;
 pub use gemini::GeminiConverter;
 pub use model_mapping::ModelMapping;
 pub use openai::OpenAIConverter;
+pub use responses::ResponsesConverter;
 pub use types::{
     ContentPart, FinishReason, Role, StreamChoice, StreamDelta, StreamToolCall, ToolCall,
     ToolDefinition, ToolResult, UnifiedChoice, UnifiedMessage, UnifiedRequest, UnifiedResponse,
