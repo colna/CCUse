@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -30,6 +30,7 @@ beforeEach(() => {
       {
         provider_id: "claude",
         provider_name: "Claude",
+        kind: "openai",
         status: "healthy",
         success_rate: 1,
         response_time_us: 4000,
@@ -53,6 +54,7 @@ beforeEach(() => {
       {
         provider_id: "claude",
         provider_name: "Claude",
+        kind: "openai",
         status: "healthy",
         success_rate: 1,
         response_time_us: 4000,
@@ -94,6 +96,7 @@ describe("StatusCards", () => {
         {
           provider_id: "provider-2",
           provider_name: "2",
+          kind: "openai",
           status: "healthy",
           success_rate: 1,
           response_time_us: 20_000,
@@ -101,6 +104,7 @@ describe("StatusCards", () => {
         {
           provider_id: "provider-1",
           provider_name: "1",
+          kind: "openai",
           status: "healthy",
           success_rate: 1,
           response_time_us: 1_000,
@@ -131,6 +135,7 @@ describe("StatusCards", () => {
         {
           provider_id: "provider-2",
           provider_name: "2",
+          kind: "openai",
           status: "healthy",
           success_rate: 1,
           response_time_us: 2_000,
@@ -142,6 +147,7 @@ describe("StatusCards", () => {
         {
           provider_id: "provider-1",
           provider_name: "1",
+          kind: "openai",
           status: "healthy",
           success_rate: 1,
           response_time_us: 1_000,
@@ -161,5 +167,46 @@ describe("StatusCards", () => {
 
     expect(refreshHealthSnapshot).toHaveBeenCalledTimes(1);
     expect(currentProvider).toHaveTextContent("1");
+  });
+
+  it("filters providers and refetches metrics when switching to Anthropic", async () => {
+    vi.mocked(getHealthSnapshot).mockResolvedValue({
+      providers: [
+        {
+          provider_id: "openai-1",
+          provider_name: "OAI",
+          kind: "openai",
+          status: "healthy",
+          success_rate: 1,
+          response_time_us: 1_000,
+        },
+        {
+          provider_id: "claude-1",
+          provider_name: "Claude",
+          kind: "anthropic",
+          status: "healthy",
+          success_rate: 1,
+          response_time_us: 5_000,
+        },
+      ],
+    });
+
+    render(<StatusCards />);
+
+    // Default protocol is OpenAI → current provider should be the openai kind.
+    const currentProvider = await screen.findByTestId(
+      "current-provider-card-value",
+    );
+    expect(currentProvider).toHaveTextContent("OAI");
+    expect(getMetricsTimeseries).toHaveBeenCalledWith("openai");
+
+    // antd Segmented marks the hidden radios as `pointer-events: none`, so
+    // userEvent.click can't reach them. Use fireEvent to bypass the pointer
+    // simulation and trigger the change directly — this exercises the same
+    // `onChange` path the real UI uses.
+    fireEvent.click(screen.getByRole("radio", { name: "Anthropic" }));
+
+    expect(await screen.findByText("Claude")).toBeInTheDocument();
+    expect(getMetricsTimeseries).toHaveBeenCalledWith("anthropic");
   });
 });

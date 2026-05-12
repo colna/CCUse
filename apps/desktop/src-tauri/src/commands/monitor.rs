@@ -44,49 +44,112 @@ pub struct SwitchEvent {
 }
 
 /// Return 24h of metrics in 5-minute time buckets.
+///
+/// When `protocol` is `Some("openai")` or `Some("anthropic")`, only the
+/// providers in that protocol group contribute to the buckets. Group
+/// membership mirrors the UI provider list:
+/// - `openai` → `openai`, `relay`, `custom`
+/// - `anthropic` → `anthropic`
+/// - any other value (or absent) → no filter, full aggregate.
 #[tauri::command]
-pub async fn get_metrics_timeseries(db: State<'_, Database>) -> Result<Vec<MetricsBucket>, String> {
-    query_metrics_timeseries(&db)
+pub async fn get_metrics_timeseries(
+    db: State<'_, Database>,
+    protocol: Option<String>,
+) -> Result<Vec<MetricsBucket>, String> {
+    query_metrics_timeseries_filtered(&db, protocol.as_deref())
 }
 
 pub fn query_metrics_timeseries(db: &Database) -> Result<Vec<MetricsBucket>, String> {
+    query_metrics_timeseries_filtered(db, None)
+}
+
+pub fn query_metrics_timeseries_filtered(
+    db: &Database,
+    protocol: Option<&str>,
+) -> Result<Vec<MetricsBucket>, String> {
+    let kinds: &[&str] = match protocol {
+        Some("openai") => &["openai", "relay", "custom"],
+        Some("anthropic") => &["anthropic"],
+        _ => &[],
+    };
+
     db.with_connection(|conn| {
-        let mut stmt = conn.prepare(
-            "WITH buckets AS ( \
-               SELECT \
-                 strftime('%Y-%m-%dT%H:', timestamp) || \
-                   printf('%02d', (CAST(strftime('%M', timestamp) AS INTEGER) / 5) * 5) \
-                   || ':00Z' AS bucket, \
-                 status, \
-                 latency_ms \
-               FROM request_logs \
-               WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-24 hours') \
-             ) \
-             SELECT \
-               bucket, \
-               COUNT(*) AS request_count, \
-               SUM(CASE WHEN status = 'ok' THEN 1 ELSE 0 END) AS success_count, \
-               ROUND(1.0 * SUM(CASE WHEN status = 'ok' THEN 1 ELSE 0 END) / COUNT(*), 4) \
-                 AS success_rate, \
-               ROUND(AVG(latency_ms), 1) AS avg_latency_ms, \
-               MAX(latency_ms) AS p95_latency_ms \
-             FROM buckets \
-             GROUP BY bucket \
-             ORDER BY bucket ASC",
-        )?;
-        let rows = stmt.query_map([], |row| {
-            Ok(MetricsBucket {
-                timestamp: row.get(0)?,
-                request_count: row.get(1)?,
-                success_count: row.get(2)?,
-                success_rate: row.get(3)?,
-                avg_latency_ms: row.get(4)?,
-                p95_latency_ms: row.get(5)?,
-            })
-        })?;
-        rows.collect::<Result<Vec<_>, _>>()
+        if kinds.is_empty() {
+            let mut stmt = conn.prepare(
+                "WITH buckets AS ( \
+                   SELECT \
+                     strftime('%Y-%m-%dT%H:', timestamp) || \
+                       printf('%02d', (CAST(strftime('%M', timestamp) AS INTEGER) / 5) * 5) \
+                       || ':00Z' AS bucket, \
+                     status, \
+                     latency_ms \
+                   FROM request_logs \
+                   WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-24 hours') \
+                 ) \
+                 SELECT \
+                   bucket, \
+                   COUNT(*) AS request_count, \
+                   SUM(CASE WHEN status = 'ok' THEN 1 ELSE 0 END) AS success_count, \
+                   ROUND(1.0 * SUM(CASE WHEN status = 'ok' THEN 1 ELSE 0 END) / COUNT(*), 4) \
+                     AS success_rate, \
+                   ROUND(AVG(latency_ms), 1) AS avg_latency_ms, \
+                   MAX(latency_ms) AS p95_latency_ms \
+                 FROM buckets \
+                 GROUP BY bucket \
+                 ORDER BY bucket ASC",
+            )?;
+            let rows = stmt.query_map([], row_to_metrics_bucket)?;
+            rows.collect::<Result<Vec<_>, _>>()
+        } else {
+            let placeholders = std::iter::repeat("?")
+                .take(kinds.len())
+                .collect::<Vec<_>>()
+                .join(",");
+            let sql = format!(
+                "WITH buckets AS ( \
+                   SELECT \
+                     strftime('%Y-%m-%dT%H:', rl.timestamp) || \
+                       printf('%02d', (CAST(strftime('%M', rl.timestamp) AS INTEGER) / 5) * 5) \
+                       || ':00Z' AS bucket, \
+                     rl.status, \
+                     rl.latency_ms \
+                   FROM request_logs rl \
+                   JOIN providers p ON p.id = rl.provider_id \
+                   WHERE rl.timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-24 hours') \
+                     AND p.kind IN ({placeholders}) \
+                 ) \
+                 SELECT \
+                   bucket, \
+                   COUNT(*) AS request_count, \
+                   SUM(CASE WHEN status = 'ok' THEN 1 ELSE 0 END) AS success_count, \
+                   ROUND(1.0 * SUM(CASE WHEN status = 'ok' THEN 1 ELSE 0 END) / COUNT(*), 4) \
+                     AS success_rate, \
+                   ROUND(AVG(latency_ms), 1) AS avg_latency_ms, \
+                   MAX(latency_ms) AS p95_latency_ms \
+                 FROM buckets \
+                 GROUP BY bucket \
+                 ORDER BY bucket ASC"
+            );
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt.query_map(
+                rusqlite::params_from_iter(kinds.iter()),
+                row_to_metrics_bucket,
+            )?;
+            rows.collect::<Result<Vec<_>, _>>()
+        }
     })
     .map_err(|e| e.to_string())
+}
+
+fn row_to_metrics_bucket(row: &rusqlite::Row<'_>) -> rusqlite::Result<MetricsBucket> {
+    Ok(MetricsBucket {
+        timestamp: row.get(0)?,
+        request_count: row.get(1)?,
+        success_count: row.get(2)?,
+        success_rate: row.get(3)?,
+        avg_latency_ms: row.get(4)?,
+        p95_latency_ms: row.get(5)?,
+    })
 }
 
 /// Return cost (token count) summary grouped by provider.

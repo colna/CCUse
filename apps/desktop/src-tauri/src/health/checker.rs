@@ -15,6 +15,7 @@ use tokio::task::JoinHandle;
 
 use crate::providers::api::{HealthStatus, Provider as ProviderTrait};
 use crate::providers::manager::ProviderManager;
+use crate::providers::model::ProviderKind;
 
 use super::sliding_window::SlidingWindow;
 
@@ -51,6 +52,7 @@ struct ProbeState {
 pub struct HealthSnapshot {
     pub provider_id: String,
     pub provider_name: String,
+    pub kind: ProviderKind,
     pub status: HealthStatus,
     pub success_rate: f64,
     pub response_time_us: Option<i64>,
@@ -210,6 +212,7 @@ async fn run_probe_cycle(inner: &Inner) {
         snapshots.push(HealthSnapshot {
             provider_id: provider.id().to_owned(),
             provider_name: provider.name().to_owned(),
+            kind: provider.kind(),
             status: new_status,
             success_rate: rate,
             response_time_us: provider.state.rolling_response_us(),
@@ -234,6 +237,7 @@ async fn build_snapshot_from_runtime(inner: &Inner) -> Vec<HealthSnapshot> {
         snapshots.push(HealthSnapshot {
             provider_id: provider.id().to_owned(),
             provider_name: provider.name().to_owned(),
+            kind: provider.kind(),
             status,
             success_rate,
             response_time_us: provider.state.rolling_response_us(),

@@ -153,6 +153,7 @@ export type HealthStatus = "healthy" | "degraded" | "down";
 export interface HealthSnapshot {
   provider_id: string;
   provider_name: string;
+  kind: ProviderInput["kind"];
   status: HealthStatus;
   success_rate: number;
   response_time_us: number | null;
@@ -250,8 +251,10 @@ export interface SwitchEvent {
   details?: string | null;
 }
 
-export async function getMetricsTimeseries(): Promise<MetricsBucket[]> {
-  return invoke<MetricsBucket[]>("get_metrics_timeseries");
+export async function getMetricsTimeseries(
+  protocol?: "openai" | "anthropic",
+): Promise<MetricsBucket[]> {
+  return invoke<MetricsBucket[]>("get_metrics_timeseries", { protocol });
 }
 
 export async function getProviderCostSummary(): Promise<ProviderCostSummary[]> {

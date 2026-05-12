@@ -104,6 +104,7 @@ describe("ProvidersPage", () => {
         {
           provider_id: ADDED_PROVIDER.id,
           provider_name: ADDED_PROVIDER.name,
+          kind: "openai",
           status: "down",
           success_rate: 0,
           response_time_us: 42_000,
@@ -115,6 +116,7 @@ describe("ProvidersPage", () => {
         {
           provider_id: ADDED_PROVIDER.id,
           provider_name: ADDED_PROVIDER.name,
+          kind: "openai",
           status: "healthy",
           success_rate: 1,
           response_time_us: 42_000,

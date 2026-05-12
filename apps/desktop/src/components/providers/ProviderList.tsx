@@ -125,17 +125,20 @@ export function ProviderList({ refreshKey }: ProviderListProps) {
     // unhandled rejection；那种场合下我们就放弃订阅，但页面其余部
     // 分仍然要可用。
     const unlistenPromise = onProviderStatusChanged((event) => {
-      setHealthMap((current) => ({
-        ...current,
-        [event.provider_id]: {
-          provider_id: event.provider_id,
-          provider_name: event.provider_name,
-          status: event.new_status,
-          success_rate: event.success_rate,
-          response_time_us:
-            current[event.provider_id]?.response_time_us ?? null,
-        },
-      }));
+      setHealthMap((current) => {
+        const existing = current[event.provider_id];
+        return {
+          ...current,
+          [event.provider_id]: {
+            provider_id: event.provider_id,
+            provider_name: event.provider_name,
+            kind: existing?.kind ?? "custom",
+            status: event.new_status,
+            success_rate: event.success_rate,
+            response_time_us: existing?.response_time_us ?? null,
+          },
+        };
+      });
       void fetchHealth();
     }).catch(() => undefined);
     return () => {
@@ -226,6 +229,7 @@ export function ProviderList({ refreshKey }: ProviderListProps) {
       setTestingIds((current) => ({ ...current, [id]: true }));
       const provider = providers.find((item) => item.id === id);
       const providerName = provider?.name ?? id;
+      const providerKind = provider?.kind ?? "custom";
       try {
         const result = await testProviderConnection(id);
         setHealthMap((current) => ({
@@ -233,6 +237,7 @@ export function ProviderList({ refreshKey }: ProviderListProps) {
           [id]: healthSnapshotFromCheckResult(
             id,
             providerName,
+            providerKind,
             current[id],
             result,
           ),
@@ -415,12 +420,14 @@ function groupProviders(providers: Provider[]) {
 function healthSnapshotFromCheckResult(
   providerId: string,
   providerName: string,
+  providerKind: ProviderInput["kind"],
   previous: HealthSnapshot | undefined,
   result: import("@/lib/tauri").StreamCheckResult,
 ): HealthSnapshot {
   return {
     provider_id: providerId,
     provider_name: providerName,
+    kind: providerKind,
     status: result.success
       ? result.status === "degraded"
         ? "degraded"

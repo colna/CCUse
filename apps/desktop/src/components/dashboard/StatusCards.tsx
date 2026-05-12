@@ -6,10 +6,12 @@ import {
   CloudServerOutlined,
   RiseOutlined,
 } from "@ant-design/icons";
+import { Segmented } from "antd";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { protocolForKind, type ProtocolGroup } from "@/lib/providerKinds";
 import {
   getHealthSnapshot,
   getMetricsTimeseries,
@@ -23,7 +25,8 @@ import {
 
 /**
  * 仪表盘顶部的 4 张关键指标卡：当前供应商 / 今日请求 / 成功率 / 平均
- * 响应。三个数据源并发拉取，UI 一次性更新避免闪烁。
+ * 响应。Segmented 控件按 OpenAI / Anthropic 协议切换 — 数据源、
+ * provider 过滤、当前 provider 选择全部按所选协议重算。
  *
  * "当前供应商"的判定与后端 SwitchEngine 的策略保持视觉一致：fastest
  * 时取响应最快的健康节点，否则取第一个 healthy 节点。它只用于显示，
@@ -52,22 +55,29 @@ export function StatusCards() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [activeProtocol, setActiveProtocol] = useState<ProtocolGroup>("openai");
 
-  const fetchData = useCallback(async (forceRefresh = false) => {
-    try {
-      const [healthRes, metrics, strategy] = await Promise.all([
-        forceRefresh ? refreshHealthSnapshot() : getHealthSnapshot(),
-        getMetricsTimeseries(),
-        getStrategy(),
-      ]);
-      setData(deriveCardData(healthRes.providers, metrics, strategy.strategy));
-      setError(null);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const fetchData = useCallback(
+    async (forceRefresh = false) => {
+      try {
+        const [healthRes, metrics, strategy] = await Promise.all([
+          forceRefresh ? refreshHealthSnapshot() : getHealthSnapshot(),
+          getMetricsTimeseries(activeProtocol),
+          getStrategy(),
+        ]);
+        const scoped = healthRes.providers.filter(
+          (p) => protocolForKind(p.kind) === activeProtocol,
+        );
+        setData(deriveCardData(scoped, metrics, strategy.strategy));
+        setError(null);
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setLoading(false);
+      }
+    },
+    [activeProtocol],
+  );
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -106,9 +116,27 @@ export function StatusCards() {
   return (
     <section className="space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <h3 className="text-sm font-semibold text-foreground">
-          {t("status_overview")}
-        </h3>
+        <div className="flex items-center gap-3">
+          <h3 className="text-sm font-semibold text-foreground">
+            {t("status_overview")}
+          </h3>
+          <Segmented
+            size="small"
+            value={activeProtocol}
+            onChange={(value) => setActiveProtocol(value as ProtocolGroup)}
+            options={[
+              {
+                label: t("status_overview_protocol_openai"),
+                value: "openai",
+              },
+              {
+                label: t("status_overview_protocol_anthropic"),
+                value: "anthropic",
+              },
+            ]}
+            aria-label={t("status_overview_protocol_aria")}
+          />
+        </div>
         <Button
           htmlType="button"
           size="small"

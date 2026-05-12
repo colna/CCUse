@@ -59,6 +59,7 @@ beforeEach(() => {
       {
         provider_id: "provider-1",
         provider_name: "Claude Prod",
+        kind: "anthropic",
         status: "down",
         success_rate: 0,
         response_time_us: null,

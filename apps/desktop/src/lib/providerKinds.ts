@@ -51,3 +51,18 @@ export const PROVIDER_KIND_OPTIONS: readonly ProviderKindOption[] = [
     supported: true,
   },
 ] as const;
+
+/** 入站协议分组：决定本地代理用哪个 key 校验、UI 怎么把 provider / 指标拆开。
+ *  与后端 `query_metrics_timeseries_filtered` 的 kind 列表保持一致。 */
+export type ProtocolGroup = "openai" | "anthropic";
+
+export const PROTOCOL_GROUPS: Record<ProtocolGroup, readonly ProviderKind[]> = {
+  openai: ["openai", "relay", "custom"],
+  anthropic: ["anthropic"],
+};
+
+export function protocolForKind(kind: ProviderKind): ProtocolGroup | null {
+  if (PROTOCOL_GROUPS.openai.includes(kind)) return "openai";
+  if (PROTOCOL_GROUPS.anthropic.includes(kind)) return "anthropic";
+  return null;
+}
