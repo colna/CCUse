@@ -109,7 +109,19 @@ curl -sS http://127.0.0.1:8787/v1/chat/completions \
   }'
 ```
 
-A successful call returns an OpenAI-compatible `chat.completion` JSON and the dashboard shows a new request log entry. If you see `providers_not_configured`, double-check at least one provider is enabled.
+Codex CLI and other Responses-API clients can hit the same proxy:
+
+```bash
+curl -sS http://127.0.0.1:8787/v1/responses \
+  -H "Authorization: Bearer sk-local-..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-4o",
+    "input": "Reply with: CCUse OK"
+  }'
+```
+
+A successful call returns an OpenAI-compatible `chat.completion` (or `response`) JSON and the dashboard shows a new request log entry. If you see `providers_not_configured`, double-check at least one provider is enabled.
 
 > Phases 1.0.1 → 1.0.6 + 1.0.W are complete. Local proxy, multi-provider management, automatic failover, format conversion, monitoring dashboard, system tray, i18n, and the Next.js marketing website are all in place. See [`开发计划.md`](./docs/开发计划.md).
 
@@ -123,6 +135,7 @@ A successful call returns an OpenAI-compatible `chat.completion` JSON and the da
 | GET    | `/v1/models`           | OpenAI Models API               |
 | POST   | `/v1/chat/completions` | OpenAI Chat Completions (+ SSE) |
 | POST   | `/v1/messages`         | Anthropic Messages (+ SSE)      |
+| POST   | `/v1/responses`        | OpenAI Responses (+ typed SSE)  |
 
 **Auth** — OpenAI-compatible routes use the OpenAI key with `Authorization: Bearer sk-local-…`; Anthropic Messages uses the Anthropic key with `x-api-key: sk-local-…`. CORS is restricted to localhost.
 

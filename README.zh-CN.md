@@ -109,7 +109,19 @@ curl -sS http://127.0.0.1:8787/v1/chat/completions \
   }'
 ```
 
-成功时返回 OpenAI 兼容的 `chat.completion` JSON，仪表盘会出现一条新的请求记录；若返回 `providers_not_configured`，请确认至少有一个启用的供应商。
+Codex CLI 等使用 Responses API 的客户端可以打同一个代理：
+
+```bash
+curl -sS http://127.0.0.1:8787/v1/responses \
+  -H "Authorization: Bearer sk-local-..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-4o",
+    "input": "Reply with: CCUse OK"
+  }'
+```
+
+成功时返回 OpenAI 兼容的 `chat.completion`（或 `response`）JSON，仪表盘会出现一条新的请求记录；若返回 `providers_not_configured`，请确认至少有一个启用的供应商。
 
 > Phase 1.0.1 → 1.0.6 + 官网 1.0.W 已完成。本地代理 + 多供应商管理 + 自动切换 + 格式转换 + 监控面板 + 系统托盘 + i18n + Next.js 官网均已就绪。详见 [`开发计划.md`](./docs/开发计划.md)。
 
@@ -117,12 +129,13 @@ curl -sS http://127.0.0.1:8787/v1/chat/completions \
 
 ## 已支持本地 API 端点
 
-| 方法 | 路径                   | 兼容                            |
-| ---- | ---------------------- | ------------------------------- |
-| GET  | `/healthz`             | 健康检查（无需鉴权）            |
-| GET  | `/v1/models`           | OpenAI Models API               |
-| POST | `/v1/chat/completions` | OpenAI Chat Completions (+ SSE) |
-| POST | `/v1/messages`         | Anthropic Messages (+ SSE)      |
+| 方法 | 路径                   | 兼容                             |
+| ---- | ---------------------- | -------------------------------- |
+| GET  | `/healthz`             | 健康检查（无需鉴权）             |
+| GET  | `/v1/models`           | OpenAI Models API                |
+| POST | `/v1/chat/completions` | OpenAI Chat Completions (+ SSE)  |
+| POST | `/v1/messages`         | Anthropic Messages (+ SSE)       |
+| POST | `/v1/responses`        | OpenAI Responses（含类型化 SSE） |
 
 **鉴权** —— OpenAI 风格 `Authorization: Bearer sk-local-…` 或 Anthropic 风格 `x-api-key: sk-local-…`；CORS 仅放行 localhost。
 

@@ -42,6 +42,9 @@ fn user_manual_documents_supported_local_api_endpoint_matrix() {
         "`GET /v1/models`",
         "`POST /v1/chat/completions`",
         "`POST /v1/messages`",
+        "`POST /v1/responses`",
+        "response.output_text.delta",
+        "response.completed",
     ] {
         assert_manual_contains(needle);
     }
@@ -71,7 +74,6 @@ fn user_manual_documents_auth_and_unsupported_local_api_surfaces() {
     for needle in [
         "`Authorization: Bearer sk-local-...`",
         "`x-api-key: sk-local-...`",
-        "`/v1/responses`",
         "embeddings",
         "fine-tuning",
     ] {
