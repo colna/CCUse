@@ -18,7 +18,7 @@ pub use anthropic::AnthropicConverter;
 pub use gemini::GeminiConverter;
 pub use model_mapping::ModelMapping;
 pub use openai::OpenAIConverter;
-pub use responses::ResponsesConverter;
+pub use responses::{ResponsesConverter, ResponsesStreamEncoder};
 pub use types::{
     ContentPart, FinishReason, Role, StreamChoice, StreamDelta, StreamToolCall, ToolCall,
     ToolDefinition, ToolResult, UnifiedChoice, UnifiedMessage, UnifiedRequest, UnifiedResponse,
