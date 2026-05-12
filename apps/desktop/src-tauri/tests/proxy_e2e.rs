@@ -2305,3 +2305,339 @@ async fn chat_completions_records_switch_history_after_503_failover() {
 
     proxy.shutdown().await;
 }
+
+// ─── /v1/responses (T1.0.6.39) ───────────────────────────────────────────
+
+fn responses_request(stream: bool) -> Value {
+    json!({
+        "model": "gpt-4o",
+        "input": "Say hello in one word.",
+        "stream": stream,
+        "temperature": 0.7,
+    })
+}
+
+#[tokio::test]
+async fn responses_returns_503_when_no_providers_configured() {
+    let server = ProxyServer::bind(loopback_zero()).await.expect("bind");
+    let base = format!("http://{}", server.local_addr());
+    let manager = Arc::new(ProviderManager::new());
+    let engine = Arc::new(SwitchEngine::new(Arc::clone(&manager)));
+    let state = ProxyAppState::new(engine, manager);
+    let (tx, rx) = oneshot::channel::<()>();
+    let handle: JoinHandle<Result<(), ServerError>> =
+        tokio::spawn(server.serve_with_shutdown(state, async move {
+            let _ = rx.await;
+        }));
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    let response = reqwest::Client::new()
+        .post(format!("{base}/v1/responses"))
+        .json(&responses_request(false))
+        .send()
+        .await
+        .expect("proxy request");
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    let body: Value = response.json().await.expect("json");
+    assert_eq!(body["error"]["type"], "no_provider_available");
+
+    let _ = tx.send(());
+    let _ = tokio::time::timeout(Duration::from_secs(2), handle).await;
+}
+
+#[tokio::test]
+async fn responses_non_streaming_returns_response_envelope() {
+    let upstream = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "chatcmpl-up",
+            "model": "gpt-4o",
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": "Hi"},
+                "finish_reason": "stop",
+            }],
+            "usage": {"prompt_tokens": 4, "completion_tokens": 1, "total_tokens": 5},
+        })))
+        .expect(1)
+        .mount(&upstream)
+        .await;
+    let proxy = start_proxy_with_providers(&[ProviderSpec {
+        id: "openai-responses",
+        name: "OpenAI Responses",
+        priority: 1,
+        server: &upstream,
+    }])
+    .await;
+
+    let response = reqwest::Client::new()
+        .post(format!("{}/v1/responses", proxy.base_url))
+        .json(&responses_request(false))
+        .send()
+        .await
+        .expect("proxy request");
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = response.json().await.expect("json");
+    assert_eq!(body["object"], "response");
+    assert_eq!(body["status"], "completed");
+    assert_eq!(body["model"], "gpt-4o");
+    let output = body["output"].as_array().expect("output array");
+    assert_eq!(output.len(), 1);
+    assert_eq!(output[0]["type"], "message");
+    assert_eq!(output[0]["content"][0]["type"], "output_text");
+    assert_eq!(output[0]["content"][0]["text"], "Hi");
+    assert_eq!(body["usage"]["input_tokens"], 4);
+    assert_eq!(body["usage"]["output_tokens"], 1);
+    assert_eq!(body["usage"]["total_tokens"], 5);
+
+    proxy.shutdown().await;
+}
+
+#[tokio::test]
+async fn responses_instructions_become_a_prepended_system_message_to_upstream() {
+    let upstream = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .and(body_partial_json(json!({
+            "messages": [
+                {"role": "system", "content": "Be terse."},
+                {"role": "user", "content": "hi"},
+            ],
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "chatcmpl-up",
+            "model": "gpt-4o",
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": "k"},
+                "finish_reason": "stop",
+            }],
+        })))
+        .expect(1)
+        .mount(&upstream)
+        .await;
+    let proxy = start_proxy_with_providers(&[ProviderSpec {
+        id: "openai-resp-instr",
+        name: "OpenAI Resp Instr",
+        priority: 1,
+        server: &upstream,
+    }])
+    .await;
+
+    let response = reqwest::Client::new()
+        .post(format!("{}/v1/responses", proxy.base_url))
+        .json(&json!({
+            "model": "gpt-4o",
+            "input": "hi",
+            "instructions": "Be terse.",
+        }))
+        .send()
+        .await
+        .expect("proxy request");
+    assert_eq!(response.status(), StatusCode::OK);
+
+    proxy.shutdown().await;
+}
+
+#[tokio::test]
+async fn responses_custom_function_tool_is_forwarded_to_upstream() {
+    let upstream = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .and(body_partial_json(json!({
+            "tools": [{
+                "type": "function",
+                "function": {"name": "lookup"},
+            }],
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "chatcmpl-up",
+            "model": "gpt-4o",
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": "ok"},
+                "finish_reason": "stop",
+            }],
+        })))
+        .expect(1)
+        .mount(&upstream)
+        .await;
+    let proxy = start_proxy_with_providers(&[ProviderSpec {
+        id: "openai-resp-tools",
+        name: "OpenAI Resp Tools",
+        priority: 1,
+        server: &upstream,
+    }])
+    .await;
+
+    let response = reqwest::Client::new()
+        .post(format!("{}/v1/responses", proxy.base_url))
+        .json(&json!({
+            "model": "gpt-4o",
+            "input": "find the cat",
+            "tools": [{
+                "type": "function",
+                "name": "lookup",
+                "parameters": {"type": "object"},
+            }],
+        }))
+        .send()
+        .await
+        .expect("proxy request");
+    assert_eq!(response.status(), StatusCode::OK);
+
+    proxy.shutdown().await;
+}
+
+#[tokio::test]
+async fn responses_builtin_tool_is_rejected_with_400() {
+    let upstream = MockServer::start().await;
+    // Upstream should NOT be hit because the request fails at the
+    // proxy boundary. `expect(0)` would assert that via wiremock's
+    // mock-expectation drop check.
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(0)
+        .mount(&upstream)
+        .await;
+    let proxy = start_proxy_with_providers(&[ProviderSpec {
+        id: "openai-resp-builtin",
+        name: "OpenAI Resp Builtin",
+        priority: 1,
+        server: &upstream,
+    }])
+    .await;
+
+    let response = reqwest::Client::new()
+        .post(format!("{}/v1/responses", proxy.base_url))
+        .json(&json!({
+            "model": "gpt-4o",
+            "input": "search",
+            "tools": [{"type": "web_search"}],
+        }))
+        .send()
+        .await
+        .expect("proxy request");
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body: Value = response.json().await.expect("json");
+    assert_eq!(body["error"]["type"], "bad_request");
+    assert!(
+        body["error"]["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("web_search"),
+        "error must mention the offending builtin tool",
+    );
+
+    proxy.shutdown().await;
+}
+
+#[tokio::test]
+async fn responses_streams_response_event_sequence() {
+    let upstream = MockServer::start().await;
+    let sse = "data: {\"id\":\"chatcmpl-stream\",\"model\":\"gpt-4o\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"Hel\"},\"finish_reason\":null}]}\n\n\
+               data: {\"id\":\"chatcmpl-stream\",\"model\":\"gpt-4o\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"lo\"},\"finish_reason\":null}]}\n\n\
+               data: {\"id\":\"chatcmpl-stream\",\"model\":\"gpt-4o\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n\
+               data: [DONE]\n\n";
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string(sse)
+                .insert_header("content-type", "text/event-stream"),
+        )
+        .expect(1)
+        .mount(&upstream)
+        .await;
+    let proxy = start_proxy_with_providers(&[ProviderSpec {
+        id: "openai-resp-stream",
+        name: "OpenAI Resp Stream",
+        priority: 1,
+        server: &upstream,
+    }])
+    .await;
+
+    let response = reqwest::Client::new()
+        .post(format!("{}/v1/responses", proxy.base_url))
+        .json(&responses_request(true))
+        .send()
+        .await
+        .expect("proxy request");
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok()),
+        Some("text/event-stream"),
+    );
+    let body = response.text().await.expect("sse text");
+    for expected in &[
+        "event: response.created",
+        "event: response.in_progress",
+        "event: response.output_item.added",
+        "event: response.content_part.added",
+        "event: response.output_text.delta",
+        "event: response.output_text.done",
+        "event: response.content_part.done",
+        "event: response.output_item.done",
+        "event: response.completed",
+    ] {
+        assert!(
+            body.contains(expected),
+            "stream body must contain {expected:?}; got: {body}",
+        );
+    }
+    // The completed snapshot must hold the concatenated text.
+    assert!(
+        body.contains("\"Hello\""),
+        "missing accumulated text in completed snapshot"
+    );
+
+    proxy.shutdown().await;
+}
+
+#[tokio::test]
+async fn responses_handles_native_anthropic_upstream() {
+    let upstream = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/messages"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "msg_up",
+            "type": "message",
+            "role": "assistant",
+            "model": "claude-3-haiku",
+            "stop_reason": "end_turn",
+            "content": [{"type": "text", "text": "yo"}],
+            "usage": {"input_tokens": 3, "output_tokens": 1},
+        })))
+        .expect(1)
+        .mount(&upstream)
+        .await;
+    let proxy = start_proxy_with_native_anthropic_provider(&ProviderSpec {
+        id: "anthropic-resp",
+        name: "Anthropic Resp",
+        priority: 1,
+        server: &upstream,
+    })
+    .await;
+
+    let response = reqwest::Client::new()
+        .post(format!("{}/v1/responses", proxy.base_url))
+        .json(&responses_request(false))
+        .send()
+        .await
+        .expect("proxy request");
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = response.json().await.expect("json");
+    assert_eq!(body["object"], "response");
+    assert_eq!(body["status"], "completed");
+    // Request model echoes back, not the upstream's `claude-3-haiku`.
+    assert_eq!(body["model"], "gpt-4o");
+    let output = body["output"].as_array().expect("output array");
+    assert_eq!(output[0]["content"][0]["text"], "yo");
+
+    proxy.shutdown().await;
+}

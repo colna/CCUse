@@ -26,7 +26,8 @@ use tower_http::cors::{AllowOrigin, CorsLayer};
 use crate::auth::{require_local_api_key, KeyStore};
 use crate::commands::switch::SwitchEngineHandle;
 use crate::converter::{
-    sse::parse_sse_frames, AnthropicConverter, FormatConverter, OpenAIConverter, UnifiedRequest,
+    sse::parse_sse_frames, AnthropicConverter, FormatConverter, OpenAIConverter,
+    ResponsesConverter, ResponsesStreamEncoder, UnifiedRequest,
 };
 use crate::db::Database;
 use crate::providers::{
@@ -96,6 +97,7 @@ pub struct ProxyAppState {
     pub switch_history: Option<SwitchHistoryRepository>,
     pub openai_converter: OpenAIConverter,
     pub anthropic_converter: AnthropicConverter,
+    pub responses_converter: ResponsesConverter,
     non_streaming_timeout: Duration,
     models_cache: Arc<RwLock<Option<ModelsCache>>>,
 }
@@ -116,6 +118,7 @@ impl ProxyAppState {
             switch_history: None,
             openai_converter: OpenAIConverter,
             anthropic_converter: AnthropicConverter,
+            responses_converter: ResponsesConverter,
             non_streaming_timeout: DEFAULT_NON_STREAMING_HANDLER_TIMEOUT,
             models_cache: Arc::new(RwLock::new(None)),
         }
@@ -277,6 +280,7 @@ fn build_router(auth: Option<KeyStore>, state: ProxyAppState) -> Router {
         .route("/v1/models", get(list_models))
         .route("/v1/chat/completions", post(chat_completions))
         .route("/v1/messages", post(anthropic_messages))
+        .route("/v1/responses", post(responses_create))
         .fallback(v1_not_found)
         .layer(DefaultBodyLimit::max(MAX_REQUEST_BODY_BYTES))
         .with_state(state);
@@ -624,6 +628,295 @@ async fn handle_streaming_anthropic_messages(
     };
     let stream = sse::with_keep_alive(stream, sse::DEFAULT_KEEP_ALIVE);
     Ok(sse::stream_to_sse_response(stream))
+}
+
+/// `POST /v1/responses` — `OpenAI` Responses API inbound (T1.0.6.39).
+///
+/// Reuses the unified dispatch / streaming machinery; the only
+/// difference from [`chat_completions`] is the inbound + outbound
+/// shape, handled by [`ResponsesConverter`] and
+/// [`ResponsesStreamEncoder`]. The `model` field on the response is
+/// echoed from the request so account-pool servers rewriting the
+/// upstream model don't break client correlation.
+async fn responses_create(
+    State(state): State<ProxyAppState>,
+    body: axum::body::Bytes,
+) -> Result<axum::response::Response, ApiError> {
+    if state.manager.is_empty().await {
+        return Err(ApiError::new(
+            ApiErrorKind::NoProvider,
+            "No providers configured. Add a provider in CCUse settings.",
+        ));
+    }
+
+    let body_json: Value =
+        serde_json::from_slice(&body).map_err(|e| ApiError::bad_request(e.to_string()))?;
+    let request_model = body_json
+        .get("model")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_owned();
+
+    let unified = state.responses_converter.request_to_unified(&body_json)?;
+    let api_req = bridge::unified_to_api_request(&unified);
+
+    if unified.stream {
+        return handle_streaming_responses(state, api_req, request_model).await;
+    }
+
+    let start = std::time::Instant::now();
+    let result = dispatch_non_streaming(&state, api_req.clone()).await?;
+    let elapsed = start.elapsed();
+    record_switch_if_any(&state, &result);
+
+    if let Some(ref log_repo) = state.request_log {
+        let input = RequestLogInput {
+            provider_id: result.provider_id.clone(),
+            model: api_req.model.clone(),
+            status: "ok".into(),
+            error_kind: None,
+            latency_ms: i64::try_from(elapsed.as_millis()).unwrap_or(i64::MAX),
+            prompt_tokens: result
+                .response
+                .usage
+                .as_ref()
+                .map(|u| i64::from(u.prompt_tokens)),
+            completion_tokens: result
+                .response
+                .usage
+                .as_ref()
+                .map(|u| i64::from(u.completion_tokens)),
+            total_tokens: result
+                .response
+                .usage
+                .as_ref()
+                .map(|u| i64::from(u.total_tokens)),
+            stream: false,
+        };
+        let _ = log_repo.insert(&input);
+    }
+
+    let unified_resp = bridge::api_response_to_unified(&result.response);
+    let out = state
+        .responses_converter
+        .unified_to_response(&unified_resp, &request_model)?;
+    Ok(Json(out).into_response())
+}
+
+async fn handle_streaming_responses(
+    state: ProxyAppState,
+    api_req: ApiRequest,
+    request_model: String,
+) -> Result<axum::response::Response, ApiError> {
+    let start = std::time::Instant::now();
+    let result = state
+        .engine
+        .dispatch_stream(api_req.clone())
+        .await
+        .map_err(ApiError::from)?;
+    let elapsed = start.elapsed();
+    record_switch_if_any(&state, &result);
+
+    if let Some(ref log_repo) = state.request_log {
+        let input = RequestLogInput {
+            provider_id: result.provider_id.clone(),
+            model: api_req.model.clone(),
+            status: "ok".into(),
+            error_kind: None,
+            latency_ms: i64::try_from(elapsed.as_millis()).unwrap_or(i64::MAX),
+            prompt_tokens: None,
+            completion_tokens: None,
+            total_tokens: None,
+            stream: true,
+        };
+        let _ = log_repo.insert(&input);
+    }
+
+    // Upstream may speak Anthropic SSE. Normalize to OpenAI SSE first
+    // so the Responses encoder always sees the same chunk shape.
+    let openai_for_encoder = state.openai_converter.clone();
+    let openai_stream = if result.provider_kind == ProviderKind::Anthropic {
+        anthropic_sse_to_openai_sse(
+            result.response,
+            state.anthropic_converter,
+            state.openai_converter,
+        )
+    } else {
+        result.response
+    };
+    let responses_stream =
+        openai_stream_to_responses_sse(openai_stream, openai_for_encoder, request_model);
+    let stream = sse::with_keep_alive(responses_stream, sse::DEFAULT_KEEP_ALIVE);
+    Ok(sse::stream_to_sse_response(stream))
+}
+
+/// Pipe an `OpenAI`-shaped SSE stream through a
+/// [`ResponsesStreamEncoder`], emitting Responses typed events.
+fn openai_stream_to_responses_sse(
+    upstream: StreamingResponse,
+    openai: OpenAIConverter,
+    request_model: String,
+) -> StreamingResponse {
+    let mut encoder = ResponsesStreamEncoder::new(request_model);
+    let preamble = encoder.start_frames();
+    let initial: VecDeque<Result<Bytes, ProviderError>> =
+        preamble.into_iter().map(|s| Ok(Bytes::from(s))).collect();
+    Box::pin(futures::stream::unfold(
+        ResponsesStreamState::new(upstream, openai, encoder, initial),
+        |mut state| async move {
+            loop {
+                if let Some(item) = state.pending.pop_front() {
+                    let bytes = state.emit_pending_item(item);
+                    return Some((Ok(bytes), state));
+                }
+
+                if state.done {
+                    return None;
+                }
+
+                match state.upstream.next().await {
+                    Some(Ok(bytes)) => match std::str::from_utf8(&bytes) {
+                        Ok(text) => {
+                            state.buffer.push_str(text);
+                            state.drain_complete_frames();
+                        }
+                        Err(err) => {
+                            let error = ProviderError::Decode(err.to_string());
+                            let bytes = state.finish_with_error(&error);
+                            return Some((Ok(bytes), state));
+                        }
+                    },
+                    Some(Err(err)) => {
+                        let bytes = state.finish_with_error(&err);
+                        return Some((Ok(bytes), state));
+                    }
+                    None => {
+                        state.flush_trailing_frame();
+                        state.flush_completion(None);
+                        if let Some(item) = state.pending.pop_front() {
+                            let bytes = state.emit_pending_item(item);
+                            return Some((Ok(bytes), state));
+                        }
+                        return None;
+                    }
+                }
+            }
+        },
+    ))
+}
+
+struct ResponsesStreamState {
+    upstream: StreamingResponse,
+    buffer: String,
+    pending: VecDeque<Result<Bytes, ProviderError>>,
+    openai: OpenAIConverter,
+    encoder: ResponsesStreamEncoder,
+    done: bool,
+    finalized: bool,
+    last_usage: Option<crate::converter::UnifiedUsage>,
+}
+
+impl ResponsesStreamState {
+    fn new(
+        upstream: StreamingResponse,
+        openai: OpenAIConverter,
+        encoder: ResponsesStreamEncoder,
+        initial: VecDeque<Result<Bytes, ProviderError>>,
+    ) -> Self {
+        Self {
+            upstream,
+            buffer: String::new(),
+            pending: initial,
+            openai,
+            encoder,
+            done: false,
+            finalized: false,
+            last_usage: None,
+        }
+    }
+
+    fn push_frame_results(&mut self, raw: &str) {
+        for frame in parse_sse_frames(raw) {
+            let chunk = match self.openai.parse_stream_chunk(&frame.data) {
+                Ok(Some(chunk)) => chunk,
+                // `[DONE]` is the only terminal we expect on the
+                // OpenAI side; flush the response.completed frame and
+                // mark the stream as drained.
+                Ok(None) => {
+                    self.flush_completion(None);
+                    continue;
+                }
+                Err(err) => {
+                    let frames = self.encoder.error_frame(&err.to_string());
+                    self.queue_frames(frames);
+                    self.done = true;
+                    continue;
+                }
+            };
+            if let Some(ref usage) = chunk.usage {
+                self.last_usage = Some(usage.clone());
+            }
+            let frames = self.encoder.process_chunk(&chunk);
+            self.queue_frames(frames);
+        }
+    }
+
+    fn queue_frames(&mut self, frames: Vec<String>) {
+        for frame in frames {
+            self.pending.push_back(Ok(Bytes::from(frame)));
+        }
+    }
+
+    fn flush_completion(&mut self, override_usage: Option<&crate::converter::UnifiedUsage>) {
+        if self.finalized {
+            return;
+        }
+        self.finalized = true;
+        let usage = override_usage.or(self.last_usage.as_ref());
+        let frames = self.encoder.finalize(usage);
+        self.queue_frames(frames);
+        self.done = true;
+    }
+
+    fn finish_with_error(&mut self, error: &ProviderError) -> Bytes {
+        self.pending.clear();
+        let frames = self.encoder.error_frame(&error.to_string());
+        self.queue_frames(frames);
+        self.done = true;
+        // Pop the head of the queue we just filled so the caller has
+        // something to emit immediately. Any remaining frames will
+        // continue draining on the next poll.
+        self.pending
+            .pop_front()
+            .map_or_else(Bytes::new, |item| match item {
+                Ok(bytes) => bytes,
+                Err(_) => Bytes::new(),
+            })
+    }
+
+    fn emit_pending_item(&mut self, item: Result<Bytes, ProviderError>) -> Bytes {
+        match item {
+            Ok(bytes) => bytes,
+            Err(error) => self.finish_with_error(&error),
+        }
+    }
+
+    fn drain_complete_frames(&mut self) {
+        while let Some(end) = self.buffer.find("\n\n") {
+            let raw = self.buffer[..end + 2].to_owned();
+            self.buffer.drain(..end + 2);
+            self.push_frame_results(&raw);
+        }
+    }
+
+    fn flush_trailing_frame(&mut self) {
+        if self.buffer.trim().is_empty() {
+            self.buffer.clear();
+            return;
+        }
+        let raw = std::mem::take(&mut self.buffer);
+        self.push_frame_results(&raw);
+    }
 }
 
 async fn dispatch_non_streaming(

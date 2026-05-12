@@ -423,7 +423,7 @@ async fn auth_does_not_apply_to_healthz() {
 async fn unknown_v1_path_returns_404_when_authenticated() {
     let (base, openai_key, _anthropic_key, tx, handle) = start_authenticated_test_server().await;
     let response = reqwest::Client::new()
-        .post(format!("{base}/v1/responses"))
+        .post(format!("{base}/v1/some-future-endpoint"))
         .bearer_auth(&openai_key)
         .json(&serde_json::json!({"model": "gpt-4o", "input": "hi"}))
         .send()
@@ -436,7 +436,7 @@ async fn unknown_v1_path_returns_404_when_authenticated() {
         body["error"]["message"]
             .as_str()
             .unwrap_or_default()
-            .contains("/v1/responses"),
+            .contains("/v1/some-future-endpoint"),
         "message should mention the requested path",
     );
     shutdown_test_server(tx, handle).await;
@@ -446,7 +446,7 @@ async fn unknown_v1_path_returns_404_when_authenticated() {
 async fn unknown_v1_path_still_returns_401_when_key_missing() {
     let (base, _openai_key, _anthropic_key, tx, handle) = start_authenticated_test_server().await;
     let response = reqwest::Client::new()
-        .post(format!("{base}/v1/responses"))
+        .post(format!("{base}/v1/some-future-endpoint"))
         .json(&serde_json::json!({}))
         .send()
         .await
