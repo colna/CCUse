@@ -277,6 +277,7 @@ fn build_router(auth: Option<KeyStore>, state: ProxyAppState) -> Router {
         .route("/v1/models", get(list_models))
         .route("/v1/chat/completions", post(chat_completions))
         .route("/v1/messages", post(anthropic_messages))
+        .fallback(v1_not_found)
         .layer(DefaultBodyLimit::max(MAX_REQUEST_BODY_BYTES))
         .with_state(state);
     if let Some(store) = auth {
@@ -289,6 +290,23 @@ fn build_router(auth: Option<KeyStore>, state: ProxyAppState) -> Router {
         .route("/healthz", get(healthz))
         .merge(v1)
         .layer(cors_layer())
+}
+
+/// Fallback for any path the proxy does not register.
+///
+/// Without this, an unknown `/v1/*` path is silently swallowed by the
+/// auth middleware and the client sees `401 invalid api key`, which
+/// is misleading — the real problem is that the endpoint doesn't
+/// exist. Routes are short-circuited with the correct protocol's
+/// error envelope so `OpenAI` / Anthropic SDKs surface a sensible
+/// `not_found` instead of a phantom auth failure.
+async fn v1_not_found(uri: axum::http::Uri) -> ApiError {
+    let path = uri.path();
+    ApiError::not_found(format!(
+        "Unknown endpoint: {path}. \
+         Supported: /v1/models, /v1/chat/completions, /v1/messages"
+    ))
+    .with_protocol(crate::proxy::error::ErrorProtocol::for_path(path))
 }
 
 /// CORS policy.

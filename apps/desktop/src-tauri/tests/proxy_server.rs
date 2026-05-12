@@ -420,6 +420,61 @@ async fn auth_does_not_apply_to_healthz() {
 }
 
 #[tokio::test]
+async fn unknown_v1_path_returns_404_when_authenticated() {
+    let (base, openai_key, _anthropic_key, tx, handle) = start_authenticated_test_server().await;
+    let response = reqwest::Client::new()
+        .post(format!("{base}/v1/responses"))
+        .bearer_auth(&openai_key)
+        .json(&serde_json::json!({"model": "gpt-4o", "input": "hi"}))
+        .send()
+        .await
+        .expect("request reaches server");
+    assert_eq!(response.status(), reqwest::StatusCode::NOT_FOUND);
+    let body: Value = response.json().await.expect("body decodes");
+    assert_eq!(body["error"]["type"], "not_found");
+    assert!(
+        body["error"]["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("/v1/responses"),
+        "message should mention the requested path",
+    );
+    shutdown_test_server(tx, handle).await;
+}
+
+#[tokio::test]
+async fn unknown_v1_path_still_returns_401_when_key_missing() {
+    let (base, _openai_key, _anthropic_key, tx, handle) = start_authenticated_test_server().await;
+    let response = reqwest::Client::new()
+        .post(format!("{base}/v1/responses"))
+        .json(&serde_json::json!({}))
+        .send()
+        .await
+        .expect("request reaches server");
+    assert_eq!(response.status(), reqwest::StatusCode::UNAUTHORIZED);
+    let body: Value = response.json().await.expect("body decodes");
+    assert_eq!(body["error"]["type"], "unauthorized");
+    shutdown_test_server(tx, handle).await;
+}
+
+#[tokio::test]
+async fn unknown_v1_messages_subpath_returns_anthropic_envelope_404() {
+    let (base, _openai_key, anthropic_key, tx, handle) = start_authenticated_test_server().await;
+    let response = reqwest::Client::new()
+        .post(format!("{base}/v1/messages/something"))
+        .header("x-api-key", &anthropic_key)
+        .json(&serde_json::json!({}))
+        .send()
+        .await
+        .expect("request reaches server");
+    assert_eq!(response.status(), reqwest::StatusCode::NOT_FOUND);
+    let body: Value = response.json().await.expect("body decodes");
+    assert_eq!(body["type"], "error");
+    assert_eq!(body["error"]["type"], "not_found_error");
+    shutdown_test_server(tx, handle).await;
+}
+
+#[tokio::test]
 async fn bind_with_fallback_skips_busy_port_and_finds_next() {
     // Hold one loopback port for the duration of the test, then ask
     // bind_with_fallback to start exactly there. The first probe must fail,

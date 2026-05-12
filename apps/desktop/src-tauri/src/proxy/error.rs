@@ -51,6 +51,8 @@ pub enum ApiErrorKind {
     Unauthorized,
     /// Client sent a syntactically or semantically wrong request.
     BadRequest,
+    /// Client hit a `/v1/*` path the proxy does not implement.
+    NotFound,
     /// Rate limit reached on the proxy itself (distinct from upstream 429).
     TooManyRequests,
     /// All enabled providers failed to serve the request.
@@ -71,6 +73,7 @@ impl ApiErrorKind {
             Self::ProvidersNotConfigured | Self::NoProvider => StatusCode::SERVICE_UNAVAILABLE,
             Self::Unauthorized => StatusCode::UNAUTHORIZED,
             Self::BadRequest => StatusCode::BAD_REQUEST,
+            Self::NotFound => StatusCode::NOT_FOUND,
             Self::TooManyRequests => StatusCode::TOO_MANY_REQUESTS,
             Self::UpstreamError => StatusCode::BAD_GATEWAY,
             Self::Timeout => StatusCode::GATEWAY_TIMEOUT,
@@ -86,6 +89,7 @@ impl ApiErrorKind {
             Self::NoProvider => "no_provider_available",
             Self::Unauthorized => "unauthorized",
             Self::BadRequest => "bad_request",
+            Self::NotFound => "not_found",
             Self::TooManyRequests => "rate_limit_exceeded",
             Self::UpstreamError => "upstream_error",
             Self::Timeout => "request_timeout",
@@ -99,6 +103,7 @@ impl ApiErrorKind {
         match self {
             Self::Unauthorized => "authentication_error",
             Self::BadRequest => "invalid_request_error",
+            Self::NotFound => "not_found_error",
             Self::TooManyRequests => "rate_limit_error",
             Self::ProvidersNotConfigured
             | Self::NoProvider
@@ -168,6 +173,10 @@ impl ApiError {
 
     pub fn timeout(reason: impl Into<String>) -> Self {
         Self::new(ApiErrorKind::Timeout, reason)
+    }
+
+    pub fn not_found(reason: impl Into<String>) -> Self {
+        Self::new(ApiErrorKind::NotFound, reason)
     }
 }
 
@@ -281,6 +290,7 @@ mod tests {
             StatusCode::UNAUTHORIZED
         );
         assert_eq!(ApiErrorKind::BadRequest.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(ApiErrorKind::NotFound.status(), StatusCode::NOT_FOUND);
         assert_eq!(
             ApiErrorKind::TooManyRequests.status(),
             StatusCode::TOO_MANY_REQUESTS
@@ -308,6 +318,7 @@ mod tests {
         );
         assert_eq!(ApiErrorKind::Unauthorized.type_str(), "unauthorized");
         assert_eq!(ApiErrorKind::BadRequest.type_str(), "bad_request");
+        assert_eq!(ApiErrorKind::NotFound.type_str(), "not_found");
         assert_eq!(
             ApiErrorKind::TooManyRequests.type_str(),
             "rate_limit_exceeded"
@@ -327,6 +338,10 @@ mod tests {
         assert_eq!(
             ApiErrorKind::BadRequest.anthropic_type_str(),
             "invalid_request_error"
+        );
+        assert_eq!(
+            ApiErrorKind::NotFound.anthropic_type_str(),
+            "not_found_error"
         );
         assert_eq!(
             ApiErrorKind::TooManyRequests.anthropic_type_str(),
